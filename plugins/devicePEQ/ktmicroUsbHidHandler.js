@@ -18,7 +18,19 @@ export const ktmicroUsbHidHandler = (function () {
 
   function decodeQResponse(data) {
     const q = (data[6] + (data[7] << 8)) / 1000.0;
-    return { q };
+    let type = "PK"; // Default to Peak filter
+
+    // Read filter type from byte 8
+    const filterTypeValue = data[8];
+    if (filterTypeValue === 3) {
+      type = "LSQ"; // Low Shelf
+    } else if (filterTypeValue === 0) {
+      type = "PK"; // Peak
+    } else if (filterTypeValue === 4) {
+      type = "HSQ"; // High Shelf
+    }
+
+    return { q, type };
   }
 
   async function getCurrentSlot() {
@@ -54,10 +66,9 @@ export const ktmicroUsbHidHandler = (function () {
           Object.assign(result, qData);
         }
 
-        if ('gain' in result && 'freq' in result && 'q' in result) {
+        if ('gain' in result && 'freq' in result && 'q' in result && 'type' in result) {
           clearTimeout(timeout);
           device.removeEventListener('inputreport', onReport);
-          result.type = "PK";
           console.log(`USB Device PEQ: KTMicro filter ${filterIndex} complete:`, result);
           resolve(result);
         }
@@ -103,10 +114,17 @@ export const ktmicroUsbHidHandler = (function () {
     ]);
   }
 
-  function buildQPacket(filterId, q) {
+  function buildQPacket(filterId, q, type) {
     const qBytes = toLittleEndianBytes(q, 1000);
+    var filterTypeValue = 0;
+    if (type === "LSQ") {
+      filterTypeValue = 3; // Low Shelf
+    } else if (type === "HSQ") {
+      filterTypeValue = 4; // High Shelf
+    }
+
     return new Uint8Array([
-      filterId, 0x00, 0x00, 0x00, COMMAND_WRITE, 0x00, qBytes[0], qBytes[1], 0x00, 0x00
+      filterId, 0x00, 0x00, 0x00, COMMAND_WRITE, 0x00, qBytes[0], qBytes[1], filterTypeValue, 0x00
     ]);
   }
 
@@ -123,7 +141,7 @@ export const ktmicroUsbHidHandler = (function () {
 
       const filterId = 0x26 + i * 2;
       const writeGainFreq = buildWritePacket(filterId, filters[i].freq, filters[i].gain);
-      const writeQ = buildQPacket(filterId + 1, filters[i].q);
+      const writeQ = buildQPacket(filterId + 1, filters[i].q, filters[i].type );
 
       // We should verify it is saved correctly but for now lets assume once command is accepted it has worked
       console.log(`USB Device PEQ: KTMicro sending gain/freq for filter ${i}:`, filters[i], writeGainFreq);
