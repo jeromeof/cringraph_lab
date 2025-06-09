@@ -177,24 +177,22 @@ async function initializeDeviceEqPlugin(context) {
 
   // Function to show toast messages
   function showToast(message, type = 'success') {
-    // Remove any existing toast
-    const existingToast = document.getElementById('device-toast');
-    if (existingToast) {
-      document.body.removeChild(existingToast);
-    }
-
     // Create toast element
     const toast = document.createElement('div');
-    toast.id = 'device-toast';
+    toast.id = `device-toast-${type}`; // Type-specific ID
     toast.textContent = message;
 
     // Set style based on type
     if (type === 'success') {
       toast.style.backgroundColor = '#4CAF50'; // Green
+      toast.style.bottom = '80px'; // Bottom position for success
     } else if (type === 'error') {
       toast.style.backgroundColor = '#F44336'; // Red
+      toast.style.top = '30px'; // Top position for error
+      toast.style.bottom = 'auto'; // Override bottom
     } else if (type === 'warning') {
       toast.style.backgroundColor = '#FF9800'; // Orange
+      toast.style.bottom = '30px'; // Bottom position for warning
     }
 
     // Common styles
@@ -203,12 +201,17 @@ async function initializeDeviceEqPlugin(context) {
     toast.style.borderRadius = '4px';
     toast.style.position = 'fixed';
     toast.style.zIndex = '10000';
-    toast.style.bottom = '30px';
     toast.style.left = '50%';
     toast.style.transform = 'translateX(-50%)';
     toast.style.minWidth = '250px';
     toast.style.textAlign = 'center';
     toast.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+
+    // Remove existing toast of the same type
+    const existingToast = document.getElementById(`device-toast-${type}`);
+    if (existingToast) {
+      document.body.removeChild(existingToast);
+    }
 
     // Add to document
     document.body.appendChild(toast);
@@ -218,8 +221,11 @@ async function initializeDeviceEqPlugin(context) {
       if (document.body.contains(toast)) {
         document.body.removeChild(toast);
       }
-    }, 3000);
+    }, 5000);
   }
+
+  // Make showToast globally accessible for handlers
+  window.showToast = showToast;
 
   function loadHtml() {
     // Define the HTML to insert
@@ -330,6 +336,19 @@ async function initializeDeviceEqPlugin(context) {
     .sub-tab-content.active {
       display: block;
     }
+
+        /* Styles to force checkbox visibility */
+    #tab-feedback input[type="checkbox"] {
+      -webkit-appearance: checkbox; /* Force WebKit browsers to show default checkbox */
+      appearance: compat-auto = checkbox;
+      width: 16px;  /* Or any desired size */
+      height: 16px; /* Or any desired size */
+      opacity: 1;
+      position: static; /* Ensure it's not positioned off-screen */
+      visibility: visible;
+      display: inline-block; /* Or block, depending on layout */
+    }
+
         </style>
             <h5>Device PEQ</h5>
             <div class="settings-row">
@@ -352,7 +371,7 @@ async function initializeDeviceEqPlugin(context) {
         <div id="deviceInfoModal" class="modal hidden">
           <div class="modal-content">
             <button id="closeModalBtn" class="close" aria-label="Close Modal">&times;</button>
-            <h3>About Device PEQ - v0.6</h3>
+            <h3>About Device PEQ - v0.8</h3>
 
             <div class="tabs">
               <button class="tab-button active" data-tab="tab-overview">Overview</button>
@@ -366,9 +385,9 @@ async function initializeDeviceEqPlugin(context) {
 
               <h4>Supported Brands & Manufacturers</h4>
               <ul>
-                <li><strong>FiiO:</strong> JA11, KA15 and KA17</li>
-                <li><strong>Moondrop:</strong> CDSP, Chu II DSP, Quark2 </li>
-                <li><strong>Tanchjim:</strong> Bunny DSP, One DSP </li>
+                <li><strong>FiiO:</strong> JA11, KA15, KA17, FX17</li>
+                <li><strong>Moondrop:</strong> CDSP, Chu II DSP, Quark2, Rays </li>
+                <li><strong>Tanchjim:</strong> Bunny DSP, One DSP, Stargate II </li>
                 <li><strong>EPZ:</strong> GM20 and TP13</li>
                 <li><strong>KiwiEars:</strong> Allegro and Allegro Pro</li>
                 <li><strong>JCally:</strong> JM20 Pro, JM12</li>
@@ -396,6 +415,7 @@ async function initializeDeviceEqPlugin(context) {
                   <li>JA11</li>
                   <li>KA17</li>
                   <li>KA15</li>
+                  <li>FX17 (with usbc adapter)</li>
                   <li><em>Note:</em> Retro Nano has limited compatibility</li>
                 </ul>
                 <p>Mostly if a FiiO device works with their excellent Web-based PEQ editor at <a href="https://fiiocontrol.fiio.com" target="_blank">fiiocontrol.fiio.com</a> it should work here also</p>
@@ -424,6 +444,7 @@ async function initializeDeviceEqPlugin(context) {
                   <li>Moondrop Quark2</li>
                   <li>Tanchjim One DSP (IEM)</li>
                   <li>Tanchjim Bunny DSP (IEM)</li>
+                  <li>JCally JM12</li>
                 </ul>
                 <p>You also use the official Tanchjim Android App for EQ and device configuration.</p>
               </div>
@@ -1204,11 +1225,15 @@ async function initializeDeviceEqPlugin(context) {
             }
 
             const device = deviceEqUI.currentDevice;
-            const selectedSlot = deviceEqUI.peqDropdown.value;
+            var selectedSlot = deviceEqUI.peqDropdown.value;
             if (!device || !selectedSlot) {
               showToast("No device connected or PEQ slot selected.", "error");
               return;
             }
+            if (typeof selectedSlot === 'string' && !isNaN(parseInt(selectedSlot, 10))) {
+              selectedSlot = parseInt(selectedSlot, 10);
+            }
+
 
             // ✅ Use context to get filters instead of undefined elemToFilters()
             const filters = context.elemToFilters(true);
