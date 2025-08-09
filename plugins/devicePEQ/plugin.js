@@ -176,52 +176,105 @@ async function initializeDeviceEqPlugin(context) {
   }
 
   // Function to show toast messages
-  function showToast(message, type = 'success') {
-    // Create toast element
-    const toast = document.createElement('div');
-    toast.id = `device-toast-${type}`; // Type-specific ID
-    toast.textContent = message;
+  // Parameters:
+  // - message: The text message to display
+  // - type: The type of toast (success, error, warning) with default 'success'
+  // - timeout: The time in milliseconds before the toast disappears (default 5000ms)
+  // - requireClick: If true, adds a "Continue" button that must be clicked to dismiss the toast (ignores timeout)
+  //                 and returns a Promise that resolves when the button is clicked
+  //
+  // Example usage with await to block execution until user clicks Continue:
+  // async function someFunction() {
+  //   // Show a toast and wait for user to click Continue
+  //   await showToast("Please confirm to continue", "warning", 0, true);
+  //   // Code here will only execute after the user clicks Continue
+  //   console.log("User clicked Continue");
+  // }
+  function showToast(message, type = 'success', timeout = 5000, requireClick = false) {
+    return new Promise((resolve) => {
+      // Create toast element
+      const toast = document.createElement('div');
+      toast.id = `device-toast-${type}`; // Type-specific ID
 
-    // Set style based on type
-    if (type === 'success') {
-      toast.style.backgroundColor = '#4CAF50'; // Green
-      toast.style.bottom = '80px'; // Bottom position for success
-    } else if (type === 'error') {
-      toast.style.backgroundColor = '#F44336'; // Red
-      toast.style.top = '30px'; // Top position for error
-      toast.style.bottom = 'auto'; // Override bottom
-    } else if (type === 'warning') {
-      toast.style.backgroundColor = '#FF9800'; // Orange
-      toast.style.bottom = '30px'; // Bottom position for warning
-    }
+      // Create message container
+      const messageContainer = document.createElement('div');
+      messageContainer.textContent = message;
+      toast.appendChild(messageContainer);
 
-    // Common styles
-    toast.style.color = 'white';
-    toast.style.padding = '16px';
-    toast.style.borderRadius = '4px';
-    toast.style.position = 'fixed';
-    toast.style.zIndex = '10000';
-    toast.style.left = '50%';
-    toast.style.transform = 'translateX(-50%)';
-    toast.style.minWidth = '250px';
-    toast.style.textAlign = 'center';
-    toast.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
-
-    // Remove existing toast of the same type
-    const existingToast = document.getElementById(`device-toast-${type}`);
-    if (existingToast) {
-      document.body.removeChild(existingToast);
-    }
-
-    // Add to document
-    document.body.appendChild(toast);
-
-    // Auto remove after 3 seconds
-    setTimeout(() => {
-      if (document.body.contains(toast)) {
-        document.body.removeChild(toast);
+      // Set style based on type
+      if (type === 'success') {
+        toast.style.backgroundColor = '#4CAF50'; // Green
+        toast.style.bottom = '80px'; // Bottom position for success
+      } else if (type === 'error') {
+        toast.style.backgroundColor = '#F44336'; // Red
+        toast.style.top = '30px'; // Top position for error
+        toast.style.bottom = 'auto'; // Override bottom
+      } else if (type === 'warning') {
+        toast.style.backgroundColor = '#FF9800'; // Orange
+        toast.style.bottom = '30px'; // Bottom position for warning
       }
-    }, 5000);
+
+      // Common styles
+      toast.style.color = 'white';
+      toast.style.padding = '16px';
+      toast.style.borderRadius = '4px';
+      toast.style.position = 'fixed';
+      toast.style.zIndex = '10000';
+      toast.style.left = '50%';
+      toast.style.transform = 'translateX(-50%)';
+      toast.style.minWidth = '250px';
+      toast.style.textAlign = 'center';
+      toast.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+
+      // Check for existing toast of the same type
+      const existingToast = document.getElementById(`device-toast-${type}`);
+      if (existingToast) {
+        // Check if the existing toast has a continue button (requireClick=true)
+        const continueButton = existingToast.querySelector('button');
+        if (continueButton) {
+          // If there's an existing toast with a continue button, return early
+          // to allow the user to interact with it
+          return resolve(); // Resolve immediately since we're not showing a new toast
+        }
+        document.body.removeChild(existingToast);
+      }
+
+      // If requireClick is true, add a continue button
+      if (requireClick) {
+        // Add a continue button
+        const continueButton = document.createElement('button');
+        continueButton.textContent = 'Click here to Continue';
+        continueButton.style.marginTop = '10px';
+        continueButton.style.padding = '5px 15px';
+        continueButton.style.backgroundColor = 'white';
+        continueButton.style.color = toast.style.backgroundColor;
+        continueButton.style.border = 'none';
+        continueButton.style.borderRadius = '3px';
+        continueButton.style.cursor = 'pointer';
+        continueButton.style.fontWeight = 'bold';
+
+        // Add click event to remove the toast and resolve the promise
+        continueButton.addEventListener('click', () => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+          resolve(); // Resolve the promise when the button is clicked
+        });
+
+        toast.appendChild(continueButton);
+      } else {
+        // Auto remove after xx seconds if requireClick is false
+        setTimeout(() => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+          resolve(); // Resolve the promise when the toast is automatically removed
+        }, timeout);
+      }
+
+      // Add to document
+      document.body.appendChild(toast);
+    });
   }
 
   // Make showToast globally accessible for handlers
@@ -371,7 +424,7 @@ async function initializeDeviceEqPlugin(context) {
         <div id="deviceInfoModal" class="modal hidden">
           <div class="modal-content">
             <button id="closeModalBtn" class="close" aria-label="Close Modal">&times;</button>
-            <h3>About Device PEQ - v0.8</h3>
+            <h3>About Device PEQ - v0.11</h3>
 
             <div class="tabs">
               <button class="tab-button active" data-tab="tab-overview">Overview</button>
@@ -385,16 +438,18 @@ async function initializeDeviceEqPlugin(context) {
 
               <h4>Supported Brands & Manufacturers</h4>
               <ul>
-                <li><strong>FiiO:</strong> JA11, KA15, KA17, FX17</li>
+                <li><strong>FiiO:</strong> JA11, KA15, KA17, FX17, QX13</li>
                 <li><strong>Moondrop:</strong> CDSP, Chu II DSP, Quark2, Rays </li>
-                <li><strong>Tanchjim:</strong> Bunny DSP, One DSP, Stargate II </li>
+                <li><strong>Tanchjim:</strong> Bunny DSP, Fission, One DSP, Stargate II </li>
+                <li><strong>Truthear</strong> KeyX </li>
                 <li><strong>EPZ:</strong> GM20 and TP13</li>
                 <li><strong>KiwiEars:</strong> Allegro and Allegro Pro</li>
                 <li><strong>JCally:</strong> JM20 Pro, JM12</li>
                 <li><strong>Walkplay</strong> Most devices compatible with Walkplay Android APK</li>
                 <li><strong>KTMicro</strong> Many KTMicro DSP devices should work </li>
                 <li><strong>JDS Labs:</strong> Supporting the Element IV via USB Serial interface</li>
-                <li><strong>WiiM:</strong> Supports pushing parametric EQ over the home network</li>
+                <li><strong>Nothing:</strong> Headphone (1) via Serial USB or Bluetooth</li>
+                <li><strong>WiiM:</strong> Supports limited pushing of parametric EQ over the home network</li>
                 <li><strong>Experimental:</strong> Many more device's that have yet to be tested, will be marked as 'Experimental' but may work fine</li>
               </ul>
             </div>
@@ -405,6 +460,7 @@ async function initializeDeviceEqPlugin(context) {
                 <button class="sub-tab-button" data-subtab="sub-walkplay">Walkplay</button>
                 <button class="sub-tab-button" data-subtab="sub-tanchjim">KTMicro</button>
                 <button class="sub-tab-button" data-subtab="sub-jdslabs">JDS Labs</button>
+                <button class="sub-tab-button" data-subtab="sub-nothing">Nothing</button>
                 <button class="sub-tab-button" data-subtab="sub-wiim">WiiM</button>
               </div>
 
@@ -416,6 +472,7 @@ async function initializeDeviceEqPlugin(context) {
                   <li>KA17</li>
                   <li>KA15</li>
                   <li>FX17 (with usbc adapter)</li>
+                  <li>QX13</li>
                   <li><em>Note:</em> Retro Nano has limited compatibility</li>
                 </ul>
                 <p>Mostly if a FiiO device works with their excellent Web-based PEQ editor at <a href="https://fiiocontrol.fiio.com" target="_blank">fiiocontrol.fiio.com</a> it should work here also</p>
@@ -444,6 +501,7 @@ async function initializeDeviceEqPlugin(context) {
                   <li>Moondrop Quark2</li>
                   <li>Tanchjim One DSP (IEM)</li>
                   <li>Tanchjim Bunny DSP (IEM)</li>
+                  <li>Tanchjim Fission (IEM)</li>
                   <li>JCally JM12</li>
                 </ul>
                 <p>You also use the official Tanchjim Android App for EQ and device configuration.</p>
@@ -453,6 +511,16 @@ async function initializeDeviceEqPlugin(context) {
               <h5>JDS Labs</h5>
               <p>Supports PEQ control over USB Serial for compatible products like the JDS Labs Element IV, basically if it works on JDS Labs excellent <a href="https://core.jdslabs.com.">Core PEQ</a> it should work. You can push and pull filters directly to the device.</p>
               <p>Note: This option is only visible in advanced mode </p>
+            </div>
+
+            <div id="sub-nothing" class="sub-tab-content">
+              <h5>Nothing</h5>
+              <p>Beta support for Nothing Headphone (1) via Serial USB or Bluetooth connection. Supports reading and writing custom EQ profiles with up to 8 parametric filters.</p>
+              <ul>
+                <li>Nothing Headphone (1) - Beta support</li>
+              </ul>
+              <p>The Nothing headphones support multiple EQ profiles: Balanced, Voice, More Treble, More Bass, and Custom. Only the Custom profile supports writing parametric EQ filters.</p>
+              <p>Note: This is experimental devicePEQ Bluetooth support and requires compatible browser with Web Serial API.</p>
             </div>
 
             <div id="sub-wiim" class="sub-tab-content">
@@ -721,6 +789,15 @@ async function initializeDeviceEqPlugin(context) {
                   await NetworkDeviceConnector.getAvailableSlots(device),
                   await NetworkDeviceConnector.getCurrentSlot(device)
                 );
+
+                // Check if device supports fewer filters than currently in context
+                const currentFilters = context.elemToFilters(true);
+                if (currentFilters.length > device.modelConfig.maxFilters) {
+                  console.warn(`Device only supports ${device.modelConfig.maxFilters} PEQ filters but ${currentFilters.length} filters are currently loaded`);
+                  if (window.showToast) {
+                    await window.showToast(`Warning: This device only supports ${device.modelConfig.maxFilters} PEQ filters, but you currently have ${currentFilters.length} filters loaded. Only the first ${device.modelConfig.maxFilters} will be applied when pushed.`, "warning", 10000, true);
+                  }
+                }
               }
             } else if (selection.connectionType == "usb") {
               // Connect via USB and show the HID device picker
@@ -753,6 +830,15 @@ async function initializeDeviceEqPlugin(context) {
                   await UsbHIDConnector.getAvailableSlots(device),
                   await UsbHIDConnector.getCurrentSlot(device)
                 );
+
+                // Check if device supports fewer filters than currently in context
+                const currentFilters = context.elemToFilters(true);
+                if (currentFilters.length > device.modelConfig.maxFilters) {
+                  console.warn(`Device only supports ${device.modelConfig.maxFilters} PEQ filters but ${currentFilters.length} filters are currently loaded`);
+                  if (window.showToast) {
+                    await window.showToast(`Warning: This device only supports ${device.modelConfig.maxFilters} PEQ filters, but you currently have ${currentFilters.length} filters loaded. Only the first ${device.modelConfig.maxFilters} will be applied when pushed.`, "warning", 10000, true);
+                  }
+                }
 
                 device.rawDevice.addEventListener('disconnect', () => {
                   console.log(`Device ${device.rawDevice.productName} disconnected.`);
@@ -790,6 +876,15 @@ async function initializeDeviceEqPlugin(context) {
                   await UsbSerialConnector.getAvailableSlots(device),
                   await UsbSerialConnector.getCurrentSlot(device)
                 );
+
+                // Check if device supports fewer filters than currently in context
+                const currentFilters = context.elemToFilters(true);
+                if (currentFilters.length > device.modelConfig.maxFilters) {
+                  console.warn(`Device only supports ${device.modelConfig.maxFilters} PEQ filters but ${currentFilters.length} filters are currently loaded`);
+                  if (window.showToast) {
+                    await window.showToast(`Warning: This device only supports ${device.modelConfig.maxFilters} PEQ filters, but you currently have ${currentFilters.length} filters loaded. Only the first ${device.modelConfig.maxFilters} will be applied when pushed.`, "warning", 10000, true);
+                  }
+                }
 
                 device.rawDevice.addEventListener('disconnect', () => {
                   console.log(`Device ${device.rawDevice.productName} disconnected.`);
@@ -1045,7 +1140,7 @@ async function initializeDeviceEqPlugin(context) {
         <!-- Selection Buttons (Vertical Layout) -->
         <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
           <button id="usb-hid-button" style="margin: 5px 0; padding: 10px 15px; font-size: 14px; background: #007BFF; color: #fff; border: none; border-radius: 4px; cursor: pointer; width: 80%;">USB Device</button>
-          <button id="usb-serial-button" style="margin: 5px 0; padding: 10px 15px; font-size: 14px; background: #6f42c1; color: #fff; border: none; border-radius: 4px; cursor: pointer; width: 80%;">USB Serial Device</button>
+          <button id="usb-serial-button" style="margin: 5px 0; padding: 10px 15px; font-size: 14px; background: #6f42c1; color: #fff; border: none; border-radius: 4px; cursor: pointer; width: 80%;">Serial USB or Bluetooth Device</button>
           <button id="network-button" style="margin: 5px 0; padding: 10px 15px; font-size: 14px; background: #28a745; color: #fff; border: none; border-radius: 4px; cursor: pointer; width: 80%;">Network</button>
         </div>
 
@@ -1159,7 +1254,7 @@ async function initializeDeviceEqPlugin(context) {
             } else if (deviceEqUI.connectionType == "usb")  {
               await UsbHIDConnector.disconnectDevice();
             } else if (deviceEqUI.connectionType == "serial")  {
-              // serial support here
+              await UsbSerialConnector.disconnectDevice();
             }
             deviceEqUI.showDisconnectedState();
           } catch (error) {
