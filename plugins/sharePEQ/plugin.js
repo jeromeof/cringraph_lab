@@ -212,9 +212,7 @@ async function initializePeqUrlPlugin(context) {
             output.value = '';
             return '';
         }
-        if (typeof context.applyEQ === 'function') {
-            context.applyEQ();
-        }
+
         // Get the selected phone
         const eqPhoneSelect = document.querySelector('div.extra-eq select[name="phone"]');
         const selectedPhone = eqPhoneSelect && eqPhoneSelect.value ? eqPhoneSelect.value.replace(/ /g, '_') : '';
