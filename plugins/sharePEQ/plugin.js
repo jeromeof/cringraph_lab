@@ -419,12 +419,6 @@ async function initializePeqUrlPlugin(context) {
         }
     } catch (_) {}
 
-    // Initial generation on load (if filters present)
-    try {
-        const initUrl = generate();
-        if (initUrl && qrInline && qrInline.style.display === 'block') updateQr(initUrl);
-    } catch (_) {}
-
     // If the URL contains new PEQ share parameters or selphone, automatically open the Equalizer tab
     try {
         const urlObj = new URL(window.location.href);
