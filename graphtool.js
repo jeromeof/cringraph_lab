@@ -1102,6 +1102,8 @@ try {
     accessDocumentTop = false;
 }
 
+let pluginsLoaded = false;
+
 let ifURL = typeof share_url !== "undefined" && share_url;
 let baseTitle = typeof page_title !== "undefined" ? page_title : "CrinGraph";
 let baseDescription = typeof page_description !== "undefined" ? page_description : "View and compare frequency response graphs";
@@ -1123,11 +1125,11 @@ function addPhonesToUrl() {
     }
 
     // Delay URL update to give plugins a chance to read the original URL
-    setTimeout(() => {
-    targetWindow.history.replaceState("", title, url);
-    targetWindow.document.title = title;
-    targetWindow.document.querySelector("meta[name='description']").setAttribute("content",baseDescription + ", including " + namesCombined +".");
-    }, 1000); // 500ms delay
+    if (pluginsLoaded) {
+        targetWindow.history.replaceState("", title, url);
+        targetWindow.document.title = title;
+        targetWindow.document.querySelector("meta[name='description']").setAttribute("content",baseDescription + ", including " + namesCombined +".");
+    }
 }
 
 function setModeEmbed() {
@@ -2825,6 +2827,9 @@ function addExtra() {
                 console.error(`Error loading plugin ${pluginPath}:`, error.message);
             }
         }
+        pluginsLoaded = true;
+        console.log("All plugins loaded.");
+        updatePaths();  // Finally update paths
     }
     // Might come from the config.js
     let config = {advanced:true}; // Show the extra selection of network based devices for now
@@ -2836,7 +2841,7 @@ function addExtra() {
             elemToFilters,  // Get Filters from Html Elements
             calcEqDevPreamp,// Reuse existing gain calculations
             applyEQ,         // Apply EQ
-            config
+            config: pluginConfig,
         });
     }
 }
