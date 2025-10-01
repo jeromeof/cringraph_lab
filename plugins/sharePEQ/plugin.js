@@ -1,7 +1,29 @@
 // Copyright 2025 : Pragmatic Audio
-// PEQ URL Generator Plugin v0.12
+// PEQ URL Generator Plugin v0.14
 // This extraEQ plugin reads current PEQ filters from the graphtool context
 // and generates a shareable URL with an encoded PEQ parameter.
+//
+// URL Parameters:
+// - F1, T1, G1, Q1, D1, etc.: Filter parameters for PEQ filters
+// - P: Preamp value
+// - selphone: Selected phone/device model
+// - sourceLink: URL to a frequency response file to load (similar to upload-fr)
+// - targetLink: URL to a target frequency response file to load (similar to upload-target)
+//
+// External file loading feature:
+// If sourceLink and/or targetLink are provided in the URL, the plugin will:
+// 1. Fetch the text files from the specified URLs
+// 2. Parse them as frequency response data (same format as manual uploads)
+// 3. Add them to the graph as source or target curves
+// Files must be accessible via CORS and in the standard frequency/amplitude format.
+//
+// Plugin Initialization & Context:
+// The plugin is initialized with a context object that can provide optional parameters:
+// - context.config - Configuration options for UI placement and styling
+// - context.elemToFilters - Function to extract filters from UI elements
+// - context.filtersToElem - Function to apply filters to UI elements
+// - context.calcEqDevPreamp - Function to calculate preamp value
+// - context.interp - Function to interpolate frequency response data (replaces Equalizer.interp)
 
 function encodeFiltersToParam(filters, options = {}) {
     // New scheme: individual URL parameters per filter
@@ -64,6 +86,178 @@ function buildUrlWithParam(paramsToApply) {
 }
 
 async function initializePeqUrlPlugin(context) {
+    // Function to fetch text data from a URL
+    async function fetchTextFile(url) {
+        try {
+            const response = await fetch(url, { mode: 'cors' });
+            if (!response.ok) {
+                throw new Error(`Failed to fetch file: ${response.status} ${response.statusText}`);
+            }
+            return await response.text();
+        } catch (error) {
+            console.error('Error fetching file:', error);
+            if (window.showToast) {
+                window.showToast(`Error fetching file: ${error.message}`, 'error', 3000);
+            }
+            return null;
+        }
+    }
+
+    // Function to process a source FR file (similar to upload-fr)
+    async function processSourceFile(textData, filename) {
+        if (!textData || !textData.trim()) {
+            console.error('Empty or invalid source file content');
+            return null;
+        }
+        
+        try {
+            // External tsvParse function is expected to be available globally
+            if (typeof tsvParse !== 'function') {
+                console.error('tsvParse function not available');
+                return null;
+            }
+            
+            const name = filename || 'External Source';
+            const phone = { name: name };
+            const parsedData = tsvParse(textData);
+            
+            if (parsedData.length < 128) {
+                console.error('Parse frequency response file failed: invalid format');
+                if (window.showToast) {
+                    window.showToast('Parse frequency response file failed: invalid format', 'error', 3000);
+                }
+                return null;
+            }
+            
+            // Follow similar process to upload-fr
+            // Get interpolation function from context or fallback to global Equalizer.interp
+            const interpFn = (context && typeof context.interp === 'function') 
+                ? context.interp 
+                : null;
+                    
+            if (!interpFn) {
+                console.error('Interpolation function not available');
+                if (window.showToast) {
+                    window.showToast('Interpolation function not available', 'error', 3000);
+                }
+                return null;
+            }
+            
+            const ch = [interpFn(f_values, parsedData)];
+            const brandMap = window.brandMap || { Uploaded: { name: 'Uploaded', phones: [], phoneObjs: [] } };
+            
+            if (!brandMap.Uploaded) {
+                console.error('Uploaded brand not found');
+                return null;
+            }
+            
+            // Call global addOrUpdatePhone function
+            if (typeof addOrUpdatePhone === 'function') {
+                const phoneObj = addOrUpdatePhone(brandMap.Uploaded, phone, ch);
+                if (typeof showPhone === 'function') {
+                    showPhone(phoneObj, false);
+                }
+                return phoneObj;
+            } else {
+                console.error('addOrUpdatePhone function not available');
+            }
+        } catch (error) {
+            console.error('Error processing source file:', error);
+            if (window.showToast) {
+                window.showToast(`Error processing source file: ${error.message}`, 'error', 3000);
+            }
+        }
+        
+        return null;
+    }
+    
+    // Function to process a target file (similar to upload-target)
+    async function processTargetFile(textData, filename) {
+        if (!textData || !textData.trim()) {
+            console.error('Empty or invalid target file content');
+            return null;
+        }
+        
+        try {
+            // External tsvParse function is expected to be available globally
+            if (typeof tsvParse !== 'function') {
+                console.error('tsvParse function not available');
+                return null;
+            }
+            
+            const name = filename || 'External Target';
+            const fullName = name + (name.match(/ Target$/i) ? "" : " Target");
+            
+            const parsedData = tsvParse(textData);
+            if (parsedData.length < 128) {
+                console.error('Parse target file failed: invalid format');
+                if (window.showToast) {
+                    window.showToast('Parse target file failed: invalid format', 'error', 3000);
+                }
+                return null;
+            }
+            
+            // Follow similar process to upload-target
+            // Get interpolation function from context
+            const interpFn = (context && typeof context.interp === 'function') 
+                ? context.interp 
+                : null;
+                    
+            if (!interpFn) {
+                console.error('Interpolation function not available');
+                if (window.showToast) {
+                    window.showToast('Interpolation function not available', 'error', 3000);
+                }
+                return null;
+            }
+            
+            const ch = [interpFn(f_values, parsedData)];
+            const targets = window.targets || [];
+            const brandTarget = window.brandTarget;
+            
+            if (!brandTarget) {
+                console.error('Target brand not found');
+                return null;
+            }
+            
+            // Check if target already exists
+            const existsTargets = targets.reduce((a, b) => a.concat(b.files), []).map(f => f += " Target");
+            if (existsTargets.indexOf(fullName) >= 0) {
+                console.error('This target already exists on this tool');
+                if (window.showToast) {
+                    window.showToast('This target already exists on this tool', 'warning', 3000);
+                }
+                return null;
+            }
+            
+            const phoneObj = {
+                isTarget: true,
+                brand: brandTarget,
+                dispName: name,
+                phone: name,
+                fullName: fullName,
+                fileName: fullName,
+                rawChannels: ch,
+                isDynamic: true,
+                id: -brandTarget.phoneObjs.length
+            };
+            
+            if (typeof showPhone === 'function') {
+                showPhone(phoneObj, true);
+                return phoneObj;
+            } else {
+                console.error('showPhone function not available');
+            }
+        } catch (error) {
+            console.error('Error processing target file:', error);
+            if (window.showToast) {
+                window.showToast(`Error processing target file: ${error.message}`, 'error', 3000);
+            }
+        }
+        
+        return null;
+    }
+
     function decodeFiltersFromUrl() {
         try {
             const url = new URL(window.location.href);
@@ -125,7 +319,7 @@ async function initializePeqUrlPlugin(context) {
         #peqUrlPlugin .peq-url-row { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
         #peqUrlPlugin input[type="text"] { flex: 1 1 auto; min-width: 160px; padding: 6px 8px; cursor: pointer; }
         #peqUrlPlugin .hint { font-size: 12px; opacity: 0.8; margin-top: 6px; }
-        #peqUrlPlugin .share-btn { border: 1px solid var(--c-card-border, #ddd); border-radius: 6px; background: var(--c-card-bg, #f8f8f8); cursor: pointer; padding: 6px; display: inline-flex; align-items: center; justify-content: center; }
+        #peqUrlPlugin .share-btn { border: 1px solid #ddd; border-radius: 6px; background: #f8f8f8; cursor: pointer; padding: 6px; display: inline-flex; align-items: center; justify-content: center; }
         #peqUrlPlugin .share-btn svg { width: 18px; height: 18px; display: block; }
         #peqUrlPlugin .share-btn:hover { filter: brightness(0.95); }
         #peqUrlPlugin .qr-inline { display: none; margin-top: 8px; text-align: center; }
@@ -388,6 +582,62 @@ async function initializePeqUrlPlugin(context) {
         if (url && qrInline && qrInline.style.display === 'block') updateQr(url);
     });
 
+    // Process source and target links from URL if present
+    async function processExternalFiles() {
+        try {
+            const url = new URL(window.location.href);
+            const sp = url.searchParams;
+            const sourceLink = sp.get('sourceLink');
+            const targetLink = sp.get('targetLink');
+            
+            // Track if we need to open the extra panel to show results
+            let shouldShowExtraPanel = false;
+            
+            // Process source link if present
+            if (sourceLink) {
+                shouldShowExtraPanel = true;
+                if (window.showToast) {
+                    window.showToast('Fetching external source file...', 'info', 2000);
+                }
+                
+                const sourceFileData = await fetchTextFile(sourceLink);
+                if (sourceFileData) {
+                    // Extract filename from URL or use a default
+                    const sourceFilename = sourceLink.split('/').pop()?.split('?')[0]?.replace(/\.(txt|csv)$/i, '') || 'External Source';
+                    await processSourceFile(sourceFileData, sourceFilename);
+                }
+            }
+            
+            // Process target link if present
+            if (targetLink) {
+                shouldShowExtraPanel = true;
+                if (window.showToast) {
+                    window.showToast('Fetching external target file...', 'info', 2000);
+                }
+                
+                const targetFileData = await fetchTextFile(targetLink);
+                if (targetFileData) {
+                    // Extract filename from URL or use a default
+                    const targetFilename = targetLink.split('/').pop()?.split('?')[0]?.replace(/\.(txt|csv)$/i, '') || 'External Target';
+                    await processTargetFile(targetFileData, targetFilename);
+                }
+            }
+            
+            // Show the extra panel if we've loaded external files
+            if (shouldShowExtraPanel && typeof window.showExtraPanel === 'function') {
+                window.showExtraPanel();
+            }
+            
+            return { sourceLink, targetLink };
+        } catch (error) {
+            console.error('Error processing external files:', error);
+            if (window.showToast) {
+                window.showToast(`Error processing external files: ${error.message}`, 'error', 3000);
+            }
+            return { sourceLink: null, targetLink: null };
+        }
+    }
+    
     // Apply filters from URL if present before any generation to avoid reset
     try {
         const decoded = decodeFiltersFromUrl();
@@ -417,13 +667,20 @@ async function initializePeqUrlPlugin(context) {
 
             try { document.dispatchEvent(new CustomEvent('UpdateExtensionFilters')); } catch(_) {}
         }
-    } catch (_) {}
+        
+        // Process external files after filters are set up
+        processExternalFiles().catch(err => console.error('Failed to process external files:', err));
+    } catch (err) {
+        console.error('Error applying URL parameters:', err);
+        // Still try to process external files even if filter processing failed
+        processExternalFiles().catch(err => console.error('Failed to process external files:', err));
+    }
 
-    // If the URL contains new PEQ share parameters or selphone, automatically open the Equalizer tab
+    // If the URL contains new PEQ share parameters, selphone, or external file links, automatically open the Equalizer tab
     try {
         const urlObj = new URL(window.location.href);
         const hasNewParams = [...urlObj.searchParams.keys()].some(k =>
-            /^[FTGQD]\d+$/.test(k) || k === 'P' || k === 'selphone');
+            /^[FTGQD]\d+$/.test(k) || k === 'P' || k === 'selphone' || k === 'sourceLink' || k === 'targetLink');
         if (hasNewParams && typeof window.showExtraPanel === 'function') {
             // Defer to allow graphtool to finish rendering and tabs to exist
             requestAnimationFrame(() => {
