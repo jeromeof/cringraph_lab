@@ -305,6 +305,7 @@ export const usbHidDeviceHandlerConfig = ([
       supportsPregain: true,
       defaultResetFiltersValues:[{gain:0, freq: 100, q:1, filterType: "PK"}],
       supportsLSHSFilters: false,
+      autoGlobalGain: false,
       experimental: false,
       availableSlots: [{id: 101, name: "Custom"}]
     },
@@ -483,6 +484,9 @@ export const usbHidDeviceHandlerConfig = ([
         modelConfig: {
           schemeNo: 16,
           maxFilters: 10,
+          minGain: -10,
+          maxGain: 10,
+          autoGlobalGain: true,
           supportsLSHSFilters: true,
           supportsPregain: true
         }
@@ -588,6 +592,38 @@ export const usbHidDeviceHandlerConfig = ([
         manufacturer: "Moondrop",
         modelConfig: {
           compensate2X: false
+        }
+      }
+    }
+  },
+  {
+    vendorIds: [0x152A], // 5418 in decimal = 0x152A in hex
+    manufacturer: "Topping",
+    handler: toppingUsbHidHandler,
+    defaultModelConfig: {
+      minGain: -12,
+      maxGain: 12,
+      maxFilters: 10,
+      firstWritableEQSlot: 0,
+      maxWritableEQSlots: 3,
+      disconnectOnSave: false,
+      disabledPresetId: -1,
+      experimental: true,
+      supportsPregain: true,
+      supportsLSHSFilters: true,
+      defaultResetFiltersValues:[{gain:0, freq: 100, q:1, filterType: "PK"}],
+      availableSlots: [
+        {id: 0, name: "Custom 1"},
+        {id: 1, name: "Custom 2"},
+        {id: 2, name: "Custom 3"}
+      ]
+    },
+    devices: {
+      "DX5 II": {
+        productId: 0x8740, // 34640 in decimal = 0x8740 in hex
+        modelConfig: {
+          maxFilters: 10,
+          experimental: true
         }
       }
     }
