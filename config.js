@@ -299,5 +299,15 @@ let tutorialDefinitions = [
 ]
 // Configure paths to extraEQ plugins here
 let extraEQplugins = [
-    //'./devicePEQ/plugin.js' // Path to one or more "extraEQ" plugins
+    './plugins/devicePEQ/plugin.js', // Path to one or more "extraEQ" plugins
+    './plugins/sharePEQ/plugin.js'
 ];
+
+// Let's have a place where plugins config can be loaded - optional
+let pluginConfig = {
+    advanced: true,    // Show the advanced connections here,
+    devicePEQAnchorDiv: '.extra-upload',    // Allow more flexible placement of plugins
+    devicePEQPlacement: 'afterend',
+    sharePEQAnchorDiv: '.extra-eq',
+    sharePEQPlacement:'afterend'
+}

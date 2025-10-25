@@ -131,7 +131,7 @@ doc.html(`
 
           <div class="extra-panel" style="display: none;">
             <div class="extra-upload">
-              <h5>Uploading</h2>
+              <h5>Uploading</h5>
               <button class="upload-fr">Upload FR</button>
               <button class="upload-target">Upload Target</button>
               <br />
@@ -139,7 +139,7 @@ doc.html(`
               <form style="display:none"><input type="file" id="file-fr" accept=".csv,.txt" /></form>
             </div>
             <div class="extra-eq">
-              <h5>Parametric Equalizer</h2>
+              <h5>Parametric Equalizer</h5>
               <div class="select-eq-phone">
                 <select name="phone">
                     <option value="" selected>Choose EQ model</option>
@@ -187,7 +187,7 @@ doc.html(`
               <form style="display:none"><input type="file" id="file-filters-import" accept=".txt" /></form>
             </div>
             <div class="extra-tone-generator">
-              <h5>Tone Generator</h2>
+              <h5>Tone Generator</h5>
               <div class="settings-row">
                 <span>Freq Range</span>
                 <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20"></input></span>
@@ -1102,6 +1102,8 @@ try {
     accessDocumentTop = false;
 }
 
+let pluginsLoaded = false;
+
 let ifURL = typeof share_url !== "undefined" && share_url;
 let baseTitle = typeof page_title !== "undefined" ? page_title : "CrinGraph";
 let baseDescription = typeof page_description !== "undefined" ? page_description : "View and compare frequency response graphs";
@@ -1121,9 +1123,13 @@ function addPhonesToUrl() {
     } else {
         targetWindow.document.querySelector("link[rel='canonical']").setAttribute("href",baseURL)
     }
-    targetWindow.history.replaceState("", title, url);
-    targetWindow.document.title = title;
-    targetWindow.document.querySelector("meta[name='description']").setAttribute("content",baseDescription + ", including " + namesCombined +".");
+
+    // Delay URL update to give plugins a chance to read the original URL
+    if (pluginsLoaded) {
+        targetWindow.history.replaceState("", title, url);
+        targetWindow.document.title = title;
+        targetWindow.document.querySelector("meta[name='description']").setAttribute("content",baseDescription + ", including " + namesCombined +".");
+    }
 }
 
 function setModeEmbed() {
@@ -1730,6 +1736,22 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
         initReq = typeof init_phones !== "undefined" ? [init_phones].flat() : false;
     loadFromShare = 0;
     
+    function parseShareValues(url) {
+        try {
+            const u = new URL(url, window.location.href); // safe fallback base
+            const share = u.searchParams.get("share");
+            if (!share) return [];                 // no share param
+            // replace underscores with spaces, decode percent-escapes, split on commas
+            return decodeURIComponent(share.replace(/_/g, " ")).split(",").filter(s => s !== "");
+        } catch (e) {
+            // Fall back if URL() fails (e.g. non-absolute string)
+            const m = ("" + url).match(/[?&]share=([^&]+)/);
+            if (!m) return [];
+            return decodeURIComponent(m[1].replace(/_/g, " ")).split(",").filter(s => s !== "");
+        }
+    }
+
+
     if (ifURL) {
         let url = targetWindow.location.href,
             par = "share=";
@@ -1737,12 +1759,12 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
         baseURL = url.split("?").shift();
         
         if (url.includes(par) && url.includes(emb)) {
-            initReq = decodeURIComponent(url.replace(/_/g," ").split(par).pop()).split(",");
+            initReq = parseShareValues(url);
             loadFromShare = 2;
             
             setModeEmbed();
         } else if (url.includes(par)) {
-            initReq = decodeURIComponent(url.replace(/_/g," ").split(par).pop()).split(",");
+            initReq = parseShareValues(url);
             loadFromShare = 1;
         } else if (url.includes(emb)) {
             setModeEmbed();
@@ -2762,12 +2784,17 @@ function addExtra() {
     // Wrap up preamp Calculation Function for plugin
     let calcEqDevPreamp = (filters) => {
         const phoneSelected = eqPhoneSelect.value;
+        if (phoneSelected === "") {
+            alert("Please select model and one target for accurate preamp calculation.");
+            return 0.0;
+        }
+
         const phoneObj = phoneSelected &&
-            context.activePhones.find(
-                (p) => p.fullName === phoneSelected && p.eq
+            activePhones.find(
+                (p) => getFullName(p) === phoneSelected && p.eq
             );
 
-        return context.Equalizer.calc_preamp(
+        return Equalizer.calc_preamp(
             phoneObj.rawChannels.filter(Boolean)[0],
             phoneObj.eq.rawChannels.filter(Boolean)[0]
         );
@@ -2800,9 +2827,12 @@ function addExtra() {
                 console.error(`Error loading plugin ${pluginPath}:`, error.message);
             }
         }
+        pluginsLoaded = true;
+        console.log("All plugins loaded.");
+        updatePaths();  // Finally update paths
     }
     // Might come from the config.js
-    let config = {showNetwork:false}; // Hide the extra selection of network based devices for now
+    let config = {advanced:true}; // Show the extra selection of network based devices for now
 
     // Load the plugin with the provided functions
     if (typeof extraEQplugins !== "undefined") {
@@ -2811,7 +2841,7 @@ function addExtra() {
             elemToFilters,  // Get Filters from Html Elements
             calcEqDevPreamp,// Reuse existing gain calculations
             applyEQ,         // Apply EQ
-            config
+            config: pluginConfig,
         });
     }
 }
