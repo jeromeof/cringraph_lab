@@ -2841,7 +2841,6 @@ function addExtra() {
             elemToFilters,  // Get Filters from Html Elements
             calcEqDevPreamp,// Reuse existing gain calculations
             applyEQ,         // Apply EQ
-            interp:Equalizer.interp,
             config: pluginConfig,
         });
     }
