@@ -1362,7 +1362,14 @@ div.extra-panel > div.extra-tone-generator input[name='tone-generator-freq'] {
     accent-color: var(--accent-color-contrast);
     
     cursor: pointer;
-    
+}
+
+div.extra-panel > div.extra-tone-generator input[name='tone-generator-freq']:focus {
+    outline: none;
+}
+
+div.extra-panel > div.extra-tone-generator input[name='tone-generator-freq']::-moz-focus-outer {
+    border: 0;
 }
 
 /*****

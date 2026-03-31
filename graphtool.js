@@ -2743,6 +2743,7 @@ function addExtra() {
     let pinkNoiseProcessor = null;
     let pinkNoiseMasterGain = null;
     let pinkNoiseBiquads = [];
+    let pinkNoiseBandFilters = [];
     let toneGeneratorBiquads = [];
     let toneGeneratorMasterGain = null;
     let liveEqSyncTimer = null;
@@ -2753,6 +2754,12 @@ function addExtra() {
             try { b.disconnect(); } catch (e) { /* noop */ }
         });
         biquadsArr.length = 0;
+    };
+    let disconnectPinkBandFilters = () => {
+        pinkNoiseBandFilters.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        pinkNoiseBandFilters.length = 0;
     };
     let rebuildLiveEqChain = (sourceNode, audioContext, masterGain, biquadsArr) => {
         let filters = elemToFilters();
@@ -2775,7 +2782,40 @@ function addExtra() {
         if (!pinkNoisePlaying || !pinkNoiseContext || !pinkNoiseProcessor || !pinkNoiseMasterGain) {
             return;
         }
-        rebuildLiveEqChain(pinkNoiseProcessor, pinkNoiseContext, pinkNoiseMasterGain, pinkNoiseBiquads);
+        let fromEl = document.querySelector("div.extra-tone-generator input[name='tone-generator-from']");
+        let toEl = document.querySelector("div.extra-tone-generator input[name='tone-generator-to']");
+        let fromHz = Math.min(Math.max(parseInt(fromEl && fromEl.value) || 0, 20), 20000);
+        let toHz = Math.min(Math.max(parseInt(toEl && toEl.value) || 0, fromHz), 20000);
+        pinkNoiseProcessor.disconnect();
+        disconnectEqBiquads(pinkNoiseBiquads);
+        disconnectPinkBandFilters();
+        let last = pinkNoiseProcessor;
+        let hp = pinkNoiseContext.createBiquadFilter();
+        hp.type = "highpass";
+        hp.frequency.value = fromHz;
+        hp.Q.value = 0.707;
+        last.connect(hp);
+        last = hp;
+        pinkNoiseBandFilters.push(hp);
+        let lp = pinkNoiseContext.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.value = toHz;
+        lp.Q.value = 0.707;
+        last.connect(lp);
+        last = lp;
+        pinkNoiseBandFilters.push(lp);
+        let filters = elemToFilters();
+        filters.forEach((f) => {
+            let bf = pinkNoiseContext.createBiquadFilter();
+            bf.type = mapFilterTypeToBiquad(f.type);
+            bf.frequency.value = Math.min(20000, Math.max(20, f.freq));
+            bf.Q.value = Math.max(1e-4, Math.min(1000, f.q));
+            bf.gain.value = Math.max(-40, Math.min(40, f.gain));
+            last.connect(bf);
+            last = bf;
+            pinkNoiseBiquads.push(bf);
+        });
+        last.connect(pinkNoiseMasterGain);
     };
     let rebuildToneGeneratorEqChain = () => {
         if (!toneGeneratorOsc || !toneGeneratorContext || !toneGeneratorMasterGain) {
@@ -2811,6 +2851,7 @@ function addExtra() {
             pinkNoiseProcessor = null;
         }
         disconnectEqBiquads(pinkNoiseBiquads);
+        disconnectPinkBandFilters();
         if (pinkNoiseMasterGain) {
             pinkNoiseMasterGain.disconnect();
             pinkNoiseMasterGain = null;
@@ -2852,6 +2893,8 @@ function addExtra() {
     let toneGeneratorContext = null;
     let toneGeneratorOsc = null;
     let toneGeneratorTimeoutHandle = null;
+    let toneSweepRafId = null;
+    let toneSweepDurationSec = 6;
     let filterRowIsAllZeros = (i) => {
         let f = parseInt(filterFreqInput[i].value, 10) || 0;
         let q = parseFloat(filterQInput[i].value) || 0;
@@ -2913,6 +2956,10 @@ function addExtra() {
             return;
         }
         if (toneGeneratorOsc) {
+            if (toneSweepRafId !== null) {
+                cancelAnimationFrame(toneSweepRafId);
+                toneSweepRafId = null;
+            }
             toneGeneratorOsc.stop();
             toneGeneratorOsc = null;
             disconnectEqBiquads(toneGeneratorBiquads);
@@ -2939,7 +2986,13 @@ function addExtra() {
         }
     });
     // Tone Generator
+    toneGeneratorFromInput.addEventListener("input", scheduleLiveEqSync);
+    toneGeneratorToInput.addEventListener("input", scheduleLiveEqSync);
     toneGeneratorSlider.addEventListener("input", () => {
+        if (toneSweepRafId !== null) {
+            cancelAnimationFrame(toneSweepRafId);
+            toneSweepRafId = null;
+        }
         let from = Math.min(Math.max(parseInt(toneGeneratorFromInput.value) || 0, 20), 20000);
         let to = Math.min(Math.max(parseInt(toneGeneratorToInput.value) || 0, from), 20000);
         let position = parseFloat(toneGeneratorSlider.value) || 0;
@@ -2952,8 +3005,61 @@ function addExtra() {
             toneGeneratorOsc.frequency.setTargetAtTime(freq, t, 0.2); // Smoother transition but also delay
         }
     });
+    toneGeneratorSlider.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        let fromHz = Math.min(Math.max(parseInt(toneGeneratorFromInput.value) || 0, 20), 20000);
+        let toHz = Math.min(Math.max(parseInt(toneGeneratorToInput.value) || 0, fromHz), 20000);
+        if (fromHz > toHz) {
+            let swap = fromHz;
+            fromHz = toHz;
+            toHz = swap;
+        }
+        if (!toneGeneratorOsc) {
+            toneGeneratorSlider.value = "0";
+            toneGeneratorText.innerText = String(fromHz);
+            toneGeneratorPlayButton.click();
+            if (!toneGeneratorOsc) {
+                return;
+            }
+        }
+        if (toneSweepRafId !== null) {
+            cancelAnimationFrame(toneSweepRafId);
+            toneSweepRafId = null;
+        }
+        void toneGeneratorContext.resume();
+        let t0 = toneGeneratorContext.currentTime;
+        toneGeneratorOsc.frequency.cancelScheduledValues(t0);
+        toneGeneratorOsc.frequency.setValueAtTime(fromHz, t0);
+        if (fromHz !== toHz) {
+            toneGeneratorOsc.frequency.exponentialRampToValueAtTime(toHz, t0 + toneSweepDurationSec);
+        }
+        let sweepStartMs = performance.now();
+        let sweepDurationMs = toneSweepDurationSec * 1000;
+        let sweepTick = () => {
+            let u = Math.min(1, (performance.now() - sweepStartMs) / sweepDurationMs);
+            let freq = Math.round(Math.exp(
+                Math.log(fromHz) + (Math.log(toHz) - Math.log(fromHz)) * u));
+            toneGeneratorSlider.value = String(u);
+            toneGeneratorText.innerText = String(freq);
+            if (u < 1) {
+                toneSweepRafId = requestAnimationFrame(sweepTick);
+            } else {
+                toneSweepRafId = null;
+                toneGeneratorSlider.value = "0";
+                toneGeneratorText.innerText = String(fromHz);
+                if (toneGeneratorOsc) {
+                    toneGeneratorPlayButton.click();
+                }
+            }
+        };
+        toneSweepRafId = requestAnimationFrame(sweepTick);
+    });
     toneGeneratorPlayButton.addEventListener("click", () => {
         if (toneGeneratorOsc) {
+            if (toneSweepRafId !== null) {
+                cancelAnimationFrame(toneSweepRafId);
+                toneSweepRafId = null;
+            }
             toneGeneratorOsc.stop();
             toneGeneratorOsc = null;
             disconnectEqBiquads(toneGeneratorBiquads);
