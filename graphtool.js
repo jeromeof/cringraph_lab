@@ -130,13 +130,28 @@ doc.html(`
           </div>
 
           <div class="extra-panel" style="display: none;">
-            <div class="extra-upload">
-              <h5>Uploading</h2>
-              <button class="upload-fr">Upload FR</button>
-              <button class="upload-target">Upload Target</button>
-              <br />
-              <span><small>Uploaded data will not be persistent</small></span>
-              <form style="display:none"><input type="file" id="file-fr" accept=".csv,.txt" /></form>
+            <div class="extra-pink-noise">
+              <h5>Pink Noise</h2>
+              <span><small>Noise and tone generator respond to active EQ filters.</small></span>
+              <div>
+                <button type="button" class="play">Play</button>
+              </div>
+            </div>
+            <div class="extra-tone-generator">
+              <h5>Tone Generator</h2>
+              <div class="settings-row">
+                <span>Freq Range</span>
+                <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20"></input></span>
+                <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000"></input></span>
+              </div>
+              <div><input name="tone-generator-freq" type="range" min="0" max="1" step="0.0001" value="0" /></div>
+              <div class="tone-generator-play-row">
+                <button class="play">Play</button>
+                <div class="tone-generator-freq-row">
+                  <span>Frequency: <span class="freq-text">20</span> Hz</span>
+                  <button type="button" class="tone-generator-add-filter">Add filter</button>
+                </div>
+              </div>
             </div>
             <div class="extra-eq">
               <h5>Parametric Equalizer</h2>
@@ -186,18 +201,13 @@ doc.html(`
               <a style="display: none" id="file-filters-export"></a>
               <form style="display:none"><input type="file" id="file-filters-import" accept=".txt" /></form>
             </div>
-            <div class="extra-tone-generator">
-              <h5>Tone Generator</h2>
-              <div class="settings-row">
-                <span>Freq Range</span>
-                <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20"></input></span>
-                <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000"></input></span>
-              </div>
-              <div><input name="tone-generator-freq" type="range" min="0" max="1" step="0.0001" value="0" /></div>
-              <div>
-                <button class="play">Play</button>
-                <span>Frequency: <span class="freq-text">20</span> Hz</span>
-              </div>
+            <div class="extra-upload">
+              <h5>Uploading</h2>
+              <button class="upload-fr">Upload FR</button>
+              <button class="upload-target">Upload Target</button>
+              <br />
+              <span><small>Warning: Measurements from another source are not compatible with measurements in this database.</small></span>
+              <form style="display:none"><input type="file" id="file-fr" accept=".csv,.txt" /></form>
             </div>
           </div>
         </div>
@@ -2356,6 +2366,9 @@ function addExtra() {
     if (!extraToneGeneratorEnabled) {
         document.querySelector("div.extra-panel > div.extra-tone-generator").style["display"] = "none";
     }
+    if (typeof extraPinkNoiseEnabled !== "undefined" && !extraPinkNoiseEnabled) {
+        document.querySelector("div.extra-panel > div.extra-pink-noise").style["display"] = "none";
+    }
     // Show and hide extra panel
     window.showExtraPanel = () => {
         document.querySelector("div.select > div.selector-panel").style["display"] = "none";
@@ -2555,17 +2568,20 @@ function addExtra() {
     document.querySelector("div.extra-eq button.add-filter").addEventListener("click", () => {
         eqBands = Math.min(eqBands + 1, extraEQBandsMax);
         updateFilterElements();
+        scheduleLiveEqSync();
     });
     // Remove last filter
     document.querySelector("div.extra-eq button.remove-filter").addEventListener("click", () => {
         eqBands = Math.max(eqBands - 1, 1);
         updateFilterElements();
         applyEQ(); // May removed effective filter
+        scheduleLiveEqSync();
     });
     // Sort filters by frequency
     document.querySelector("div.extra-eq button.sort-filters").addEventListener("click", () => {
         filtersToElem(elemToFilters(true).sort((a, b) =>
             (a.freq || Infinity) - (b.freq || Infinity)));
+        scheduleLiveEqSync();
     });
     // Import filters
     document.querySelector("div.extra-eq button.import-filters").addEventListener("click", () => {
@@ -2609,6 +2625,7 @@ function addExtra() {
             if (filters.length > 0) {
                 filtersToElem(filters);
                 applyEQ();
+                scheduleLiveEqSync();
             } else {
                 alert("Parse filters file failed: no filter found.");
             }
@@ -2712,18 +2729,216 @@ function addExtra() {
             let filters = Equalizer.autoeq(phoneCH, targetCH, eqBands);
             filtersToElem(filters);
             applyEQ();
+            scheduleLiveEqSync();
             autoEQOverlay.style.display = "none";
         }, 100);
     });
-    // Tone Generator
+    // Pink noise & tone generator: shared output trim after EQ (linear gain; tune for comfortable level)
+    let livePlaybackOutputGain = 0.2;
+    let lastEqPlaybackSource = "pink";
+    // Pink noise (parametric EQ in audio path)
+    let pinkNoisePlayButton = document.querySelector("div.extra-pink-noise .play");
+    let pinkNoisePlaying = false;
+    let pinkNoiseContext = null;
+    let pinkNoiseProcessor = null;
+    let pinkNoiseMasterGain = null;
+    let pinkNoiseBiquads = [];
+    let toneGeneratorBiquads = [];
+    let toneGeneratorMasterGain = null;
+    let liveEqSyncTimer = null;
+    let mapFilterTypeToBiquad = (t) =>
+        (t === "LSQ" ? "lowshelf" : t === "HSQ" ? "highshelf" : "peaking");
+    let disconnectEqBiquads = (biquadsArr) => {
+        biquadsArr.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        biquadsArr.length = 0;
+    };
+    let rebuildLiveEqChain = (sourceNode, audioContext, masterGain, biquadsArr) => {
+        let filters = elemToFilters();
+        sourceNode.disconnect();
+        disconnectEqBiquads(biquadsArr);
+        let last = sourceNode;
+        filters.forEach((f) => {
+            let bf = audioContext.createBiquadFilter();
+            bf.type = mapFilterTypeToBiquad(f.type);
+            bf.frequency.value = Math.min(20000, Math.max(20, f.freq));
+            bf.Q.value = Math.max(1e-4, Math.min(1000, f.q));
+            bf.gain.value = Math.max(-40, Math.min(40, f.gain));
+            last.connect(bf);
+            last = bf;
+            biquadsArr.push(bf);
+        });
+        last.connect(masterGain);
+    };
+    let rebuildPinkNoiseEqChain = () => {
+        if (!pinkNoisePlaying || !pinkNoiseContext || !pinkNoiseProcessor || !pinkNoiseMasterGain) {
+            return;
+        }
+        rebuildLiveEqChain(pinkNoiseProcessor, pinkNoiseContext, pinkNoiseMasterGain, pinkNoiseBiquads);
+    };
+    let rebuildToneGeneratorEqChain = () => {
+        if (!toneGeneratorOsc || !toneGeneratorContext || !toneGeneratorMasterGain) {
+            return;
+        }
+        rebuildLiveEqChain(toneGeneratorOsc, toneGeneratorContext, toneGeneratorMasterGain, toneGeneratorBiquads);
+    };
+    let scheduleLiveEqSync = () => {
+        if (!pinkNoisePlaying && !toneGeneratorOsc) {
+            return;
+        }
+        clearTimeout(liveEqSyncTimer);
+        liveEqSyncTimer = setTimeout(() => {
+            liveEqSyncTimer = null;
+            rebuildPinkNoiseEqChain();
+            rebuildToneGeneratorEqChain();
+        }, 50);
+    };
+    filtersContainer.addEventListener("input", scheduleLiveEqSync);
+    filtersContainer.addEventListener("change", scheduleLiveEqSync);
+    let stopPinkNoisePlayback = () => {
+        if (!pinkNoisePlaying) {
+            return;
+        }
+        pinkNoisePlaying = false;
+        pinkNoisePlayButton.innerText = "Play";
+        pinkNoisePlayButton.classList.remove("playback-active");
+        clearTimeout(liveEqSyncTimer);
+        liveEqSyncTimer = null;
+        if (pinkNoiseProcessor) {
+            pinkNoiseProcessor.disconnect();
+            pinkNoiseProcessor.onaudioprocess = null;
+            pinkNoiseProcessor = null;
+        }
+        disconnectEqBiquads(pinkNoiseBiquads);
+        if (pinkNoiseMasterGain) {
+            pinkNoiseMasterGain.disconnect();
+            pinkNoiseMasterGain = null;
+        }
+    };
+    let createPinkNoiseProcessor = (audioContext) => {
+        let bufferSize = 4096;
+        let processor;
+        try {
+            processor = audioContext.createScriptProcessor(bufferSize, 0, 1);
+        } catch (err) {
+            processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+        }
+        let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+        processor.onaudioprocess = (e) => {
+            let output = e.outputBuffer.getChannelData(0);
+            for (let i = 0; i < output.length; i++) {
+                let white = Math.random() * 2 - 1;
+                b0 = 0.99886 * b0 + white * 0.0555179;
+                b1 = 0.99332 * b1 + white * 0.0750759;
+                b2 = 0.96900 * b2 + white * 0.1538520;
+                b3 = 0.86650 * b3 + white * 0.3104856;
+                b4 = 0.55000 * b4 + white * 0.5329522;
+                b5 = -0.7616 * b5 - white * 0.0168980;
+                let pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+                b6 = white * 0.115926;
+                output[i] = pink * 0.11;
+            }
+        };
+        return processor;
+    };
     let toneGeneratorFromInput = document.querySelector("div.extra-tone-generator input[name='tone-generator-from']");
     let toneGeneratorToInput = document.querySelector("div.extra-tone-generator input[name='tone-generator-to']");
     let toneGeneratorSlider = document.querySelector("div.extra-tone-generator input[name='tone-generator-freq']");
     let toneGeneratorPlayButton = document.querySelector("div.extra-tone-generator .play");
     let toneGeneratorText = document.querySelector("div.extra-tone-generator .freq-text");
+    let toneGeneratorAddFilterButton = document.querySelector(
+        "div.extra-tone-generator button.tone-generator-add-filter");
     let toneGeneratorContext = null;
     let toneGeneratorOsc = null;
-    let toneGeneratorTimeoutHandle = null
+    let toneGeneratorTimeoutHandle = null;
+    let filterRowIsAllZeros = (i) => {
+        let f = parseInt(filterFreqInput[i].value, 10) || 0;
+        let q = parseFloat(filterQInput[i].value) || 0;
+        let g = parseFloat(filterGainInput[i].value) || 0;
+        return f === 0 && q === 0 && g === 0;
+    };
+    toneGeneratorAddFilterButton.addEventListener("click", () => {
+        let hz = parseInt(toneGeneratorText.innerText, 10) || 0;
+        hz = Math.min(20000, Math.max(20, hz));
+        let defaultQ = 1;
+        let defaultGain = 0;
+        let targetIdx = -1;
+        for (let i = 0; i < eqBands; i++) {
+            if (filterRowIsAllZeros(i)) {
+                targetIdx = i;
+                break;
+            }
+        }
+        let focusGainIndex;
+        if (targetIdx >= 0) {
+            filterEnabledInput[targetIdx].checked = true;
+            filterTypeSelect[targetIdx].value = "PK";
+            filterFreqInput[targetIdx].value = String(hz);
+            filterQInput[targetIdx].value = String(defaultQ);
+            filterGainInput[targetIdx].value = String(defaultGain);
+            focusGainIndex = targetIdx;
+        } else {
+            if (eqBands >= extraEQBandsMax) {
+                alert("Maximum number of EQ bands reached.");
+                return;
+            }
+            eqBands = Math.min(eqBands + 1, extraEQBandsMax);
+            updateFilterElements();
+            let j = eqBands - 1;
+            filterEnabledInput[j].checked = true;
+            filterTypeSelect[j].value = "PK";
+            filterFreqInput[j].value = String(hz);
+            filterQInput[j].value = String(defaultQ);
+            filterGainInput[j].value = String(defaultGain);
+            focusGainIndex = j;
+        }
+        applyEQ();
+        scheduleLiveEqSync();
+        setTimeout(() => {
+            let gainEl = filterGainInput[focusGainIndex];
+            if (gainEl) {
+                gainEl.focus();
+                gainEl.select();
+            }
+        }, 150);
+    });
+    pinkNoisePlayButton.addEventListener("click", async () => {
+        if (pinkNoisePlaying) {
+            stopPinkNoisePlayback();
+            return;
+        }
+        if (!window.AudioContext && !window.webkitAudioContext) {
+            alert("Web audio api is disabled, please enable it if you want to use pink noise.");
+            return;
+        }
+        if (toneGeneratorOsc) {
+            toneGeneratorOsc.stop();
+            toneGeneratorOsc = null;
+            disconnectEqBiquads(toneGeneratorBiquads);
+            if (toneGeneratorMasterGain) {
+                toneGeneratorMasterGain.disconnect();
+                toneGeneratorMasterGain = null;
+            }
+            toneGeneratorPlayButton.innerText = "Play";
+            toneGeneratorPlayButton.classList.remove("playback-active");
+        }
+        pinkNoiseContext = pinkNoiseContext || new (window.AudioContext || window.webkitAudioContext)();
+        pinkNoiseProcessor = createPinkNoiseProcessor(pinkNoiseContext);
+        pinkNoiseMasterGain = pinkNoiseContext.createGain();
+        pinkNoiseMasterGain.gain.value = livePlaybackOutputGain;
+        // rebuildPinkNoiseEqChain requires pinkNoisePlaying — set before first build
+        pinkNoisePlaying = true;
+        rebuildPinkNoiseEqChain();
+        pinkNoiseMasterGain.connect(pinkNoiseContext.destination);
+        pinkNoisePlayButton.innerText = "Stop";
+        pinkNoisePlayButton.classList.add("playback-active");
+        lastEqPlaybackSource = "pink";
+        if (pinkNoiseContext.state !== "running") {
+            await pinkNoiseContext.resume();
+        }
+    });
+    // Tone Generator
     toneGeneratorSlider.addEventListener("input", () => {
         let from = Math.min(Math.max(parseInt(toneGeneratorFromInput.value) || 0, 20), 20000);
         let to = Math.min(Math.max(parseInt(toneGeneratorToInput.value) || 0, from), 20000);
@@ -2737,25 +2952,62 @@ function addExtra() {
             toneGeneratorOsc.frequency.setTargetAtTime(freq, t, 0.2); // Smoother transition but also delay
         }
     });
-    toneGeneratorPlayButton.addEventListener("click", () => {
+    toneGeneratorPlayButton.addEventListener("click", async () => {
         if (toneGeneratorOsc) {
             toneGeneratorOsc.stop();
             toneGeneratorOsc = null;
+            disconnectEqBiquads(toneGeneratorBiquads);
+            if (toneGeneratorMasterGain) {
+                toneGeneratorMasterGain.disconnect();
+                toneGeneratorMasterGain = null;
+            }
             toneGeneratorPlayButton.innerText = "Play";
+            toneGeneratorPlayButton.classList.remove("playback-active");
         } else {
+            stopPinkNoisePlayback();
             if (!toneGeneratorContext) {
-                if (!window.AudioContext) {
+                if (!window.AudioContext && !window.webkitAudioContext) {
                     alert("Web audio api is disabled, please enable it if you want to use tone generator.");
                     return;
                 }
-                toneGeneratorContext = new AudioContext();
+                toneGeneratorContext = new (window.AudioContext || window.webkitAudioContext)();
             }
             toneGeneratorOsc = toneGeneratorContext.createOscillator();
             toneGeneratorOsc.type = "sine";
             toneGeneratorOsc.frequency.value = parseInt(toneGeneratorText.innerText);
-            toneGeneratorOsc.connect(toneGeneratorContext.destination);
+            toneGeneratorMasterGain = toneGeneratorContext.createGain();
+            toneGeneratorMasterGain.gain.value = livePlaybackOutputGain;
+            rebuildToneGeneratorEqChain();
+            toneGeneratorMasterGain.connect(toneGeneratorContext.destination);
             toneGeneratorOsc.start();
             toneGeneratorPlayButton.innerText = "Stop";
+            toneGeneratorPlayButton.classList.add("playback-active");
+            lastEqPlaybackSource = "tone";
+            if (toneGeneratorContext.state !== "running") {
+                await toneGeneratorContext.resume();
+            }
+        }
+    });
+    document.addEventListener("keydown", (e) => {
+        if (e.code !== "Space" && e.key !== " ") {
+            return;
+        }
+        if (e.repeat) {
+            return;
+        }
+        let selectEl = document.querySelector("div.select");
+        if (!selectEl || selectEl.getAttribute("data-selected") !== "extra") {
+            return;
+        }
+        let t = e.target;
+        if (t.closest && t.closest("div.extra-panel button") && !t.closest("button.play")) {
+            return;
+        }
+        e.preventDefault();
+        if (lastEqPlaybackSource === "tone") {
+            toneGeneratorPlayButton.click();
+        } else {
+            pinkNoisePlayButton.click();
         }
     });
 

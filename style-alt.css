@@ -1087,8 +1087,9 @@ div.extra-upload button + button {
 }
 
 div.extra-upload span {
-    order: 2;
+    order: 0;
     flex: 100% 0 0;
+    margin: 0 0 8px 0;
 }
 
 div.extra-panel span {
@@ -1286,6 +1287,69 @@ div.extra-panel button.play + span {
     
     font-size: 12px;
     line-height: 1em;
+}
+
+/* EQ playback note (under Pink Noise heading); same markup / color as upload disclaimer */
+div.extra-panel > div.extra-pink-noise > span {
+    display: block;
+    margin: 0 0 8px 0;
+}
+
+/* Pink Noise: full-width Play, same pattern as Import / Export in .filters-button */
+div.extra-panel > div.extra-pink-noise div:has(> button.play) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 4px;
+}
+
+div.extra-panel > div.extra-pink-noise button.play {
+    flex: 100% 0 0;
+}
+
+/* Pink / tone Play while audio runs — same as active Brands / Models / Equalizer tabs */
+div.extra-panel > div.extra-pink-noise button.play.playback-active,
+div.extra-panel > div.extra-tone-generator .tone-generator-play-row button.play.playback-active {
+    background-color: var(--accent-color) !important;
+    border-color: var(--accent-color) !important;
+    color: var(--font-color-secondary) !important;
+}
+
+/* Tone Generator: full-width Play; freq row matches .filters-button rhythm (gap / button width like Readme) */
+div.extra-panel > div.extra-tone-generator .tone-generator-play-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    margin: 8px 0 0 0;
+}
+
+div.extra-panel > div.extra-tone-generator .tone-generator-play-row button.play {
+    flex: 100% 0 0;
+    width: 100%;
+}
+
+div.extra-panel > div.extra-tone-generator .tone-generator-freq-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 4px;
+}
+
+div.extra-panel > div.extra-tone-generator .tone-generator-freq-row > span {
+    flex: 1 1 auto;
+    margin: 0;
+    min-width: 0;
+    font-family: var(--font-primary);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1em;
+}
+
+div.extra-panel > div.extra-tone-generator button.tone-generator-add-filter {
+    flex: calc(50% - 2px) 0 0;
+    border-color: var(--background-color-contrast) !important;
+    margin-bottom: 4px !important;
 }
 
 div.extra-panel > div.extra-tone-generator input[name='tone-generator-freq'] {
