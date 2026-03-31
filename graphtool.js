@@ -130,26 +130,41 @@ doc.html(`
           </div>
 
           <div class="extra-panel" style="display: none;">
-            <div class="extra-pink-noise">
-              <h5>Pink Noise</h2>
-              <span><small>Noise and tone generator respond to active EQ filters.</small></span>
-              <div>
-                <button type="button" class="play">Play</button>
+            <div class="live-sound-tools">
+              <div class="live-sound-tools-head">
+                <h5>Live Sound Tools</h5>
+                <p class="live-sound-tools-note">Processed through the parametric EQ below.</p>
               </div>
-            </div>
-            <div class="extra-tone-generator">
-              <h5>Tone Generator</h2>
-              <div class="settings-row">
-                <span>Freq Range</span>
-                <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20"></input></span>
-                <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000"></input></span>
+              <div class="live-sound-sources">
+                <div class="live-sound-source extra-pink-noise">
+                  <div class="live-sound-source-head">
+                    <span class="live-sound-source-title">Pink Noise</span>
+                  </div>
+                  <div class="live-sound-source-actions">
+                    <button type="button" class="play" aria-label="Toggle pink noise playback">▶</button>
+                  </div>
+                </div>
+                <div class="live-sound-source extra-tone-generator">
+                  <div class="live-sound-source-head">
+                    <span class="live-sound-source-title">Tone Generator</span>
+                  </div>
+                  <div class="live-sound-source-actions tone-generator-play-row">
+                    <button type="button" class="play" aria-label="Toggle tone playback">▶</button>
+                  </div>
+                  <div class="live-sound-slider-row tone-generator-slider-row">
+                    <input name="tone-generator-freq" type="range" min="0" max="1" step="0.0001" value="0" aria-label="Tone frequency along band" />
+                    <span class="live-sound-tone-freq-display"><span class="freq-text">20</span> Hz</span>
+                  </div>
+                  <div class="live-sound-tone-create-filter">
+                    <button type="button" class="tone-generator-add-filter">+ Add Filter</button>
+                  </div>
+                </div>
               </div>
-              <div><input name="tone-generator-freq" type="range" min="0" max="1" step="0.0001" value="0" /></div>
-              <div class="tone-generator-play-row">
-                <button class="play">Play</button>
-                <div class="tone-generator-freq-row">
-                  <span>Frequency: <span class="freq-text">20</span> Hz</span>
-                  <button type="button" class="tone-generator-add-filter">Add filter</button>
+              <div class="live-sound-band">
+                <span class="live-sound-band-label live-sound-source-title">Range (Sound Tools)</span>
+                <div class="live-sound-range-pair">
+                  <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20" aria-label="Minimum frequency"></input></span>
+                  <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000" aria-label="Maximum frequency"></input></span>
                 </div>
               </div>
             </div>
@@ -187,7 +202,7 @@ doc.html(`
                 <button class="sort-filters">Sort</button>
               </div>
               <div class="settings-row">
-                <span>AutoEQ Range</span>
+                <span>Range (AutoEQ)</span>
                 <span><input name="autoeq-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20"></input></span>
                 <span><input name="autoeq-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000"></input></span>
               </div>
@@ -202,11 +217,11 @@ doc.html(`
               <form style="display:none"><input type="file" id="file-filters-import" accept=".txt" /></form>
             </div>
             <div class="extra-upload">
-              <h5>Uploading</h2>
+              <h5>Upload Data</h2>
               <button class="upload-fr">Upload FR</button>
               <button class="upload-target">Upload Target</button>
               <br />
-              <span><small>Warning: Measurements from another source are not compatible with measurements in this database.</small></span>
+              <span class="extra-upload-note">Warning: Measurements from another rig are not compatible with measurements or targets in this database.</span>
               <form style="display:none"><input type="file" id="file-fr" accept=".csv,.txt" /></form>
             </div>
           </div>
@@ -2364,10 +2379,10 @@ function addExtra() {
         document.querySelector("div.extra-panel > div.extra-eq").style["display"] = "none";
     }
     if (!extraToneGeneratorEnabled) {
-        document.querySelector("div.extra-panel > div.extra-tone-generator").style["display"] = "none";
+        document.querySelector("div.extra-panel div.extra-tone-generator").style["display"] = "none";
     }
     if (typeof extraPinkNoiseEnabled !== "undefined" && !extraPinkNoiseEnabled) {
-        document.querySelector("div.extra-panel > div.extra-pink-noise").style["display"] = "none";
+        document.querySelector("div.extra-panel div.extra-pink-noise").style["display"] = "none";
     }
     // Show and hide extra panel
     window.showExtraPanel = () => {
@@ -2782,8 +2797,8 @@ function addExtra() {
         if (!pinkNoisePlaying || !pinkNoiseContext || !pinkNoiseProcessor || !pinkNoiseMasterGain) {
             return;
         }
-        let fromEl = document.querySelector("div.extra-tone-generator input[name='tone-generator-from']");
-        let toEl = document.querySelector("div.extra-tone-generator input[name='tone-generator-to']");
+        let fromEl = document.querySelector("div.live-sound-tools input[name='tone-generator-from']");
+        let toEl = document.querySelector("div.live-sound-tools input[name='tone-generator-to']");
         let fromHz = Math.min(Math.max(parseInt(fromEl && fromEl.value) || 0, 20), 20000);
         let toHz = Math.min(Math.max(parseInt(toEl && toEl.value) || 0, fromHz), 20000);
         pinkNoiseProcessor.disconnect();
@@ -2841,7 +2856,7 @@ function addExtra() {
             return;
         }
         pinkNoisePlaying = false;
-        pinkNoisePlayButton.innerText = "Play";
+        pinkNoisePlayButton.innerText = "▶";
         pinkNoisePlayButton.classList.remove("playback-active");
         clearTimeout(liveEqSyncTimer);
         liveEqSyncTimer = null;
@@ -2883,9 +2898,9 @@ function addExtra() {
         };
         return processor;
     };
-    let toneGeneratorFromInput = document.querySelector("div.extra-tone-generator input[name='tone-generator-from']");
-    let toneGeneratorToInput = document.querySelector("div.extra-tone-generator input[name='tone-generator-to']");
-    let toneGeneratorSlider = document.querySelector("div.extra-tone-generator input[name='tone-generator-freq']");
+    let toneGeneratorFromInput = document.querySelector("div.live-sound-tools input[name='tone-generator-from']");
+    let toneGeneratorToInput = document.querySelector("div.live-sound-tools input[name='tone-generator-to']");
+    let toneGeneratorSlider = document.querySelector("div.live-sound-tools input[name='tone-generator-freq']");
     let toneGeneratorPlayButton = document.querySelector("div.extra-tone-generator .play");
     let toneGeneratorText = document.querySelector("div.extra-tone-generator .freq-text");
     let toneGeneratorAddFilterButton = document.querySelector(
@@ -2895,6 +2910,8 @@ function addExtra() {
     let toneGeneratorTimeoutHandle = null;
     let toneSweepRafId = null;
     let toneSweepDurationSec = 6;
+    let lastToneSpaceKeydownTime = 0;
+    let toneSpaceDoubleMs = 200;
     let filterRowIsAllZeros = (i) => {
         let f = parseInt(filterFreqInput[i].value, 10) || 0;
         let q = parseFloat(filterQInput[i].value) || 0;
@@ -2967,7 +2984,7 @@ function addExtra() {
                 toneGeneratorMasterGain.disconnect();
                 toneGeneratorMasterGain = null;
             }
-            toneGeneratorPlayButton.innerText = "Play";
+            toneGeneratorPlayButton.innerText = "▶";
             toneGeneratorPlayButton.classList.remove("playback-active");
         }
         pinkNoiseContext = pinkNoiseContext || new (window.AudioContext || window.webkitAudioContext)();
@@ -2978,7 +2995,7 @@ function addExtra() {
         pinkNoisePlaying = true;
         rebuildPinkNoiseEqChain();
         pinkNoiseMasterGain.connect(pinkNoiseContext.destination);
-        pinkNoisePlayButton.innerText = "Stop";
+        pinkNoisePlayButton.innerText = "⏹";
         pinkNoisePlayButton.classList.add("playback-active");
         lastEqPlaybackSource = "pink";
         if (pinkNoiseContext.state !== "running") {
@@ -3005,8 +3022,7 @@ function addExtra() {
             toneGeneratorOsc.frequency.setTargetAtTime(freq, t, 0.2); // Smoother transition but also delay
         }
     });
-    toneGeneratorSlider.addEventListener("dblclick", (e) => {
-        e.preventDefault();
+    let startToneGeneratorSweep = () => {
         let fromHz = Math.min(Math.max(parseInt(toneGeneratorFromInput.value) || 0, 20), 20000);
         let toHz = Math.min(Math.max(parseInt(toneGeneratorToInput.value) || 0, fromHz), 20000);
         if (fromHz > toHz) {
@@ -3053,8 +3069,13 @@ function addExtra() {
             }
         };
         toneSweepRafId = requestAnimationFrame(sweepTick);
-    });
-    toneGeneratorPlayButton.addEventListener("click", () => {
+    };
+    toneGeneratorPlayButton.addEventListener("click", (e) => {
+        if (e.detail === 2) {
+            e.preventDefault();
+            startToneGeneratorSweep();
+            return;
+        }
         if (toneGeneratorOsc) {
             if (toneSweepRafId !== null) {
                 cancelAnimationFrame(toneSweepRafId);
@@ -3067,7 +3088,7 @@ function addExtra() {
                 toneGeneratorMasterGain.disconnect();
                 toneGeneratorMasterGain = null;
             }
-            toneGeneratorPlayButton.innerText = "Play";
+            toneGeneratorPlayButton.innerText = "▶";
             toneGeneratorPlayButton.classList.remove("playback-active");
         } else {
             stopPinkNoisePlayback();
@@ -3086,7 +3107,7 @@ function addExtra() {
             rebuildToneGeneratorEqChain();
             toneGeneratorMasterGain.connect(toneGeneratorContext.destination);
             toneGeneratorOsc.start();
-            toneGeneratorPlayButton.innerText = "Stop";
+            toneGeneratorPlayButton.innerText = "⏹";
             toneGeneratorPlayButton.classList.add("playback-active");
             lastEqPlaybackSource = "tone";
             if (toneGeneratorContext.state !== "running") {
@@ -3163,6 +3184,7 @@ function addExtra() {
         resumeAudioContextsFromUserGesture();
         if (e.shiftKey) {
             e.preventDefault();
+            lastToneSpaceKeydownTime = 0;
             if (pinkNoisePlaying) {
                 toneGeneratorPlayButton.click();
             } else if (toneGeneratorOsc) {
@@ -3178,8 +3200,16 @@ function addExtra() {
         }
         e.preventDefault();
         if (lastEqPlaybackSource === "tone") {
+            let now = performance.now();
+            if (lastToneSpaceKeydownTime > 0 && now - lastToneSpaceKeydownTime < toneSpaceDoubleMs) {
+                lastToneSpaceKeydownTime = 0;
+                startToneGeneratorSweep();
+                return;
+            }
+            lastToneSpaceKeydownTime = now;
             toneGeneratorPlayButton.click();
         } else {
+            lastToneSpaceKeydownTime = 0;
             pinkNoisePlayButton.click();
         }
     });
