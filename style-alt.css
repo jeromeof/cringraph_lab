@@ -1413,7 +1413,8 @@ div.extra-panel .live-sound-source-actions {
 }
 
 div.extra-panel .live-sound-tools .extra-pink-noise .live-sound-source-actions button.play,
-div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row button.play {
+div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row button.play,
+div.extra-panel .live-sound-tools .extra-music .music-play-row button.play {
     flex: 100% 0 0;
     width: 100%;
     border: none !important;
@@ -1432,7 +1433,8 @@ div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row
 
 /* Pink / tone: playing — contrast-more fill, icon uses page background */
 div.extra-panel .live-sound-tools .extra-pink-noise button.play.playback-active,
-div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row button.play.playback-active {
+div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row button.play.playback-active,
+div.extra-panel .live-sound-tools .extra-music .music-play-row button.play.playback-active {
     background-color: var(--background-color-contrast-more) !important;
     border: none !important;
     color: var(--background-color) !important;
@@ -1440,8 +1442,31 @@ div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row
     line-height: 1;
 }
 
-div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row {
+div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row,
+div.extra-panel .live-sound-tools .extra-music .music-play-row {
     margin: 8px 0 0 0;
+}
+
+div.extra-panel .live-sound-tools .extra-music .music-playback-panel {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 200ms ease, opacity 200ms ease;
+    pointer-events: none;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .music-playback-panel {
+    max-height: 200px;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+div.extra-panel .live-sound-tools .extra-music .music-playback-panel-inner {
+    box-sizing: border-box;
+    min-width: 0;
+    /* Inset matches thumb half-width + track border so WebKit thumbs are not clipped by panel overflow:hidden */
+    padding-left: 7px;
+    padding-right: 7px;
 }
 
 div.extra-panel .live-sound-tools .live-sound-slider-row {
@@ -1550,15 +1575,184 @@ div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-genera
     border: none;
 }
 
+div.extra-panel .live-sound-tools .extra-music .live-sound-slider-row.music-slider-row {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    margin: 8px 0 0 0;
+    padding-top: 0;
+    min-width: 0;
+}
+
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress'] {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0;
+    border-radius: 100px;
+    cursor: default;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress'] {
+    cursor: pointer;
+}
+
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:focus {
+    outline: none;
+}
+
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']::-moz-focus-outer {
+    border: 0;
+}
+
+/* Music progress — no file (disabled): track + thumb use contrast */
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-webkit-slider-runnable-track {
+    height: 18px;
+    box-sizing: border-box;
+    padding: 0px 1px;
+    border: 1px solid var(--background-color-contrast);
+    border-radius: 100px;
+    background-color: var(--background-color-inputs);
+}
+
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    width: 12px;
+    height: 12px;
+    margin-top: 2px;
+    border-radius: 50%;
+    border: none;
+    background-color: var(--background-color-contrast);
+    cursor: default;
+}
+
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-moz-range-track {
+    height: 16px;
+    box-sizing: border-box;
+    padding: 1px;
+    border: 1px solid var(--background-color-contrast);
+    border-radius: 100px;
+    background-color: var(--background-color-inputs);
+}
+
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-moz-range-thumb {
+    box-sizing: border-box;
+    width: 12px;
+    height: 12px;
+    border: none;
+    border-radius: 50%;
+    background-color: var(--background-color-contrast);
+    cursor: default;
+}
+
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-ms-track {
+    height: 16px;
+    box-sizing: border-box;
+    border: 1px solid var(--background-color-contrast);
+    border-radius: 100px;
+    background-color: transparent;
+    color: transparent;
+}
+
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-ms-fill-lower,
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-ms-fill-upper {
+    background-color: var(--background-color-inputs);
+    border: none;
+    border-radius: 100px;
+}
+
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-ms-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: var(--background-color-contrast);
+    border: none;
+}
+
+/* Music progress — file loaded: match tone generator slider */
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-webkit-slider-runnable-track {
+    height: 18px;
+    box-sizing: border-box;
+    padding: 0px 1px;
+    border: 1px solid var(--background-color-contrast-more);
+    border-radius: 100px;
+    background-color: var(--background-color-inputs);
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    width: 12px;
+    height: 12px;
+    margin-top: 2px;
+    border-radius: 50%;
+    border: none;
+    background-color: var(--background-color-contrast-more);
+    cursor: pointer;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-moz-range-track {
+    height: 16px;
+    box-sizing: border-box;
+    padding: 1px;
+    border: 1px solid var(--background-color-contrast);
+    border-radius: 100px;
+    background-color: var(--background-color-inputs);
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-moz-range-thumb {
+    box-sizing: border-box;
+    width: 12px;
+    height: 12px;
+    border: none;
+    border-radius: 50%;
+    background-color: var(--background-color-contrast-more);
+    cursor: pointer;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-ms-track {
+    height: 16px;
+    box-sizing: border-box;
+    border: 1px solid var(--background-color-contrast);
+    border-radius: 100px;
+    background-color: transparent;
+    color: transparent;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-ms-fill-lower,
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-ms-fill-upper {
+    background-color: var(--background-color-inputs);
+    border: none;
+    border-radius: 100px;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-ms-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: var(--background-color-contrast-more);
+    border: none;
+}
+
 /* Contrast theme: accent/contrast tokens collapse to black-on-black and white-on-white */
 body.theme-contrast div.extra-panel .live-sound-tools .extra-pink-noise .live-sound-source-actions button.play,
-body.theme-contrast div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row button.play {
+body.theme-contrast div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row button.play,
+body.theme-contrast div.extra-panel .live-sound-tools .extra-music .music-play-row button.play:not(:disabled) {
     background-color: var(--background-color-contrast) !important;
     color: var(--font-color-secondary) !important;
 }
 
 body.theme-contrast div.extra-panel .live-sound-tools .extra-pink-noise button.play.playback-active,
-body.theme-contrast div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row button.play.playback-active {
+body.theme-contrast div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row button.play.playback-active,
+body.theme-contrast div.extra-panel .live-sound-tools .extra-music .music-play-row button.play.playback-active {
     background-color: var(--background-color-contrast-more) !important;
     color: var(--background-color) !important;
 }
@@ -1589,6 +1783,50 @@ div.extra-panel .live-sound-tools .live-sound-tone-create-filter .tone-generator
 }
 
 div.extra-panel .live-sound-tools .live-sound-tone-create-filter .tone-generator-add-filter:hover {
+    color: var(--accent-color-contrast) !important;
+    text-decoration: underline;
+}
+
+div.extra-panel .live-sound-tools .live-sound-music-file {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    margin: 6px 0 0 0;
+}
+
+div.extra-panel .live-sound-tools .live-sound-music-file .music-file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+    opacity: 0;
+}
+
+div.extra-panel .live-sound-tools .live-sound-music-file .music-add-remove {
+    box-sizing: border-box;
+    width: auto;
+    min-width: 0;
+    padding: 6px 8px;
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--background-color-contrast-more) !important;
+    font-family: var(--font-primary);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.2;
+    text-transform: none;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+div.extra-panel .live-sound-tools .live-sound-music-file .music-add-remove:hover {
     color: var(--accent-color-contrast) !important;
     text-decoration: underline;
 }

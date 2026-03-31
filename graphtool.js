@@ -136,6 +136,25 @@ doc.html(`
                 <p class="live-sound-tools-note">Processed through the parametric EQ below.</p>
               </div>
               <div class="live-sound-sources">
+                <div class="live-sound-source extra-music">
+                  <div class="live-sound-source-head">
+                    <span class="live-sound-source-title">Music</span>
+                  </div>
+                  <div class="music-playback-panel" aria-hidden="true">
+                    <div class="music-playback-panel-inner">
+                      <div class="live-sound-source-actions music-play-row">
+                        <button type="button" class="play" disabled aria-label="Toggle music playback">▶</button>
+                      </div>
+                      <div class="live-sound-slider-row music-slider-row">
+                        <input name="music-progress" type="range" min="0" max="1" step="0.0001" value="0" disabled aria-label="Music playback position" />
+                      </div>
+                    </div>
+                  </div>
+                  <div class="live-sound-music-file">
+                    <button type="button" class="music-add-remove">+ Add Music</button>
+                    <input type="file" class="music-file-input" accept="audio/*" tabindex="-1" aria-hidden="true" />
+                  </div>
+                </div>
                 <div class="live-sound-source extra-pink-noise">
                   <div class="live-sound-source-head">
                     <span class="live-sound-source-title">Pink Noise</span>
@@ -2384,6 +2403,9 @@ function addExtra() {
     if (typeof extraPinkNoiseEnabled !== "undefined" && !extraPinkNoiseEnabled) {
         document.querySelector("div.extra-panel div.extra-pink-noise").style["display"] = "none";
     }
+    if (typeof extraMusicEnabled !== "undefined" && !extraMusicEnabled) {
+        document.querySelector("div.extra-panel div.extra-music").style["display"] = "none";
+    }
     // Show and hide extra panel
     window.showExtraPanel = () => {
         document.querySelector("div.select > div.selector-panel").style["display"] = "none";
@@ -2761,6 +2783,15 @@ function addExtra() {
     let pinkNoiseBandFilters = [];
     let toneGeneratorBiquads = [];
     let toneGeneratorMasterGain = null;
+    let musicBiquads = [];
+    let musicBandFilters = [];
+    let musicContext = null;
+    let musicAudio = null;
+    let musicMediaSourceNode = null;
+    let musicMasterGain = null;
+    let musicObjectUrl = null;
+    let musicFileLoaded = false;
+    let musicSliderDragging = false;
     let liveEqSyncTimer = null;
     let mapFilterTypeToBiquad = (t) =>
         (t === "LSQ" ? "lowshelf" : t === "HSQ" ? "highshelf" : "peaking");
@@ -2775,6 +2806,12 @@ function addExtra() {
             try { b.disconnect(); } catch (e) { /* noop */ }
         });
         pinkNoiseBandFilters.length = 0;
+    };
+    let disconnectMusicBandFilters = () => {
+        musicBandFilters.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        musicBandFilters.length = 0;
     };
     let rebuildLiveEqChain = (sourceNode, audioContext, masterGain, biquadsArr) => {
         let filters = elemToFilters();
@@ -2838,8 +2875,47 @@ function addExtra() {
         }
         rebuildLiveEqChain(toneGeneratorOsc, toneGeneratorContext, toneGeneratorMasterGain, toneGeneratorBiquads);
     };
+    let rebuildMusicEqChain = () => {
+        if (!musicMediaSourceNode || !musicContext || !musicMasterGain) {
+            return;
+        }
+        let fromEl = document.querySelector("div.live-sound-tools input[name='tone-generator-from']");
+        let toEl = document.querySelector("div.live-sound-tools input[name='tone-generator-to']");
+        let fromHz = Math.min(Math.max(parseInt(fromEl && fromEl.value) || 0, 20), 20000);
+        let toHz = Math.min(Math.max(parseInt(toEl && toEl.value) || 0, fromHz), 20000);
+        musicMediaSourceNode.disconnect();
+        disconnectEqBiquads(musicBiquads);
+        disconnectMusicBandFilters();
+        let last = musicMediaSourceNode;
+        let hp = musicContext.createBiquadFilter();
+        hp.type = "highpass";
+        hp.frequency.value = fromHz;
+        hp.Q.value = 0.707;
+        last.connect(hp);
+        last = hp;
+        musicBandFilters.push(hp);
+        let lp = musicContext.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.value = toHz;
+        lp.Q.value = 0.707;
+        last.connect(lp);
+        last = lp;
+        musicBandFilters.push(lp);
+        let filters = elemToFilters();
+        filters.forEach((f) => {
+            let bf = musicContext.createBiquadFilter();
+            bf.type = mapFilterTypeToBiquad(f.type);
+            bf.frequency.value = Math.min(20000, Math.max(20, f.freq));
+            bf.Q.value = Math.max(1e-4, Math.min(1000, f.q));
+            bf.gain.value = Math.max(-40, Math.min(40, f.gain));
+            last.connect(bf);
+            last = bf;
+            musicBiquads.push(bf);
+        });
+        last.connect(musicMasterGain);
+    };
     let scheduleLiveEqSync = () => {
-        if (!pinkNoisePlaying && !toneGeneratorOsc) {
+        if (!pinkNoisePlaying && !toneGeneratorOsc && !musicMediaSourceNode) {
             return;
         }
         clearTimeout(liveEqSyncTimer);
@@ -2847,6 +2923,7 @@ function addExtra() {
             liveEqSyncTimer = null;
             rebuildPinkNoiseEqChain();
             rebuildToneGeneratorEqChain();
+            rebuildMusicEqChain();
         }, 50);
     };
     filtersContainer.addEventListener("input", scheduleLiveEqSync);
@@ -2905,6 +2982,32 @@ function addExtra() {
     let toneGeneratorText = document.querySelector("div.extra-tone-generator .freq-text");
     let toneGeneratorAddFilterButton = document.querySelector(
         "div.extra-tone-generator button.tone-generator-add-filter");
+    let musicPlayButton = document.querySelector("div.extra-music .play");
+    let musicSlider = document.querySelector("div.live-sound-tools input[name='music-progress']");
+    let musicAddRemoveButton = document.querySelector("div.extra-music button.music-add-remove");
+    let musicFileInput = document.querySelector("div.extra-music input.music-file-input");
+    let musicCard = document.querySelector("div.extra-music");
+    let musicPlaybackPanel = document.querySelector("div.extra-music .music-playback-panel");
+    let syncMusicSliderFromAudio = () => {
+        if (musicSliderDragging || !musicFileLoaded || !musicAudio || !musicSlider) {
+            return;
+        }
+        let d = musicAudio.duration;
+        if (!Number.isFinite(d) || d <= 0) {
+            return;
+        }
+        musicSlider.value = String(Math.min(1, Math.max(0, musicAudio.currentTime / d)));
+    };
+    let pauseMusicForLiveSoundSwitch = () => {
+        if (!musicAudio || musicAudio.paused) {
+            return;
+        }
+        musicAudio.pause();
+        if (musicPlayButton) {
+            musicPlayButton.innerText = "▶";
+            musicPlayButton.classList.remove("playback-active");
+        }
+    };
     let toneGeneratorContext = null;
     let toneGeneratorOsc = null;
     let toneGeneratorTimeoutHandle = null;
@@ -2987,6 +3090,7 @@ function addExtra() {
             toneGeneratorPlayButton.innerText = "▶";
             toneGeneratorPlayButton.classList.remove("playback-active");
         }
+        pauseMusicForLiveSoundSwitch();
         pinkNoiseContext = pinkNoiseContext || new (window.AudioContext || window.webkitAudioContext)();
         pinkNoiseProcessor = createPinkNoiseProcessor(pinkNoiseContext);
         pinkNoiseMasterGain = pinkNoiseContext.createGain();
@@ -3092,6 +3196,7 @@ function addExtra() {
             toneGeneratorPlayButton.classList.remove("playback-active");
         } else {
             stopPinkNoisePlayback();
+            pauseMusicForLiveSoundSwitch();
             if (!toneGeneratorContext) {
                 if (!window.AudioContext && !window.webkitAudioContext) {
                     alert("Web audio api is disabled, please enable it if you want to use tone generator.");
@@ -3115,6 +3220,211 @@ function addExtra() {
             }
         }
     });
+    let removeMusicTrack = () => {
+        if (musicAudio) {
+            musicAudio.removeEventListener("timeupdate", syncMusicSliderFromAudio);
+            musicAudio.pause();
+            musicAudio.removeAttribute("src");
+            try {
+                musicAudio.load();
+            } catch (err) { /* noop */ }
+        }
+        if (musicObjectUrl) {
+            URL.revokeObjectURL(musicObjectUrl);
+            musicObjectUrl = null;
+        }
+        musicFileLoaded = false;
+        musicSliderDragging = false;
+        if (musicPlayButton) {
+            musicPlayButton.disabled = true;
+            musicPlayButton.innerText = "▶";
+            musicPlayButton.classList.remove("playback-active");
+        }
+        if (musicSlider) {
+            musicSlider.disabled = true;
+            musicSlider.value = "0";
+        }
+        if (musicPlaybackPanel) {
+            musicPlaybackPanel.setAttribute("aria-hidden", "true");
+        }
+        if (musicCard) {
+            musicCard.classList.remove("music-file-loaded");
+        }
+        if (musicAddRemoveButton) {
+            musicAddRemoveButton.textContent = "+ Add Music";
+        }
+        if (musicFileInput) {
+            musicFileInput.value = "";
+        }
+        disconnectEqBiquads(musicBiquads);
+        disconnectMusicBandFilters();
+        if (musicMediaSourceNode) {
+            try {
+                musicMediaSourceNode.disconnect();
+            } catch (err) { /* noop */ }
+            musicMediaSourceNode = null;
+        }
+        if (musicMasterGain) {
+            try {
+                musicMasterGain.disconnect();
+            } catch (err) { /* noop */ }
+            musicMasterGain = null;
+        }
+        if (musicContext && musicContext.state !== "closed") {
+            void musicContext.close();
+        }
+        musicContext = null;
+        musicAudio = null;
+        if (lastEqPlaybackSource === "music") {
+            lastEqPlaybackSource = "pink";
+        }
+    };
+    let initMusicAudioGraph = () => {
+        if (musicContext) {
+            return true;
+        }
+        if (!window.AudioContext && !window.webkitAudioContext) {
+            return false;
+        }
+        musicContext = new (window.AudioContext || window.webkitAudioContext)();
+        musicAudio = new Audio();
+        musicAudio.loop = true;
+        musicAudio.preload = "auto";
+        musicAudio.addEventListener("timeupdate", syncMusicSliderFromAudio);
+        musicAudio.addEventListener("error", () => {
+            alert("Could not load or play this audio file.");
+            removeMusicTrack();
+        });
+        musicMediaSourceNode = musicContext.createMediaElementSource(musicAudio);
+        musicMasterGain = musicContext.createGain();
+        musicMasterGain.gain.value = livePlaybackOutputGain;
+        rebuildMusicEqChain();
+        musicMasterGain.connect(musicContext.destination);
+        return true;
+    };
+    let stopPinkAndToneForExclusiveMusic = () => {
+        stopPinkNoisePlayback();
+        if (toneGeneratorOsc) {
+            if (toneSweepRafId !== null) {
+                cancelAnimationFrame(toneSweepRafId);
+                toneSweepRafId = null;
+            }
+            toneGeneratorOsc.stop();
+            toneGeneratorOsc = null;
+            disconnectEqBiquads(toneGeneratorBiquads);
+            if (toneGeneratorMasterGain) {
+                toneGeneratorMasterGain.disconnect();
+                toneGeneratorMasterGain = null;
+            }
+            toneGeneratorPlayButton.innerText = "▶";
+            toneGeneratorPlayButton.classList.remove("playback-active");
+        }
+    };
+    let startMusicPlayback = () => {
+        if (!musicFileLoaded || !musicAudio || !musicContext || !musicPlayButton) {
+            return Promise.reject(new Error("music not ready"));
+        }
+        stopPinkAndToneForExclusiveMusic();
+        void musicContext.resume();
+        return musicAudio.play().then(() => {
+            musicPlayButton.innerText = "⏹";
+            musicPlayButton.classList.add("playback-active");
+            lastEqPlaybackSource = "music";
+        });
+    };
+    if (musicPlayButton && musicSlider && musicAddRemoveButton && musicFileInput && musicCard) {
+        musicAddRemoveButton.addEventListener("click", () => {
+            if (!musicFileLoaded) {
+                musicFileInput.click();
+            } else {
+                removeMusicTrack();
+            }
+        });
+        musicFileInput.addEventListener("change", () => {
+            let file = musicFileInput.files && musicFileInput.files[0];
+            if (!file) {
+                return;
+            }
+            if (!window.AudioContext && !window.webkitAudioContext) {
+                alert("Web audio API is disabled; music playback is unavailable.");
+                musicFileInput.value = "";
+                return;
+            }
+            if (!initMusicAudioGraph()) {
+                musicFileInput.value = "";
+                return;
+            }
+            if (musicObjectUrl) {
+                URL.revokeObjectURL(musicObjectUrl);
+            }
+            if (musicAudio) {
+                musicAudio.pause();
+                musicPlayButton.innerText = "▶";
+                musicPlayButton.classList.remove("playback-active");
+            }
+            musicObjectUrl = URL.createObjectURL(file);
+            musicAudio.src = musicObjectUrl;
+            musicAudio.load();
+            musicFileLoaded = true;
+            musicCard.classList.add("music-file-loaded");
+            if (musicPlaybackPanel) {
+                musicPlaybackPanel.setAttribute("aria-hidden", "false");
+            }
+            musicPlayButton.disabled = false;
+            musicSlider.disabled = false;
+            musicAddRemoveButton.textContent = "- Remove Music";
+            rebuildMusicEqChain();
+            musicFileInput.value = "";
+            let autoPlayWhenReady = () => {
+                startMusicPlayback().catch(() => {
+                    /* autoplay may be blocked without further gesture; user can press play */
+                });
+            };
+            if (musicAudio.readyState >= 2) {
+                autoPlayWhenReady();
+            } else {
+                musicAudio.addEventListener("canplay", autoPlayWhenReady, { once: true });
+            }
+            setTimeout(() => {
+                musicAddRemoveButton.blur();
+                musicFileInput.blur();
+            }, 0);
+        });
+        musicPlayButton.addEventListener("click", () => {
+            if (!musicFileLoaded || !musicAudio || !musicContext) {
+                return;
+            }
+            if (musicAudio.paused) {
+                startMusicPlayback().catch(() => {
+                    alert("Playback could not be started.");
+                });
+            } else {
+                musicAudio.pause();
+                musicPlayButton.innerText = "▶";
+                musicPlayButton.classList.remove("playback-active");
+            }
+        });
+        musicSlider.addEventListener("pointerdown", () => {
+            musicSliderDragging = true;
+        });
+        musicSlider.addEventListener("pointerup", () => {
+            musicSliderDragging = false;
+            syncMusicSliderFromAudio();
+        });
+        musicSlider.addEventListener("pointercancel", () => {
+            musicSliderDragging = false;
+        });
+        musicSlider.addEventListener("input", () => {
+            if (!musicFileLoaded || !musicAudio) {
+                return;
+            }
+            let d = musicAudio.duration;
+            if (!Number.isFinite(d) || d <= 0) {
+                return;
+            }
+            musicAudio.currentTime = parseFloat(musicSlider.value) * d;
+        });
+    }
     let syncToneGeneratorToEqFrequencyHz = (hz) => {
         hz = Math.min(20000, Math.max(20, Math.round(Number(hz)) || 20));
         let from = Math.min(Math.max(parseInt(toneGeneratorFromInput.value) || 0, 20), 20000);
@@ -3165,6 +3475,9 @@ function addExtra() {
         if (toneGeneratorContext && toneGeneratorContext.state !== "running") {
             void toneGeneratorContext.resume();
         }
+        if (musicContext && musicContext.state !== "running") {
+            void musicContext.resume();
+        }
     };
     document.addEventListener("keydown", (e) => {
         if (e.code !== "Space" && e.key !== " ") {
@@ -3179,21 +3492,45 @@ function addExtra() {
         }
         let t = e.target;
         if (t.closest && t.closest("div.extra-panel button") && !t.closest("button.play")) {
-            return;
+            if (t.closest && t.closest("button.music-add-remove") && musicFileLoaded) {
+                e.preventDefault();
+            } else {
+                return;
+            }
         }
         resumeAudioContextsFromUserGesture();
         if (e.shiftKey) {
             e.preventDefault();
             lastToneSpaceKeydownTime = 0;
-            if (pinkNoisePlaying) {
+            let hasMusicSlot = musicFileLoaded && musicPlayButton && musicAudio;
+            let playingPink = pinkNoisePlaying;
+            let playingTone = !!toneGeneratorOsc;
+            let playingMusic = hasMusicSlot && !musicAudio.paused;
+            if (playingPink) {
                 toneGeneratorPlayButton.click();
-            } else if (toneGeneratorOsc) {
-                pinkNoisePlayButton.click();
-            } else {
-                if (lastEqPlaybackSource === "tone") {
-                    toneGeneratorPlayButton.click();
+            } else if (playingTone) {
+                if (hasMusicSlot) {
+                    musicPlayButton.click();
                 } else {
                     pinkNoisePlayButton.click();
+                }
+            } else if (playingMusic) {
+                pinkNoisePlayButton.click();
+            } else {
+                let order = hasMusicSlot
+                    ? ["music", "pink", "tone"]
+                    : ["pink", "tone"];
+                let idx = order.indexOf(lastEqPlaybackSource);
+                if (idx < 0) {
+                    idx = 0;
+                }
+                let next = order[(idx + 1) % order.length];
+                if (next === "pink") {
+                    pinkNoisePlayButton.click();
+                } else if (next === "tone") {
+                    toneGeneratorPlayButton.click();
+                } else {
+                    musicPlayButton.click();
                 }
             }
             return;
@@ -3208,6 +3545,9 @@ function addExtra() {
             }
             lastToneSpaceKeydownTime = now;
             toneGeneratorPlayButton.click();
+        } else if (lastEqPlaybackSource === "music" && musicFileLoaded && musicPlayButton) {
+            lastToneSpaceKeydownTime = 0;
+            musicPlayButton.click();
         } else {
             lastToneSpaceKeydownTime = 0;
             pinkNoisePlayButton.click();

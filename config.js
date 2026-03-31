@@ -40,7 +40,8 @@ const init_phones = ["BKF"],            // Optional. Which graphs to display on 
       extraEQBands = 10,                            // Default EQ bands available
       extraEQBandsMax = 20,                         // Max EQ bands available
       extraToneGeneratorEnabled = true,             // Enable tone generator function
-      extraPinkNoiseEnabled = true;                 // Pink noise through parametric EQ (Equalizer tab)
+      extraPinkNoiseEnabled = true,                 // Pink noise through parametric EQ (Equalizer tab)
+      extraMusicEnabled = true;                     // Local file music player through parametric EQ (Equalizer tab)
 
 // Specify which targets to display
 const targets = [
