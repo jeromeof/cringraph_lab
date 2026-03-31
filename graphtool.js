@@ -2903,7 +2903,7 @@ function addExtra() {
             }
         }, 150);
     });
-    pinkNoisePlayButton.addEventListener("click", async () => {
+    pinkNoisePlayButton.addEventListener("click", () => {
         if (pinkNoisePlaying) {
             stopPinkNoisePlayback();
             return;
@@ -2935,7 +2935,7 @@ function addExtra() {
         pinkNoisePlayButton.classList.add("playback-active");
         lastEqPlaybackSource = "pink";
         if (pinkNoiseContext.state !== "running") {
-            await pinkNoiseContext.resume();
+            void pinkNoiseContext.resume();
         }
     });
     // Tone Generator
@@ -2952,7 +2952,7 @@ function addExtra() {
             toneGeneratorOsc.frequency.setTargetAtTime(freq, t, 0.2); // Smoother transition but also delay
         }
     });
-    toneGeneratorPlayButton.addEventListener("click", async () => {
+    toneGeneratorPlayButton.addEventListener("click", () => {
         if (toneGeneratorOsc) {
             toneGeneratorOsc.stop();
             toneGeneratorOsc = null;
@@ -2984,10 +2984,61 @@ function addExtra() {
             toneGeneratorPlayButton.classList.add("playback-active");
             lastEqPlaybackSource = "tone";
             if (toneGeneratorContext.state !== "running") {
-                await toneGeneratorContext.resume();
+                void toneGeneratorContext.resume();
             }
         }
     });
+    let syncToneGeneratorToEqFrequencyHz = (hz) => {
+        hz = Math.min(20000, Math.max(20, Math.round(Number(hz)) || 20));
+        let from = Math.min(Math.max(parseInt(toneGeneratorFromInput.value) || 0, 20), 20000);
+        let to = Math.min(Math.max(parseInt(toneGeneratorToInput.value) || 0, from), 20000);
+        let logSpan = Math.log(to) - Math.log(from);
+        let position = logSpan > 0
+            ? (Math.log(hz) - Math.log(from)) / logSpan
+            : 0;
+        position = Math.min(1, Math.max(0, position));
+        toneGeneratorSlider.value = String(position);
+        toneGeneratorText.innerText = String(hz);
+        if (toneGeneratorOsc && toneGeneratorContext) {
+            let t = toneGeneratorContext.currentTime;
+            toneGeneratorOsc.frequency.cancelScheduledValues(t);
+            toneGeneratorOsc.frequency.setTargetAtTime(hz, t, 0.2);
+        }
+    };
+    filtersContainer.addEventListener("focusin", (e) => {
+        if (!(e.target.matches && e.target.matches("input[name='freq']"))) {
+            return;
+        }
+        let hz = parseInt(e.target.value, 10);
+        if (!Number.isFinite(hz)) {
+            hz = 20;
+        }
+        syncToneGeneratorToEqFrequencyHz(hz);
+    });
+    let eqFreqToToneDebounceTimer = null;
+    filtersContainer.addEventListener("input", (e) => {
+        if (!(e.target.matches && e.target.matches("input[name='freq']"))) {
+            return;
+        }
+        let inputEl = e.target;
+        clearTimeout(eqFreqToToneDebounceTimer);
+        eqFreqToToneDebounceTimer = setTimeout(() => {
+            eqFreqToToneDebounceTimer = null;
+            let hz = parseInt(inputEl.value, 10);
+            if (!Number.isFinite(hz)) {
+                hz = 20;
+            }
+            syncToneGeneratorToEqFrequencyHz(hz);
+        }, 100);
+    });
+    let resumeAudioContextsFromUserGesture = () => {
+        if (pinkNoiseContext && pinkNoiseContext.state !== "running") {
+            void pinkNoiseContext.resume();
+        }
+        if (toneGeneratorContext && toneGeneratorContext.state !== "running") {
+            void toneGeneratorContext.resume();
+        }
+    };
     document.addEventListener("keydown", (e) => {
         if (e.code !== "Space" && e.key !== " ") {
             return;
@@ -3001,6 +3052,22 @@ function addExtra() {
         }
         let t = e.target;
         if (t.closest && t.closest("div.extra-panel button") && !t.closest("button.play")) {
+            return;
+        }
+        resumeAudioContextsFromUserGesture();
+        if (e.shiftKey) {
+            e.preventDefault();
+            if (pinkNoisePlaying) {
+                toneGeneratorPlayButton.click();
+            } else if (toneGeneratorOsc) {
+                pinkNoisePlayButton.click();
+            } else {
+                if (lastEqPlaybackSource === "tone") {
+                    toneGeneratorPlayButton.click();
+                } else {
+                    pinkNoisePlayButton.click();
+                }
+            }
             return;
         }
         e.preventDefault();
