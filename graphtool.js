@@ -2951,6 +2951,135 @@ function addExtra() {
     let musicSegEndU = 1;
     let musicTrimDragging = null;
     let musicTrimIdleTimer = null;
+    /* Segment endpoints in localStorage; audio bytes in IndexedDB (localStorage cannot hold files). */
+    let musicRestoreCancelToken = 0;
+    const CRINGRAPH_MUSIC_SEG_LS = "cringraph_music_segment_v1";
+    const CRINGRAPH_MUSIC_IDB_NAME = "cringraphMusic";
+    const CRINGRAPH_MUSIC_IDB_VER = 1;
+    const CRINGRAPH_MUSIC_STORE = "track";
+    const CRINGRAPH_MUSIC_KEY = "current";
+    /* Skip IndexedDB save/restore above this size (typical song ≈3–10 MB; cap avoids quota/slow writes). */
+    const CRINGRAPH_MUSIC_MAX_PERSIST_BYTES = 100 * 1024 * 1024;
+    let openCringraphMusicDb = () => {
+        return new Promise((resolve, reject) => {
+            if (!window.indexedDB) {
+                reject(new Error("no idb"));
+                return;
+            }
+            let req = indexedDB.open(CRINGRAPH_MUSIC_IDB_NAME, CRINGRAPH_MUSIC_IDB_VER);
+            req.onupgradeneeded = (ev) => {
+                let db = ev.target.result;
+                if (!db.objectStoreNames.contains(CRINGRAPH_MUSIC_STORE)) {
+                    db.createObjectStore(CRINGRAPH_MUSIC_STORE);
+                }
+            };
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    };
+    let idbPutCringraphMusicRecord = (rec) => {
+        return openCringraphMusicDb().then((db) => new Promise((resolve, reject) => {
+            let tx = db.transaction(CRINGRAPH_MUSIC_STORE, "readwrite");
+            tx.oncomplete = () => {
+                db.close();
+                resolve();
+            };
+            tx.onerror = () => {
+                db.close();
+                reject(tx.error);
+            };
+            tx.onabort = () => {
+                db.close();
+                reject(tx.error);
+            };
+            tx.objectStore(CRINGRAPH_MUSIC_STORE).put(rec, CRINGRAPH_MUSIC_KEY);
+        }));
+    };
+    let idbGetCringraphMusicRecord = () => {
+        return openCringraphMusicDb().then((db) => new Promise((resolve, reject) => {
+            if (!db.objectStoreNames.contains(CRINGRAPH_MUSIC_STORE)) {
+                db.close();
+                resolve(null);
+                return;
+            }
+            let tx = db.transaction(CRINGRAPH_MUSIC_STORE, "readonly");
+            let getReq = tx.objectStore(CRINGRAPH_MUSIC_STORE).get(CRINGRAPH_MUSIC_KEY);
+            getReq.onerror = () => {
+                db.close();
+                reject(getReq.error);
+            };
+            tx.oncomplete = () => {
+                db.close();
+                resolve(getReq.result || null);
+            };
+        }));
+    };
+    let idbDeleteCringraphMusicRecord = () => {
+        return openCringraphMusicDb().then((db) => new Promise((resolve, reject) => {
+            if (!db.objectStoreNames.contains(CRINGRAPH_MUSIC_STORE)) {
+                db.close();
+                resolve();
+                return;
+            }
+            let tx = db.transaction(CRINGRAPH_MUSIC_STORE, "readwrite");
+            tx.oncomplete = () => {
+                db.close();
+                resolve();
+            };
+            tx.onerror = () => {
+                db.close();
+                reject(tx.error);
+            };
+            tx.objectStore(CRINGRAPH_MUSIC_STORE).delete(CRINGRAPH_MUSIC_KEY);
+        })).catch(() => {});
+    };
+    let loadMusicSegmentFromLocalStorage = () => {
+        try {
+            let raw = localStorage.getItem(CRINGRAPH_MUSIC_SEG_LS);
+            if (!raw) {
+                return null;
+            }
+            let o = JSON.parse(raw);
+            if (typeof o.segStartU === "number" && typeof o.segEndU === "number") {
+                return { segStartU: o.segStartU, segEndU: o.segEndU };
+            }
+        } catch (e) { /* noop */ }
+        return null;
+    };
+    let persistMusicSegmentToLocalStorage = () => {
+        if (!musicFileLoaded) {
+            return;
+        }
+        try {
+            localStorage.setItem(CRINGRAPH_MUSIC_SEG_LS, JSON.stringify({
+                v: 1,
+                segStartU: musicSegStartU,
+                segEndU: musicSegEndU
+            }));
+        } catch (e) { /* quota / private mode */ }
+    };
+    let persistMusicFileToIndexedDb = (file) => {
+        if (!window.indexedDB || !file) {
+            return;
+        }
+        if (typeof file.size === "number" && file.size > CRINGRAPH_MUSIC_MAX_PERSIST_BYTES) {
+            void clearPersistedMusic();
+            return;
+        }
+        idbPutCringraphMusicRecord({
+            blob: file,
+            name: file.name || "",
+            type: file.type || "",
+            size: file.size,
+            lastModified: file.lastModified
+        }).catch(() => {});
+    };
+    let clearPersistedMusic = () => {
+        try {
+            localStorage.removeItem(CRINGRAPH_MUSIC_SEG_LS);
+        } catch (e) { /* noop */ }
+        return idbDeleteCringraphMusicRecord();
+    };
     let liveEqSyncTimer = null;
     let livePlaybackEqToggle = document.querySelector("input.live-sound-eq-toggle");
     let isLivePlaybackEqEnabled = () =>
@@ -3572,6 +3701,8 @@ function addExtra() {
         }
     });
     let removeMusicTrack = () => {
+        musicRestoreCancelToken++;
+        void clearPersistedMusic();
         if (musicAudio) {
             musicAudio.removeEventListener("timeupdate", musicAudioTimeUpdateHandler);
             musicAudio.removeEventListener("ended", musicAudioEndedHandler);
@@ -3754,6 +3885,54 @@ function addExtra() {
             musicSpectrumViz.syncSpectrumViz();
         });
     };
+    let wireMusicLoadedFromBlob = (blob, segOpt) => {
+        if (!musicAudio || !musicPlayButton || !musicCard || !musicSegmentSliderEl || !musicAddRemoveButton) {
+            return;
+        }
+        if (musicObjectUrl) {
+            URL.revokeObjectURL(musicObjectUrl);
+        }
+        musicAudio.pause();
+        musicSpectrumViz.stop();
+        musicPlayButton.innerText = "▶";
+        musicPlayButton.classList.remove("playback-active");
+        musicObjectUrl = URL.createObjectURL(blob);
+        if (segOpt && typeof segOpt.segStartU === "number" && typeof segOpt.segEndU === "number") {
+            musicSegStartU = segOpt.segStartU;
+            musicSegEndU = segOpt.segEndU;
+        } else {
+            musicSegStartU = 0;
+            musicSegEndU = 1;
+        }
+        musicAudio.src = musicObjectUrl;
+        musicAudio.load();
+        musicFileLoaded = true;
+        musicCard.classList.add("music-file-loaded");
+        if (musicPlaybackPanel) {
+            musicPlaybackPanel.setAttribute("aria-hidden", "false");
+        }
+        musicPlayButton.disabled = false;
+        musicSegmentSliderEl.classList.remove("music-segment-slider-disabled");
+        let onMusicMeta = () => {
+            clampMusicSegmentBounds();
+            syncMusicSegmentVisuals();
+            persistMusicSegmentToLocalStorage();
+        };
+        musicAudio.addEventListener("loadedmetadata", onMusicMeta, { once: true });
+        syncMusicSegmentVisuals();
+        musicAddRemoveButton.textContent = "- Remove Music";
+        rebuildMusicEqChain();
+        let autoPlayWhenReady = () => {
+            startMusicPlayback().catch(() => {
+                /* autoplay may be blocked without further gesture; user can press play */
+            });
+        };
+        if (musicAudio.readyState >= 2) {
+            autoPlayWhenReady();
+        } else {
+            musicAudio.addEventListener("canplay", autoPlayWhenReady, { once: true });
+        }
+    };
     if (musicPlayButton && musicSegmentSliderEl && musicSegmentTrackEl && musicSegmentSeekEl
         && musicSegmentHandleStart && musicSegmentHandleEnd && musicAddRemoveButton && musicFileInput && musicCard) {
         musicAddRemoveButton.addEventListener("click", () => {
@@ -3773,50 +3952,14 @@ function addExtra() {
                 musicFileInput.value = "";
                 return;
             }
+            musicRestoreCancelToken++;
             if (!initMusicAudioGraph()) {
                 musicFileInput.value = "";
                 return;
             }
-            if (musicObjectUrl) {
-                URL.revokeObjectURL(musicObjectUrl);
-            }
-            if (musicAudio) {
-                musicAudio.pause();
-                musicSpectrumViz.stop();
-                musicPlayButton.innerText = "▶";
-                musicPlayButton.classList.remove("playback-active");
-            }
-            musicObjectUrl = URL.createObjectURL(file);
-            musicSegStartU = 0;
-            musicSegEndU = 1;
-            musicAudio.src = musicObjectUrl;
-            musicAudio.load();
-            musicFileLoaded = true;
-            musicCard.classList.add("music-file-loaded");
-            if (musicPlaybackPanel) {
-                musicPlaybackPanel.setAttribute("aria-hidden", "false");
-            }
-            musicPlayButton.disabled = false;
-            musicSegmentSliderEl.classList.remove("music-segment-slider-disabled");
-            let onMusicMeta = () => {
-                clampMusicSegmentBounds();
-                syncMusicSegmentVisuals();
-            };
-            musicAudio.addEventListener("loadedmetadata", onMusicMeta, { once: true });
-            syncMusicSegmentVisuals();
-            musicAddRemoveButton.textContent = "- Remove Music";
-            rebuildMusicEqChain();
+            wireMusicLoadedFromBlob(file, null);
+            persistMusicFileToIndexedDb(file);
             musicFileInput.value = "";
-            let autoPlayWhenReady = () => {
-                startMusicPlayback().catch(() => {
-                    /* autoplay may be blocked without further gesture; user can press play */
-                });
-            };
-            if (musicAudio.readyState >= 2) {
-                autoPlayWhenReady();
-            } else {
-                musicAudio.addEventListener("canplay", autoPlayWhenReady, { once: true });
-            }
             setTimeout(() => {
                 musicAddRemoveButton.blur();
                 musicFileInput.blur();
@@ -3876,6 +4019,7 @@ function addExtra() {
                 } else {
                     finishTrimEnd();
                 }
+                persistMusicSegmentToLocalStorage();
             }, musicTrimIdleApplyMs);
         };
         let bindTrimHandle = (handleEl, which) => {
@@ -3918,6 +4062,7 @@ function addExtra() {
                     } else {
                         finishTrimEnd();
                     }
+                    persistMusicSegmentToLocalStorage();
                 }
             };
             handleEl.addEventListener("pointerup", (e) => {
@@ -3952,9 +4097,43 @@ function addExtra() {
                 musicSegmentSeekEl.releasePointerCapture(e.pointerId);
             } catch (err) { /* noop */ }
             syncMusicSegmentVisuals();
+            persistMusicSegmentToLocalStorage();
         };
         musicSegmentSeekEl.addEventListener("pointerup", endSeekDrag);
         musicSegmentSeekEl.addEventListener("pointercancel", endSeekDrag);
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "hidden" && musicFileLoaded) {
+                persistMusicSegmentToLocalStorage();
+            }
+        });
+        let tryRestorePersistedMusic = () => {
+            if (!window.indexedDB || musicFileLoaded) {
+                return;
+            }
+            let tRestore = musicRestoreCancelToken;
+            idbGetCringraphMusicRecord().then((rec) => {
+                if (tRestore !== musicRestoreCancelToken || musicFileLoaded || !rec || !rec.blob) {
+                    return;
+                }
+                let blobBytes = typeof rec.blob.size === "number" ? rec.blob.size
+                    : (typeof rec.size === "number" ? rec.size : 0);
+                if (blobBytes > CRINGRAPH_MUSIC_MAX_PERSIST_BYTES) {
+                    void clearPersistedMusic();
+                    return;
+                }
+                if (!window.AudioContext && !window.webkitAudioContext) {
+                    return;
+                }
+                if (!initMusicAudioGraph()) {
+                    return;
+                }
+                let seg = loadMusicSegmentFromLocalStorage();
+                wireMusicLoadedFromBlob(rec.blob, seg);
+            }).catch(() => {
+                /* private mode / quota / unsupported */
+            });
+        };
+        tryRestorePersistedMusic();
     }
     let syncToneGeneratorToEqFrequencyHz = (hz) => {
         hz = Math.min(20000, Math.max(20, Math.round(Number(hz)) || 20));
