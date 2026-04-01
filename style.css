@@ -178,6 +178,11 @@ input[type=number] { width:2.3em; border:1px solid #899174; height:1.5em; }
 .lineLabel { pointer-events:none; }
 .lineLabel rect { fill:rgba(255,255,255,0.6); }
 
+svg#fr-graph g.lineLabel,
+svg#fr-graph g.lineLabel * {
+    pointer-events: none;
+}
+
 .inspector { pointer-events:none; }
 .inspector line { stroke-width:0.8px; stroke:#266149; }
 
@@ -316,6 +321,44 @@ svg#fr-graph {
 svg#fr-graph g.music-spectrum-viz path.music-spectrum-fill {
     fill: var(--background-color-contrast-more);
     opacity: 0.2;
+    stroke: none;
+}
+
+svg#fr-graph g.eq-filter-markers {
+    pointer-events: none;
+}
+
+svg#fr-graph g.eq-filter-markers circle.eq-filter-marker {
+    fill: var(--background-color-graph);
+    --eq-filter-marker-cy-nudge: 0.5px;
+    transform: translateY(var(--eq-filter-marker-cy-nudge, 0px));
+    vector-effect: non-scaling-stroke;
+    paint-order: stroke fill;
+}
+
+/* Hover fill is set in JS to match stroke (trace color). */
+
+/* EQ node preview (Equalizer tab) */
+svg#fr-graph g.eq-hover-preview {
+    pointer-events: none;
+}
+
+svg#fr-graph g.eq-hover-preview g.eq-hover-preview-nudge {
+    --eq-filter-marker-cy-nudge: 0.5px;
+    transform: translateY(var(--eq-filter-marker-cy-nudge, 0px));
+}
+
+svg#fr-graph g.eq-hover-preview circle.eq-hover-preview-disc {
+    fill: var(--background-color-contrast-more);
+    stroke: none;
+}
+
+svg#fr-graph g.eq-pointer-follower {
+    pointer-events: none;
+}
+
+svg#fr-graph g.eq-pointer-follower circle.eq-pointer-follower-disc {
+    fill: var(--font-color-primary);
     stroke: none;
 }
 

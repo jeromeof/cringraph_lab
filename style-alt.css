@@ -128,6 +128,12 @@ g.lineLabel text {
     font-weight: 700;
 }
 
+/* Below, svg#fr-graph rect { pointer-events: all } would re-enable hits on label rects; keep labels inert */
+svg#fr-graph g.lineLabel,
+svg#fr-graph g.lineLabel * {
+    pointer-events: none;
+}
+
 svg#fr-graph {
     position: relative;
     
@@ -144,6 +150,46 @@ rect.graphBackground {
 svg#fr-graph g.music-spectrum-viz path.music-spectrum-fill {
     fill: var(--background-color-contrast-more);
     opacity: 0.2;
+    stroke: none;
+}
+
+/* EQ band markers: graph fill, stroke set in JS per curve. Nudge Y to align with curveNatural path vs linear interp. */
+svg#fr-graph g.eq-filter-markers {
+    pointer-events: none;
+}
+
+svg#fr-graph g.eq-filter-markers circle.eq-filter-marker {
+    fill: var(--background-color-graph);
+    /* Optical vertical tweak (e.g. 0.35px–0.8px); sign flips if dots sit high vs low */
+    --eq-filter-marker-cy-nudge: 0.5px;
+    transform: translateY(var(--eq-filter-marker-cy-nudge, 0px));
+    vector-effect: non-scaling-stroke;
+    paint-order: stroke fill;
+}
+
+/* Hover fill is set in JS to match stroke (trace color). */
+
+/* EQ node preview (Equalizer tab); fill matches PEQ emphasis token; cursor hidden on plot hit rect in JS */
+svg#fr-graph g.eq-hover-preview {
+    pointer-events: none;
+}
+
+svg#fr-graph g.eq-hover-preview g.eq-hover-preview-nudge {
+    --eq-filter-marker-cy-nudge: 0.5px;
+    transform: translateY(var(--eq-filter-marker-cy-nudge, 0px));
+}
+
+svg#fr-graph g.eq-hover-preview circle.eq-hover-preview-disc {
+    fill: var(--background-color-contrast-more);
+    stroke: none;
+}
+
+svg#fr-graph g.eq-pointer-follower {
+    pointer-events: none;
+}
+
+svg#fr-graph g.eq-pointer-follower circle.eq-pointer-follower-disc {
+    fill: var(--font-color-primary);
     stroke: none;
 }
 
