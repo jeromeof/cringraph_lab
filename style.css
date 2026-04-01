@@ -4,7 +4,7 @@ html { background:#e5e5e5; }
 .graphBackground { fill:white; }
 .main { min-height:100vh; display:flex; flex-direction:column; }
 .graphBox { margin:0.25em auto 0.75em; }
-#fr-graph { width:calc((100vh - 13.5em) * 800 / 346); max-width:100%; }
+#fr-graph { width:calc((100vh - 13.5em) * 800 / 360); max-width:100%; }
 svg text { cursor:default; user-select:none; }
 .controls { flex:auto; display:flex; flex-flow:row-reverse wrap; }
 .manage,.select { flex:1; margin:0 0.8em; font-size:large; }
@@ -268,7 +268,7 @@ input[type=number] { width:2.3em; border:1px solid #899174; height:1.5em; }
 
 /*****
 Restoring original layout after DOM changes *****/
-/* Note to self: Graph aspect ratio is 800:346 */
+/* Note to self: Graph aspect ratio is 800:360 (viewBox height matches H0) */
 
 body {
     opacity: 1.0;
@@ -310,6 +310,13 @@ div.graphBox {
 
 svg#fr-graph {
     width: 100%;
+    overflow: visible;
+}
+
+svg#fr-graph g.music-spectrum-viz path.music-spectrum-fill {
+    fill: var(--background-color-contrast-more);
+    opacity: 0.2;
+    stroke: none;
 }
 
 div.manage {
@@ -374,7 +381,7 @@ div.phone-item-add {
     }
     
     div.graphBox {
-        max-width: calc((100vh - 10.625em - 3em) *  (800/346));
+        max-width: calc((100vh - 10.625em - 3em) *  (800/360));
     }
 }
 

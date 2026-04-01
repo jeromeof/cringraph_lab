@@ -24,7 +24,7 @@ doc.html(`
     <section class="parts-primary">
     <div class="graphBox" data-sticky-graph="`+ alt_sticky_graph +`" data-animated="`+ alt_animated +`">
       <div class="graph-sizer">
-        <svg id="fr-graph" viewBox="0 0 800 346" data-labels-position="`+ labelsPosition +`"></svg>
+        <svg id="fr-graph" viewBox="0 0 800 360" data-labels-position="`+ labelsPosition +`"></svg>
       </div>
 
       <div class="tools collapseTools">
@@ -388,6 +388,14 @@ let fade = defs.append("mask")
 fade.append("rect").attrs({ x:0, y:0, width:W, height:H, fill:"white" });
 let fadeEdge = fade.selectAll().data([0,1]).join("rect")
     .attrs(i=>({ x:i?W-fW:0, width:fW, y:0,height:H, fill:"url(#grad"+i+")" }));
+let spectrumClipBleed = 4;
+defs.append("clipPath").attr("id", "spectrum-clip-inner")
+    .append("rect").attrs({
+        x: -spectrumClipBleed,
+        y: -spectrumClipBleed,
+        width: W + 2 * spectrumClipBleed,
+        height: H + 2 * spectrumClipBleed
+    });
 let line = d3.line()
     .x(d=>x(d[0]))
     .y(d=>y(d[1]))
@@ -903,6 +911,129 @@ let gpath = gr.insert("g",".dBScaler")
     .attr("stroke-width",2.3)
     .attr("class", "curves-g")
     .attr("mask","url(#graphFade)");
+let gSpectrum = gr.insert("g", ".curves-g")
+    .attr("class", "music-spectrum-viz")
+    .attr("pointer-events", "none")
+    .attr("transform", "translate(" + pad.l + "," + pad.t + ")")
+    .attr("clip-path", "url(#spectrum-clip-inner)");
+let musicSpectrumPathSel = gSpectrum.append("path")
+    .attr("class", "music-spectrum-fill");
+let musicSpectrumViz = {
+    analyser: null,
+    context: null,
+    floatBuffer: null,
+    rafId: null,
+    pathSel: musicSpectrumPathSel,
+    isActive: () => false,
+    syncSpectrumViz: () => {},
+    ensureBuffer: function () {
+        if (!this.analyser) {
+            return;
+        }
+        let n = this.analyser.frequencyBinCount;
+        if (!this.floatBuffer || this.floatBuffer.length !== n) {
+            this.floatBuffer = new Float32Array(n);
+        }
+    },
+    stop: function () {
+        if (this.rafId !== null) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+        }
+        if (this.pathSel) {
+            this.pathSel.attr("d", "");
+        }
+    },
+    tick: function () {
+        let self = musicSpectrumViz;
+        self.rafId = null;
+        if (!self.analyser || !self.floatBuffer || !self.pathSel || !self.context || !self.isActive()) {
+            if (self.pathSel) {
+                self.pathSel.attr("d", "");
+            }
+            return;
+        }
+        self.analyser.getFloatFrequencyData(self.floatBuffer);
+        self.pathSel.attr("d", buildMusicSpectrumPath(self.floatBuffer));
+        self.rafId = requestAnimationFrame(() => self.tick());
+    },
+    start: function () {
+        if (!this.analyser || !this.pathSel) {
+            return;
+        }
+        this.stop();
+        this.rafId = requestAnimationFrame(() => this.tick());
+    }
+};
+/* gamma < 1: fewer polyline vertices in the lowest decades so the fill does not trace FFT
+   leakage point-by-point (looks too gradual on a log frequency axis). */
+let spectrumPathLogSampleGamma = 0.63;
+function buildMusicSpectrumPath(floatFreq) {
+    let ctx = musicSpectrumViz.context;
+    if (!ctx || !floatFreq || !floatFreq.length) {
+        return "";
+    }
+    let sr = ctx.sampleRate;
+    let nyquist = sr / 2;
+    let binCount = floatFreq.length;
+    let hzPerBin = nyquist / binCount;
+    let magAtHz = (f) => {
+        if (f <= 0) {
+            f = 1;
+        }
+        let idx = f / hzPerBin;
+        let i0 = Math.floor(idx);
+        let i1 = Math.min(i0 + 1, binCount - 1);
+        let t = idx - i0;
+        return floatFreq[i0] * (1 - t) + floatFreq[i1] * t;
+    };
+    let x0 = x.domain()[0];
+    let x1 = Math.min(x.domain()[1], nyquist * 0.995);
+    if (x1 <= x0 * 1.02) {
+        return "";
+    }
+    let nPoints = 128;
+    let yBottomLocal = H;
+    let d0 = y.domain()[0];
+    let d1 = y.domain()[1];
+    let dbs = [];
+    let freqs = [];
+    for (let i = 0; i <= nPoints; i++) {
+        let u = i / nPoints;
+        let uEff = u <= 0 ? 0 : Math.pow(u, spectrumPathLogSampleGamma);
+        let f = x0 * Math.pow(x1 / x0, uEff);
+        freqs.push(f);
+        dbs.push(magAtHz(f));
+    }
+    let hi = -Infinity;
+    let lo = Infinity;
+    for (let j = 0; j < dbs.length; j++) {
+        let v = dbs[j];
+        if (Number.isFinite(v)) {
+            hi = Math.max(hi, v);
+            lo = Math.min(lo, v);
+        }
+    }
+    if (!Number.isFinite(hi) || !Number.isFinite(lo)) {
+        return "";
+    }
+    let minSpanDb = 42;
+    let spanDb = Math.max(minSpanDb, hi - lo);
+    let baseDb = hi - spanDb;
+    let pts = [];
+    for (let i = 0; i <= nPoints; i++) {
+        let n = (dbs[i] - baseDb) / spanDb;
+        n = Math.max(0, Math.min(1, n));
+        let spl = d0 + n * (d1 - d0) * 0.92;
+        pts.push([x(freqs[i]) - pad.l, y(spl) - pad.t]);
+    }
+    let d = "M" + pts[0][0] + "," + yBottomLocal;
+    pts.forEach((p) => {
+        d += " L" + p[0] + "," + p[1];
+    });
+    d += " L" + pts[pts.length - 1][0] + "," + yBottomLocal + " Z";
+    return d;
+}
 function hl(p, h) {
     gpath.selectAll("path").filter(c=>c.p===p).classed("highlight",h);
 }
@@ -2800,16 +2931,19 @@ function addExtra() {
     let pinkNoiseContext = null;
     let pinkNoiseProcessor = null;
     let pinkNoiseMasterGain = null;
+    let pinkNoiseAnalyser = null;
     let pinkNoiseBiquads = [];
     let pinkNoiseBandFilters = [];
     let toneGeneratorBiquads = [];
     let toneGeneratorMasterGain = null;
+    let toneGeneratorAnalyser = null;
     let musicBiquads = [];
     let musicBandFilters = [];
     let musicContext = null;
     let musicAudio = null;
     let musicMediaSourceNode = null;
     let musicMasterGain = null;
+    let musicAnalyser = null;
     let musicObjectUrl = null;
     let musicFileLoaded = false;
     let musicSeekDragging = false;
@@ -2965,6 +3099,22 @@ function addExtra() {
     if (livePlaybackEqToggle) {
         livePlaybackEqToggle.addEventListener("change", scheduleLiveEqSync);
     }
+    let configureLiveSpectrumAnalyser = (a) => {
+        a.fftSize = 2048;
+        a.smoothingTimeConstant = 0.82;
+        /* getFloatFrequencyData() is clamped to [minDecibels, maxDecibels]; a low max
+           flattens loud bass (many bins hit the ceiling → horizontal line on the graph). */
+        a.minDecibels = -100;
+        a.maxDecibels = 0;
+    };
+    let disconnectToneGeneratorAnalyser = () => {
+        if (toneGeneratorAnalyser) {
+            try {
+                toneGeneratorAnalyser.disconnect();
+            } catch (e) { /* noop */ }
+            toneGeneratorAnalyser = null;
+        }
+    };
     let stopPinkNoisePlayback = () => {
         if (!pinkNoisePlaying) {
             return;
@@ -2985,6 +3135,13 @@ function addExtra() {
             pinkNoiseMasterGain.disconnect();
             pinkNoiseMasterGain = null;
         }
+        if (pinkNoiseAnalyser) {
+            try {
+                pinkNoiseAnalyser.disconnect();
+            } catch (e) { /* noop */ }
+            pinkNoiseAnalyser = null;
+        }
+        musicSpectrumViz.syncSpectrumViz();
     };
     let createPinkNoiseProcessor = (audioContext) => {
         let bufferSize = 4096;
@@ -3187,6 +3344,7 @@ function addExtra() {
             musicPlayButton.innerText = "▶";
             musicPlayButton.classList.remove("playback-active");
         }
+        musicSpectrumViz.syncSpectrumViz();
     };
     let toneGeneratorContext = null;
     let toneGeneratorOsc = null;
@@ -3267,6 +3425,7 @@ function addExtra() {
                 toneGeneratorMasterGain.disconnect();
                 toneGeneratorMasterGain = null;
             }
+            disconnectToneGeneratorAnalyser();
             toneGeneratorPlayButton.innerText = "▶";
             toneGeneratorPlayButton.classList.remove("playback-active");
         }
@@ -3278,13 +3437,18 @@ function addExtra() {
         // rebuildPinkNoiseEqChain requires pinkNoisePlaying — set before first build
         pinkNoisePlaying = true;
         rebuildPinkNoiseEqChain();
-        pinkNoiseMasterGain.connect(pinkNoiseContext.destination);
+        pinkNoiseAnalyser = pinkNoiseAnalyser || pinkNoiseContext.createAnalyser();
+        configureLiveSpectrumAnalyser(pinkNoiseAnalyser);
+        pinkNoiseMasterGain.disconnect();
+        pinkNoiseMasterGain.connect(pinkNoiseAnalyser);
+        pinkNoiseAnalyser.connect(pinkNoiseContext.destination);
         pinkNoisePlayButton.innerText = "⏹";
         pinkNoisePlayButton.classList.add("playback-active");
         lastEqPlaybackSource = "pink";
         if (pinkNoiseContext.state !== "running") {
             void pinkNoiseContext.resume();
         }
+        musicSpectrumViz.syncSpectrumViz();
     });
     // Tone Generator
     toneGeneratorFromInput.addEventListener("input", scheduleLiveEqSync);
@@ -3372,8 +3536,10 @@ function addExtra() {
                 toneGeneratorMasterGain.disconnect();
                 toneGeneratorMasterGain = null;
             }
+            disconnectToneGeneratorAnalyser();
             toneGeneratorPlayButton.innerText = "▶";
             toneGeneratorPlayButton.classList.remove("playback-active");
+            musicSpectrumViz.syncSpectrumViz();
         } else {
             stopPinkNoisePlayback();
             pauseMusicForLiveSoundSwitch();
@@ -3390,7 +3556,11 @@ function addExtra() {
             toneGeneratorMasterGain = toneGeneratorContext.createGain();
             toneGeneratorMasterGain.gain.value = liveToneGeneratorPlaybackGain;
             rebuildToneGeneratorEqChain();
-            toneGeneratorMasterGain.connect(toneGeneratorContext.destination);
+            toneGeneratorAnalyser = toneGeneratorAnalyser || toneGeneratorContext.createAnalyser();
+            configureLiveSpectrumAnalyser(toneGeneratorAnalyser);
+            toneGeneratorMasterGain.disconnect();
+            toneGeneratorMasterGain.connect(toneGeneratorAnalyser);
+            toneGeneratorAnalyser.connect(toneGeneratorContext.destination);
             toneGeneratorOsc.start();
             toneGeneratorPlayButton.innerText = "⏹";
             toneGeneratorPlayButton.classList.add("playback-active");
@@ -3398,6 +3568,7 @@ function addExtra() {
             if (toneGeneratorContext.state !== "running") {
                 void toneGeneratorContext.resume();
             }
+            musicSpectrumViz.syncSpectrumViz();
         }
     });
     let removeMusicTrack = () => {
@@ -3417,6 +3588,7 @@ function addExtra() {
         musicFileLoaded = false;
         musicSeekDragging = false;
         musicTrimDragging = null;
+        musicSpectrumViz.stop();
         if (musicTrimIdleTimer !== null) {
             clearTimeout(musicTrimIdleTimer);
             musicTrimIdleTimer = null;
@@ -3458,6 +3630,12 @@ function addExtra() {
             } catch (err) { /* noop */ }
             musicMasterGain = null;
         }
+        if (musicAnalyser) {
+            try {
+                musicAnalyser.disconnect();
+            } catch (err) { /* noop */ }
+            musicAnalyser = null;
+        }
         if (musicContext && musicContext.state !== "closed") {
             void musicContext.close();
         }
@@ -3466,6 +3644,7 @@ function addExtra() {
         if (lastEqPlaybackSource === "music") {
             lastEqPlaybackSource = "pink";
         }
+        musicSpectrumViz.syncSpectrumViz();
     };
     let initMusicAudioGraph = () => {
         if (musicContext) {
@@ -3488,7 +3667,11 @@ function addExtra() {
         musicMasterGain = musicContext.createGain();
         musicMasterGain.gain.value = liveMusicPlaybackGain;
         rebuildMusicEqChain();
-        musicMasterGain.connect(musicContext.destination);
+        musicAnalyser = musicContext.createAnalyser();
+        configureLiveSpectrumAnalyser(musicAnalyser);
+        musicMasterGain.connect(musicAnalyser);
+        musicAnalyser.connect(musicContext.destination);
+        musicSpectrumViz.syncSpectrumViz();
         return true;
     };
     let stopPinkAndToneForExclusiveMusic = () => {
@@ -3505,9 +3688,49 @@ function addExtra() {
                 toneGeneratorMasterGain.disconnect();
                 toneGeneratorMasterGain = null;
             }
+            disconnectToneGeneratorAnalyser();
             toneGeneratorPlayButton.innerText = "▶";
             toneGeneratorPlayButton.classList.remove("playback-active");
         }
+    };
+    musicSpectrumViz.isActive = function () {
+        let v = musicSpectrumViz;
+        if (v.analyser === musicAnalyser && musicContext) {
+            return musicFileLoaded && musicAudio && !musicAudio.paused;
+        }
+        if (v.analyser === pinkNoiseAnalyser) {
+            return !!pinkNoisePlaying;
+        }
+        if (v.analyser === toneGeneratorAnalyser) {
+            return !!toneGeneratorOsc;
+        }
+        return false;
+    };
+    musicSpectrumViz.syncSpectrumViz = function () {
+        musicSpectrumViz.stop();
+        if (musicFileLoaded && musicAudio && !musicAudio.paused && musicContext && musicAnalyser) {
+            musicSpectrumViz.analyser = musicAnalyser;
+            musicSpectrumViz.context = musicContext;
+            musicSpectrumViz.ensureBuffer();
+            musicSpectrumViz.start();
+            return;
+        }
+        if (pinkNoisePlaying && pinkNoiseContext && pinkNoiseAnalyser) {
+            musicSpectrumViz.analyser = pinkNoiseAnalyser;
+            musicSpectrumViz.context = pinkNoiseContext;
+            musicSpectrumViz.ensureBuffer();
+            musicSpectrumViz.start();
+            return;
+        }
+        if (toneGeneratorOsc && toneGeneratorContext && toneGeneratorAnalyser) {
+            musicSpectrumViz.analyser = toneGeneratorAnalyser;
+            musicSpectrumViz.context = toneGeneratorContext;
+            musicSpectrumViz.ensureBuffer();
+            musicSpectrumViz.start();
+            return;
+        }
+        musicSpectrumViz.analyser = null;
+        musicSpectrumViz.context = null;
     };
     let startMusicPlayback = () => {
         if (!musicFileLoaded || !musicAudio || !musicContext || !musicPlayButton) {
@@ -3528,6 +3751,7 @@ function addExtra() {
             musicPlayButton.innerText = "⏹";
             musicPlayButton.classList.add("playback-active");
             lastEqPlaybackSource = "music";
+            musicSpectrumViz.syncSpectrumViz();
         });
     };
     if (musicPlayButton && musicSegmentSliderEl && musicSegmentTrackEl && musicSegmentSeekEl
@@ -3558,6 +3782,7 @@ function addExtra() {
             }
             if (musicAudio) {
                 musicAudio.pause();
+                musicSpectrumViz.stop();
                 musicPlayButton.innerText = "▶";
                 musicPlayButton.classList.remove("playback-active");
             }
@@ -3609,6 +3834,7 @@ function addExtra() {
                 musicAudio.pause();
                 musicPlayButton.innerText = "▶";
                 musicPlayButton.classList.remove("playback-active");
+                musicSpectrumViz.syncSpectrumViz();
             }
         });
         let finishTrimStart = () => {

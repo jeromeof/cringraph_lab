@@ -134,10 +134,17 @@ svg#fr-graph {
     background-color: var(--background-color-graph);
     
     pointer-events: none;
+    overflow: visible;
 }
 
 rect.graphBackground {
     opacity: 0.0;
+}
+
+svg#fr-graph g.music-spectrum-viz path.music-spectrum-fill {
+    fill: var(--background-color-contrast-more);
+    opacity: 0.2;
+    stroke: none;
 }
 
 g.dBScaler {
