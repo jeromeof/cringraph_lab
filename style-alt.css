@@ -1547,7 +1547,7 @@ div.extra-panel .live-sound-tools .extra-music .music-play-row button.play {
     font-size: 14px;
     line-height: 1;
     background-color: var(--background-color-contrast) !important;
-    color: var(--accent-color-contrast) !important;
+    color: var(--background-color-contrast-more) !important;
     border-radius: 100px !important;
 }
 
@@ -1857,7 +1857,7 @@ body.theme-contrast div.extra-panel .live-sound-tools .extra-pink-noise .live-so
 body.theme-contrast div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row button.play,
 body.theme-contrast div.extra-panel .live-sound-tools .extra-music .music-play-row button.play:not(:disabled) {
     background-color: var(--background-color-contrast) !important;
-    color: var(--font-color-secondary) !important;
+    color: var(--background-color-contrast-more) !important;
 }
 
 body.theme-contrast div.extra-panel .live-sound-tools .extra-pink-noise button.play.playback-active,
