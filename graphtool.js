@@ -154,7 +154,18 @@ doc.html(`
                         <button type="button" class="play" disabled aria-label="Toggle music playback">▶</button>
                       </div>
                       <div class="live-sound-slider-row music-slider-row">
-                        <input name="music-progress" type="range" min="0" max="1" step="0.0001" value="0" disabled aria-label="Music playback position" />
+                        <div class="music-segment-slider music-segment-slider-disabled" role="group" aria-label="Playback and loop range">
+                          <div class="music-segment-track">
+                            <div class="music-segment-rail-bg" aria-hidden="true"></div>
+                            <div class="music-segment-outside music-segment-outside-l" aria-hidden="true"></div>
+                            <div class="music-segment-outside music-segment-outside-r" aria-hidden="true"></div>
+                            <div class="music-segment-looped" aria-hidden="true"></div>
+                            <div class="music-segment-progress" aria-hidden="true"></div>
+                            <div class="music-segment-seek"></div>
+                            <button type="button" class="music-segment-handle music-segment-handle-start" tabindex="-1" aria-label="Loop start"></button>
+                            <button type="button" class="music-segment-handle music-segment-handle-end" tabindex="-1" aria-label="Loop end"></button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2801,7 +2812,11 @@ function addExtra() {
     let musicMasterGain = null;
     let musicObjectUrl = null;
     let musicFileLoaded = false;
-    let musicSliderDragging = false;
+    let musicSeekDragging = false;
+    let musicSegStartU = 0;
+    let musicSegEndU = 1;
+    let musicTrimDragging = null;
+    let musicTrimIdleTimer = null;
     let liveEqSyncTimer = null;
     let livePlaybackEqToggle = document.querySelector("input.live-sound-eq-toggle");
     let isLivePlaybackEqEnabled = () =>
@@ -3005,20 +3020,163 @@ function addExtra() {
     let toneGeneratorAddFilterButton = document.querySelector(
         "div.extra-tone-generator button.tone-generator-add-filter");
     let musicPlayButton = document.querySelector("div.extra-music .play");
-    let musicSlider = document.querySelector("div.live-sound-tools input[name='music-progress']");
     let musicAddRemoveButton = document.querySelector("div.extra-music button.music-add-remove");
     let musicFileInput = document.querySelector("div.extra-music input.music-file-input");
     let musicCard = document.querySelector("div.extra-music");
     let musicPlaybackPanel = document.querySelector("div.extra-music .music-playback-panel");
-    let syncMusicSliderFromAudio = () => {
-        if (musicSliderDragging || !musicFileLoaded || !musicAudio || !musicSlider) {
-            return;
+    let musicSegmentSliderEl = musicCard && musicCard.querySelector(".music-segment-slider");
+    let musicSegmentTrackEl = musicSegmentSliderEl && musicSegmentSliderEl.querySelector(".music-segment-track");
+    let musicSegmentSeekEl = musicSegmentTrackEl && musicSegmentTrackEl.querySelector(".music-segment-seek");
+    let musicSegmentProgressEl = musicSegmentTrackEl && musicSegmentTrackEl.querySelector(".music-segment-progress");
+    let musicSegmentOutsideLeftEl = musicSegmentTrackEl && musicSegmentTrackEl.querySelector(".music-segment-outside-l");
+    let musicSegmentOutsideRightEl = musicSegmentTrackEl && musicSegmentTrackEl.querySelector(".music-segment-outside-r");
+    let musicSegmentLoopedEl = musicSegmentTrackEl && musicSegmentTrackEl.querySelector(".music-segment-looped");
+    let musicSegmentHandleStart = musicSegmentTrackEl && musicSegmentTrackEl.querySelector(".music-segment-handle-start");
+    let musicSegmentHandleEnd = musicSegmentTrackEl && musicSegmentTrackEl.querySelector(".music-segment-handle-end");
+    let musicSegmentHandleInsetPx = 8;
+    let getMusicDuration = () => {
+        if (!musicAudio) {
+            return 0;
         }
         let d = musicAudio.duration;
-        if (!Number.isFinite(d) || d <= 0) {
+        return Number.isFinite(d) && d > 0 ? d : 0;
+    };
+    let musicSegMinGapU = () => {
+        let d = getMusicDuration();
+        if (d <= 0) {
+            return 0.001;
+        }
+        let minSec = Math.min(0.15, d * 0.1);
+        return minSec / d;
+    };
+    let clampMusicSegmentBounds = () => {
+        let gap = musicSegMinGapU();
+        musicSegStartU = Math.max(0, Math.min(1, musicSegStartU));
+        musicSegEndU = Math.max(0, Math.min(1, musicSegEndU));
+        if (musicSegEndU - musicSegStartU >= gap) {
             return;
         }
-        musicSlider.value = String(Math.min(1, Math.max(0, musicAudio.currentTime / d)));
+        if (musicTrimDragging === "start") {
+            musicSegEndU = Math.min(1, musicSegStartU + gap);
+        } else if (musicTrimDragging === "end") {
+            musicSegStartU = Math.max(0, musicSegEndU - gap);
+        } else {
+            musicSegEndU = Math.min(1, musicSegStartU + gap);
+        }
+    };
+    let syncMusicSegmentVisuals = () => {
+        if (!musicSegmentTrackEl) {
+            return;
+        }
+        let su = musicSegStartU;
+        let eu = musicSegEndU;
+        let inset = musicSegmentHandleInsetPx;
+        let innerSpan = `(100% - ${2 * inset}px)`;
+        let innerLeft = (u) => `calc(${inset}px + ${innerSpan} * ${u})`;
+        if (musicSegmentOutsideLeftEl) {
+            musicSegmentOutsideLeftEl.style.width = innerLeft(su);
+        }
+        if (musicSegmentOutsideRightEl) {
+            musicSegmentOutsideRightEl.style.left = innerLeft(eu);
+            musicSegmentOutsideRightEl.style.width = `calc(100% - ${inset}px - ${innerSpan} * ${eu})`;
+        }
+        if (musicSegmentLoopedEl) {
+            musicSegmentLoopedEl.style.left = innerLeft(su);
+            musicSegmentLoopedEl.style.width = `calc(${innerSpan} * ${eu - su})`;
+        }
+        if (musicSegmentHandleStart) {
+            musicSegmentHandleStart.style.left = innerLeft(su);
+        }
+        if (musicSegmentHandleEnd) {
+            musicSegmentHandleEnd.style.left = innerLeft(eu);
+        }
+        let d = getMusicDuration();
+        let spanU = Math.max(0, eu - su);
+        let uSeg = 0;
+        if (d > 0 && spanU > 0 && musicAudio) {
+            let t0 = su * d;
+            let t1 = eu * d;
+            let ct = Math.min(t1, Math.max(t0, musicAudio.currentTime));
+            uSeg = (ct - t0) / (t1 - t0);
+        }
+        if (musicSegmentProgressEl) {
+            musicSegmentProgressEl.style.left = innerLeft(su);
+            musicSegmentProgressEl.style.width = `calc(${innerSpan} * ${uSeg * spanU})`;
+        }
+    };
+    let pointerToMusicSegmentU = (clientX) => {
+        if (!musicSegmentTrackEl) {
+            return 0;
+        }
+        let rect = musicSegmentTrackEl.getBoundingClientRect();
+        if (rect.width <= 0) {
+            return 0;
+        }
+        return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    };
+    let pointerToMusicHandleU = (clientX) => {
+        if (!musicSegmentTrackEl) {
+            return 0;
+        }
+        let rect = musicSegmentTrackEl.getBoundingClientRect();
+        let inset = musicSegmentHandleInsetPx;
+        let usable = rect.width - 2 * inset;
+        if (usable <= 0) {
+            return 0.5;
+        }
+        return Math.min(1, Math.max(0, (clientX - rect.left - inset) / usable));
+    };
+    let seekMusicToClientX = (clientX) => {
+        if (!musicFileLoaded || !musicAudio || !musicSegmentTrackEl) {
+            return;
+        }
+        let d = getMusicDuration();
+        if (d <= 0) {
+            return;
+        }
+        let u = pointerToMusicSegmentU(clientX);
+        let t = u * d;
+        let t0 = musicSegStartU * d;
+        let t1 = musicSegEndU * d;
+        let margin = Math.min(1e-3, (t1 - t0) * 0.01);
+        musicAudio.currentTime = Math.min(t1 - margin, Math.max(t0, t));
+        syncMusicSegmentVisuals();
+    };
+    let musicAudioTimeUpdateHandler = () => {
+        if (!musicFileLoaded || !musicAudio) {
+            return;
+        }
+        let d = getMusicDuration();
+        if (d <= 0) {
+            return;
+        }
+        let t0 = musicSegStartU * d;
+        let t1 = musicSegEndU * d;
+        if (!musicAudio.paused && t1 > t0) {
+            let span = t1 - t0;
+            let wrapEps = Math.min(0.05, Math.max(0.001, span * 0.05));
+            if (musicAudio.currentTime >= t1 - wrapEps) {
+                musicAudio.currentTime = t0;
+            } else if (musicAudio.currentTime + 0.001 < t0) {
+                musicAudio.currentTime = t0;
+            }
+        }
+        if (!musicSeekDragging) {
+            syncMusicSegmentVisuals();
+        }
+    };
+    let musicAudioEndedHandler = () => {
+        if (!musicFileLoaded || !musicAudio) {
+            return;
+        }
+        let d = getMusicDuration();
+        if (d <= 0) {
+            return;
+        }
+        musicAudio.currentTime = musicSegStartU * d;
+        void startMusicPlayback().catch(() => {
+            /* restart after natural EOF may fail without gesture */
+        });
     };
     let pauseMusicForLiveSoundSwitch = () => {
         if (!musicAudio || musicAudio.paused) {
@@ -3244,7 +3402,8 @@ function addExtra() {
     });
     let removeMusicTrack = () => {
         if (musicAudio) {
-            musicAudio.removeEventListener("timeupdate", syncMusicSliderFromAudio);
+            musicAudio.removeEventListener("timeupdate", musicAudioTimeUpdateHandler);
+            musicAudio.removeEventListener("ended", musicAudioEndedHandler);
             musicAudio.pause();
             musicAudio.removeAttribute("src");
             try {
@@ -3256,16 +3415,23 @@ function addExtra() {
             musicObjectUrl = null;
         }
         musicFileLoaded = false;
-        musicSliderDragging = false;
+        musicSeekDragging = false;
+        musicTrimDragging = null;
+        if (musicTrimIdleTimer !== null) {
+            clearTimeout(musicTrimIdleTimer);
+            musicTrimIdleTimer = null;
+        }
+        musicSegStartU = 0;
+        musicSegEndU = 1;
         if (musicPlayButton) {
             musicPlayButton.disabled = true;
             musicPlayButton.innerText = "▶";
             musicPlayButton.classList.remove("playback-active");
         }
-        if (musicSlider) {
-            musicSlider.disabled = true;
-            musicSlider.value = "0";
+        if (musicSegmentSliderEl) {
+            musicSegmentSliderEl.classList.add("music-segment-slider-disabled");
         }
+        syncMusicSegmentVisuals();
         if (musicPlaybackPanel) {
             musicPlaybackPanel.setAttribute("aria-hidden", "true");
         }
@@ -3310,9 +3476,10 @@ function addExtra() {
         }
         musicContext = new (window.AudioContext || window.webkitAudioContext)();
         musicAudio = new Audio();
-        musicAudio.loop = true;
+        musicAudio.loop = false;
         musicAudio.preload = "auto";
-        musicAudio.addEventListener("timeupdate", syncMusicSliderFromAudio);
+        musicAudio.addEventListener("timeupdate", musicAudioTimeUpdateHandler);
+        musicAudio.addEventListener("ended", musicAudioEndedHandler);
         musicAudio.addEventListener("error", () => {
             alert("Could not load or play this audio file.");
             removeMusicTrack();
@@ -3346,6 +3513,15 @@ function addExtra() {
         if (!musicFileLoaded || !musicAudio || !musicContext || !musicPlayButton) {
             return Promise.reject(new Error("music not ready"));
         }
+        let d = getMusicDuration();
+        if (d > 0) {
+            let t0 = musicSegStartU * d;
+            let t1 = musicSegEndU * d;
+            let ct = musicAudio.currentTime;
+            if (ct < t0 || ct >= t1 - 0.02) {
+                musicAudio.currentTime = t0;
+            }
+        }
         stopPinkAndToneForExclusiveMusic();
         void musicContext.resume();
         return musicAudio.play().then(() => {
@@ -3354,7 +3530,8 @@ function addExtra() {
             lastEqPlaybackSource = "music";
         });
     };
-    if (musicPlayButton && musicSlider && musicAddRemoveButton && musicFileInput && musicCard) {
+    if (musicPlayButton && musicSegmentSliderEl && musicSegmentTrackEl && musicSegmentSeekEl
+        && musicSegmentHandleStart && musicSegmentHandleEnd && musicAddRemoveButton && musicFileInput && musicCard) {
         musicAddRemoveButton.addEventListener("click", () => {
             if (!musicFileLoaded) {
                 musicFileInput.click();
@@ -3385,6 +3562,8 @@ function addExtra() {
                 musicPlayButton.classList.remove("playback-active");
             }
             musicObjectUrl = URL.createObjectURL(file);
+            musicSegStartU = 0;
+            musicSegEndU = 1;
             musicAudio.src = musicObjectUrl;
             musicAudio.load();
             musicFileLoaded = true;
@@ -3393,7 +3572,13 @@ function addExtra() {
                 musicPlaybackPanel.setAttribute("aria-hidden", "false");
             }
             musicPlayButton.disabled = false;
-            musicSlider.disabled = false;
+            musicSegmentSliderEl.classList.remove("music-segment-slider-disabled");
+            let onMusicMeta = () => {
+                clampMusicSegmentBounds();
+                syncMusicSegmentVisuals();
+            };
+            musicAudio.addEventListener("loadedmetadata", onMusicMeta, { once: true });
+            syncMusicSegmentVisuals();
             musicAddRemoveButton.textContent = "- Remove Music";
             rebuildMusicEqChain();
             musicFileInput.value = "";
@@ -3426,26 +3611,124 @@ function addExtra() {
                 musicPlayButton.classList.remove("playback-active");
             }
         });
-        musicSlider.addEventListener("pointerdown", () => {
-            musicSliderDragging = true;
-        });
-        musicSlider.addEventListener("pointerup", () => {
-            musicSliderDragging = false;
-            syncMusicSliderFromAudio();
-        });
-        musicSlider.addEventListener("pointercancel", () => {
-            musicSliderDragging = false;
-        });
-        musicSlider.addEventListener("input", () => {
-            if (!musicFileLoaded || !musicAudio) {
+        let finishTrimStart = () => {
+            let d = getMusicDuration();
+            if (d > 0 && musicAudio) {
+                musicAudio.currentTime = musicSegStartU * d;
+            }
+            startMusicPlayback().catch(() => {
+                /* autoplay or resume may fail */
+            });
+        };
+        let finishTrimEnd = () => {
+            let d = getMusicDuration();
+            if (d > 0 && musicAudio) {
+                let t0 = musicSegStartU * d;
+                let t1 = musicSegEndU * d;
+                musicAudio.currentTime = Math.max(t0, t1 - 0.5);
+            }
+            startMusicPlayback().catch(() => {
+                /* autoplay or resume may fail */
+            });
+        };
+        let musicTrimIdleApplyMs = 100;
+        let clearMusicTrimIdleTimer = () => {
+            if (musicTrimIdleTimer !== null) {
+                clearTimeout(musicTrimIdleTimer);
+                musicTrimIdleTimer = null;
+            }
+        };
+        let scheduleMusicTrimIdleApply = (which) => {
+            clearMusicTrimIdleTimer();
+            musicTrimIdleTimer = setTimeout(() => {
+                musicTrimIdleTimer = null;
+                if (musicTrimDragging !== which) {
+                    return;
+                }
+                if (which === "start") {
+                    finishTrimStart();
+                } else {
+                    finishTrimEnd();
+                }
+            }, musicTrimIdleApplyMs);
+        };
+        let bindTrimHandle = (handleEl, which) => {
+            handleEl.addEventListener("pointerdown", (e) => {
+                if (!musicFileLoaded || e.button !== 0) {
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                musicTrimDragging = which;
+                handleEl.setPointerCapture(e.pointerId);
+                scheduleMusicTrimIdleApply(which);
+            });
+            handleEl.addEventListener("pointermove", (e) => {
+                if (musicTrimDragging !== which) {
+                    return;
+                }
+                let u = pointerToMusicHandleU(e.clientX);
+                if (which === "start") {
+                    musicSegStartU = Math.min(u, musicSegEndU - musicSegMinGapU());
+                } else {
+                    musicSegEndU = Math.max(u, musicSegStartU + musicSegMinGapU());
+                }
+                clampMusicSegmentBounds();
+                syncMusicSegmentVisuals();
+                scheduleMusicTrimIdleApply(which);
+            });
+            let endDrag = (e, applyRelease) => {
+                if (musicTrimDragging !== which) {
+                    return;
+                }
+                clearMusicTrimIdleTimer();
+                musicTrimDragging = null;
+                try {
+                    handleEl.releasePointerCapture(e.pointerId);
+                } catch (err) { /* noop */ }
+                if (applyRelease) {
+                    if (which === "start") {
+                        finishTrimStart();
+                    } else {
+                        finishTrimEnd();
+                    }
+                }
+            };
+            handleEl.addEventListener("pointerup", (e) => {
+                endDrag(e, true);
+            });
+            handleEl.addEventListener("pointercancel", (e) => {
+                endDrag(e, false);
+            });
+        };
+        bindTrimHandle(musicSegmentHandleStart, "start");
+        bindTrimHandle(musicSegmentHandleEnd, "end");
+        musicSegmentSeekEl.addEventListener("pointerdown", (e) => {
+            if (!musicFileLoaded || e.button !== 0) {
                 return;
             }
-            let d = musicAudio.duration;
-            if (!Number.isFinite(d) || d <= 0) {
+            musicSeekDragging = true;
+            musicSegmentSeekEl.setPointerCapture(e.pointerId);
+            seekMusicToClientX(e.clientX);
+        });
+        musicSegmentSeekEl.addEventListener("pointermove", (e) => {
+            if (!musicSeekDragging) {
                 return;
             }
-            musicAudio.currentTime = parseFloat(musicSlider.value) * d;
+            seekMusicToClientX(e.clientX);
         });
+        let endSeekDrag = (e) => {
+            if (!musicSeekDragging) {
+                return;
+            }
+            musicSeekDragging = false;
+            try {
+                musicSegmentSeekEl.releasePointerCapture(e.pointerId);
+            } catch (err) { /* noop */ }
+            syncMusicSegmentVisuals();
+        };
+        musicSegmentSeekEl.addEventListener("pointerup", endSeekDrag);
+        musicSegmentSeekEl.addEventListener("pointercancel", endSeekDrag);
     }
     let syncToneGeneratorToEqFrequencyHz = (hz) => {
         hz = Math.min(20000, Math.max(20, Math.round(Number(hz)) || 20));

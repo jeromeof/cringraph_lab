@@ -1616,11 +1616,11 @@ div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-genera
     border: 0;
 }
 
-/* 16px = 1px border + 1px pad + 12px thumb lane + 1px pad + 1px border (box-sizing: border-box) */
+/* 18px tall track; 2px horizontal padding so thumb outer edge stays 2px inside border */
 div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-webkit-slider-runnable-track {
     height: 18px;
     box-sizing: border-box;
-    padding: 0px 1px;
+    padding: 0px 2px;
     border: 1px solid var(--background-color-contrast-more);
     border-radius: 100px;
     background-color: var(--background-color-inputs);
@@ -1648,7 +1648,7 @@ div.extra-panel .live-sound-tools .tone-generator-slider-row input[name='tone-ge
 div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-moz-range-track {
     height: 16px;
     box-sizing: border-box;
-    padding: 1px;
+    padding: 1px 2px;
     border: 1px solid var(--background-color-contrast);
     border-radius: 100px;
     background-color: var(--background-color-inputs);
@@ -1667,6 +1667,7 @@ div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-genera
 div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-ms-track {
     height: 16px;
     box-sizing: border-box;
+    padding: 0 2px;
     border: 1px solid var(--background-color-contrast);
     border-radius: 100px;
     background-color: transparent;
@@ -1697,162 +1698,151 @@ div.extra-panel .live-sound-tools .extra-music .live-sound-slider-row.music-slid
     min-width: 0;
 }
 
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress'] {
+/* Music segment timeline: loop range + play progress fill + seek */
+div.extra-panel .live-sound-tools .extra-music .music-segment-slider {
     box-sizing: border-box;
-    display: block;
     width: 100%;
     max-width: 100%;
     min-width: 0;
     margin: 0;
-    border-radius: 100px;
-    cursor: default;
-    -webkit-appearance: none;
-    appearance: none;
-    background: transparent;
+    padding: 0;
 }
 
-div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress'] {
-    cursor: pointer;
-}
-
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:focus {
-    outline: none;
-}
-
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']::-moz-focus-outer {
-    border: 0;
-}
-
-/* Music progress — no file (disabled): track + thumb use contrast */
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-webkit-slider-runnable-track {
+div.extra-panel .live-sound-tools .extra-music .music-segment-track {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
     height: 18px;
-    box-sizing: border-box;
-    padding: 0px 1px;
-    border: 1px solid var(--background-color-contrast);
+    margin: 0;
     border-radius: 100px;
-    background-color: var(--background-color-inputs);
-}
-
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    box-sizing: border-box;
-    width: 12px;
-    height: 12px;
-    margin-top: 2px;
-    border-radius: 50%;
-    border: none;
-    background-color: var(--background-color-contrast);
-    cursor: default;
-}
-
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-moz-range-track {
-    height: 16px;
-    box-sizing: border-box;
-    padding: 1px;
-    border: 1px solid var(--background-color-contrast);
-    border-radius: 100px;
-    background-color: var(--background-color-inputs);
-}
-
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-moz-range-thumb {
-    box-sizing: border-box;
-    width: 12px;
-    height: 12px;
-    border: none;
-    border-radius: 50%;
-    background-color: var(--background-color-contrast);
-    cursor: default;
-}
-
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-ms-track {
-    height: 16px;
-    box-sizing: border-box;
-    border: 1px solid var(--background-color-contrast);
-    border-radius: 100px;
-    background-color: transparent;
-    color: transparent;
-}
-
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-ms-fill-lower,
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-ms-fill-upper {
-    background-color: var(--background-color-inputs);
-    border: none;
-    border-radius: 100px;
-}
-
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='music-progress']:disabled::-ms-thumb {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background-color: var(--background-color-contrast);
-    border: none;
-}
-
-/* Music progress — file loaded: match tone generator slider */
-div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-webkit-slider-runnable-track {
-    height: 18px;
-    box-sizing: border-box;
-    padding: 0px 1px;
+    touch-action: none;
     border: 1px solid var(--background-color-contrast-more);
-    border-radius: 100px;
-    background-color: var(--background-color-inputs);
 }
 
-div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
+div.extra-panel .live-sound-tools .extra-music .music-segment-rail-bg {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
     box-sizing: border-box;
-    width: 12px;
-    height: 12px;
-    margin-top: 2px;
-    border-radius: 50%;
-    border: none;
-    background-color: var(--background-color-contrast-more);
+    border-radius: 100px;
+    background-color: var(--background-color-inputs);
+    z-index: 0;
+    pointer-events: none;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .music-segment-rail-bg {
+    border-color: var(--background-color-contrast-more);
+}
+
+div.extra-panel .live-sound-tools .extra-music .music-segment-outside {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    box-sizing: border-box;
+    border-radius: 100px;
+    background-color: var(--background-color-contrast);
+    z-index: 1;
+    pointer-events: none;
+}
+
+div.extra-panel .live-sound-tools .extra-music .music-segment-outside-l {
+    left: 0;
+    width: 0;
+    border-top-left-radius: 100px;
+    border-bottom-left-radius: 100px;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+div.extra-panel .live-sound-tools .extra-music .music-segment-outside-r {
+    left: 100%;
+    width: 0;
+    border-top-right-radius: 100px;
+    border-bottom-right-radius: 100px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+div.extra-panel .live-sound-tools .extra-music .music-segment-looped {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 100px;
+    background: transparent;
+    z-index: 1;
+    pointer-events: none;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .music-segment-looped {
+    background-color: var(--background-color-graph);
+}
+
+div.extra-panel .live-sound-tools .extra-music .music-segment-progress {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    background-color: var(--background-color-contrast);
+    z-index: 2;
+    pointer-events: none;
+}
+
+div.extra-panel .live-sound-tools .extra-music .music-segment-seek {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    cursor: default;
+    border-radius: 100px;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .music-segment-seek {
     cursor: pointer;
 }
 
-div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-moz-range-track {
-    height: 16px;
-    box-sizing: border-box;
-    padding: 1px;
-    border: 1px solid var(--background-color-contrast);
-    border-radius: 100px;
-    background-color: var(--background-color-inputs);
-}
-
-div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-moz-range-thumb {
-    box-sizing: border-box;
+div.extra-panel .live-sound-tools .extra-music .music-segment-handle {
+    position: absolute;
+    top: 50%;
+    left: 0;
     width: 12px;
     height: 12px;
-    border: none;
-    border-radius: 50%;
-    background-color: var(--background-color-contrast-more);
-    cursor: pointer;
-}
-
-div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-ms-track {
-    height: 16px;
+    transform: translate(-50%, -50%);
+    padding: 0;
     box-sizing: border-box;
-    border: 1px solid var(--background-color-contrast);
-    border-radius: 100px;
-    background-color: transparent;
-    color: transparent;
-}
-
-div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-ms-fill-lower,
-div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-ms-fill-upper {
-    background-color: var(--background-color-inputs);
     border: none;
-    border-radius: 100px;
-}
-
-div.extra-panel .live-sound-tools .extra-music.music-file-loaded .live-sound-slider-row input[name='music-progress']::-ms-thumb {
-    width: 12px;
-    height: 12px;
     border-radius: 50%;
-    background-color: var(--background-color-contrast-more);
-    border: none;
+    background-color: var(--background-color-contrast-more) !important;
+    z-index: 5;
+    cursor: default;
+    touch-action: none;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .music-segment-handle {
+    cursor: grab;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .music-segment-handle:active {
+    cursor: grabbing;
+}
+
+div.extra-panel .live-sound-tools .extra-music .music-segment-slider-disabled .music-segment-seek {
+    pointer-events: none;
+    cursor: default;
+}
+
+div.extra-panel .live-sound-tools .extra-music .music-segment-slider-disabled .music-segment-handle {
+    pointer-events: none;
+    cursor: default;
 }
 
 /* Contrast theme: accent/contrast tokens collapse to black-on-black and white-on-white */
