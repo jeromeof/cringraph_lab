@@ -1306,16 +1306,129 @@ div.extra-panel .live-sound-tools {
 }
 
 div.extra-panel .live-sound-tools-head {
-    margin: 0;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    column-gap: 12px;
+    row-gap: 6px;
+    margin: 0 0 8px 0;
+    width: 100%;
 }
 
-div.extra-panel .live-sound-tools-note {
-    margin: 0 0 8px 0;
+div.extra-panel .live-sound-tools-head > h5.live-sound-tools-title {
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-primary);
+    font-size: 13px;
+    line-height: 1.2;
+    font-weight: 600;
+    color: var(--background-color-contrast-more);
+}
+
+div.extra-panel .live-sound-eq-toggle-label {
+    flex: 0 0 auto;
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
     font-family: var(--font-primary);
     font-size: 12px;
-    line-height: 1.35;
+    line-height: 1.2;
+    font-weight: 500;
     color: var(--background-color-contrast-more);
-    font-weight: 400;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+    vertical-align: baseline;
+}
+
+div.extra-panel .live-sound-eq-toggle-text {
+    opacity: 0.9;
+}
+
+/* EQ switch: same track geometry as range sliders (18px tall, 1px border, pill radius); thumb 12px like slider thumbs */
+div.extra-panel .live-sound-eq-switch {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+}
+
+div.extra-panel .live-sound-eq-switch-track {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+    align-items: center;
+    width: 36px;
+    height: 18px;
+    box-sizing: border-box;
+    padding: 0 3px;
+    border: 1px solid var(--background-color-contrast-more);
+    border-radius: 100px;
+    background-color: var(--background-color);
+    transition: background-color 200ms ease;
+}
+
+div.extra-panel .live-sound-eq-switch-track:has(.live-sound-eq-toggle:checked) {
+    background-color: var(--background-color-inputs);
+}
+
+div.extra-panel .live-sound-eq-toggle {
+    grid-column: 1;
+    grid-row: 1;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+div.extra-panel .live-sound-eq-toggle:focus {
+    outline: none;
+}
+
+div.extra-panel .live-sound-eq-switch-track:has(.live-sound-eq-toggle:focus-visible) {
+    box-shadow: 0 0 0 2px var(--background-color-graph), 0 0 0 4px var(--accent-color-contrast);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    div.extra-panel .live-sound-eq-switch-track,
+    div.extra-panel .live-sound-eq-switch-thumb {
+        transition: none;
+    }
+}
+
+div.extra-panel .live-sound-eq-switch-thumb {
+    grid-column: 1;
+    grid-row: 1;
+    z-index: 1;
+    justify-self: start;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: var(--background-color-contrast-more);
+    transition: transform 200ms ease, background-color 200ms ease;
+    pointer-events: none;
+}
+
+/* Inner lane 28px, thumb 12px → 16px travel (matches slider thumb gutter) */
+div.extra-panel .live-sound-eq-toggle:checked + .live-sound-eq-switch-thumb {
+    transform: translateX(16px);
+    background-color: var(--accent-color);
 }
 
 div.extra-panel .live-sound-band {
@@ -1755,6 +1868,10 @@ body.theme-contrast div.extra-panel .live-sound-tools .extra-tone-generator .ton
 body.theme-contrast div.extra-panel .live-sound-tools .extra-music .music-play-row button.play.playback-active {
     background-color: var(--background-color-contrast-more) !important;
     color: var(--background-color) !important;
+}
+
+body.theme-contrast div.extra-panel .live-sound-tools .live-sound-eq-switch-track {
+    border-color: var(--background-color-contrast);
 }
 
 div.extra-panel .live-sound-tools .live-sound-tone-create-filter {

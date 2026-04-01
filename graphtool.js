@@ -132,8 +132,16 @@ doc.html(`
           <div class="extra-panel" style="display: none;">
             <div class="live-sound-tools">
               <div class="live-sound-tools-head">
-                <h5>Live Sound Tools</h5>
-                <p class="live-sound-tools-note">Processed through the parametric EQ below.</p>
+                <h5 class="live-sound-tools-title">Sound Tools</h5>
+                <label class="live-sound-eq-toggle-label">
+                  <span class="live-sound-eq-toggle-text">Apply EQ</span>
+                  <span class="live-sound-eq-switch">
+                    <span class="live-sound-eq-switch-track">
+                      <input type="checkbox" class="live-sound-eq-toggle" checked aria-label="Apply parametric EQ to live playback" />
+                      <span class="live-sound-eq-switch-thumb" aria-hidden="true"></span>
+                    </span>
+                  </span>
+                </label>
               </div>
               <div class="live-sound-sources">
                 <div class="live-sound-source extra-music">
@@ -2770,8 +2778,10 @@ function addExtra() {
             autoEQOverlay.style.display = "none";
         }, 100);
     });
-    // Pink noise & tone generator: shared output trim after EQ (linear gain; tune for comfortable level)
-    let livePlaybackOutputGain = 0.2;
+    // Live playback output trim after EQ (linear gain; tune per source)
+    let livePinkNoisePlaybackGain = 0.5;
+    let liveToneGeneratorPlaybackGain = 0.2;
+    let liveMusicPlaybackGain = 1;
     let lastEqPlaybackSource = "pink";
     // Pink noise (parametric EQ in audio path)
     let pinkNoisePlayButton = document.querySelector("div.extra-pink-noise .play");
@@ -2793,6 +2803,9 @@ function addExtra() {
     let musicFileLoaded = false;
     let musicSliderDragging = false;
     let liveEqSyncTimer = null;
+    let livePlaybackEqToggle = document.querySelector("input.live-sound-eq-toggle");
+    let isLivePlaybackEqEnabled = () =>
+        !livePlaybackEqToggle || livePlaybackEqToggle.checked;
     let mapFilterTypeToBiquad = (t) =>
         (t === "LSQ" ? "lowshelf" : t === "HSQ" ? "highshelf" : "peaking");
     let disconnectEqBiquads = (biquadsArr) => {
@@ -2814,20 +2827,22 @@ function addExtra() {
         musicBandFilters.length = 0;
     };
     let rebuildLiveEqChain = (sourceNode, audioContext, masterGain, biquadsArr) => {
-        let filters = elemToFilters();
         sourceNode.disconnect();
         disconnectEqBiquads(biquadsArr);
         let last = sourceNode;
-        filters.forEach((f) => {
-            let bf = audioContext.createBiquadFilter();
-            bf.type = mapFilterTypeToBiquad(f.type);
-            bf.frequency.value = Math.min(20000, Math.max(20, f.freq));
-            bf.Q.value = Math.max(1e-4, Math.min(1000, f.q));
-            bf.gain.value = Math.max(-40, Math.min(40, f.gain));
-            last.connect(bf);
-            last = bf;
-            biquadsArr.push(bf);
-        });
+        if (isLivePlaybackEqEnabled()) {
+            let filters = elemToFilters();
+            filters.forEach((f) => {
+                let bf = audioContext.createBiquadFilter();
+                bf.type = mapFilterTypeToBiquad(f.type);
+                bf.frequency.value = Math.min(20000, Math.max(20, f.freq));
+                bf.Q.value = Math.max(1e-4, Math.min(1000, f.q));
+                bf.gain.value = Math.max(-40, Math.min(40, f.gain));
+                last.connect(bf);
+                last = bf;
+                biquadsArr.push(bf);
+            });
+        }
         last.connect(masterGain);
     };
     let rebuildPinkNoiseEqChain = () => {
@@ -2856,17 +2871,19 @@ function addExtra() {
         last.connect(lp);
         last = lp;
         pinkNoiseBandFilters.push(lp);
-        let filters = elemToFilters();
-        filters.forEach((f) => {
-            let bf = pinkNoiseContext.createBiquadFilter();
-            bf.type = mapFilterTypeToBiquad(f.type);
-            bf.frequency.value = Math.min(20000, Math.max(20, f.freq));
-            bf.Q.value = Math.max(1e-4, Math.min(1000, f.q));
-            bf.gain.value = Math.max(-40, Math.min(40, f.gain));
-            last.connect(bf);
-            last = bf;
-            pinkNoiseBiquads.push(bf);
-        });
+        if (isLivePlaybackEqEnabled()) {
+            let filters = elemToFilters();
+            filters.forEach((f) => {
+                let bf = pinkNoiseContext.createBiquadFilter();
+                bf.type = mapFilterTypeToBiquad(f.type);
+                bf.frequency.value = Math.min(20000, Math.max(20, f.freq));
+                bf.Q.value = Math.max(1e-4, Math.min(1000, f.q));
+                bf.gain.value = Math.max(-40, Math.min(40, f.gain));
+                last.connect(bf);
+                last = bf;
+                pinkNoiseBiquads.push(bf);
+            });
+        }
         last.connect(pinkNoiseMasterGain);
     };
     let rebuildToneGeneratorEqChain = () => {
@@ -2901,17 +2918,19 @@ function addExtra() {
         last.connect(lp);
         last = lp;
         musicBandFilters.push(lp);
-        let filters = elemToFilters();
-        filters.forEach((f) => {
-            let bf = musicContext.createBiquadFilter();
-            bf.type = mapFilterTypeToBiquad(f.type);
-            bf.frequency.value = Math.min(20000, Math.max(20, f.freq));
-            bf.Q.value = Math.max(1e-4, Math.min(1000, f.q));
-            bf.gain.value = Math.max(-40, Math.min(40, f.gain));
-            last.connect(bf);
-            last = bf;
-            musicBiquads.push(bf);
-        });
+        if (isLivePlaybackEqEnabled()) {
+            let filters = elemToFilters();
+            filters.forEach((f) => {
+                let bf = musicContext.createBiquadFilter();
+                bf.type = mapFilterTypeToBiquad(f.type);
+                bf.frequency.value = Math.min(20000, Math.max(20, f.freq));
+                bf.Q.value = Math.max(1e-4, Math.min(1000, f.q));
+                bf.gain.value = Math.max(-40, Math.min(40, f.gain));
+                last.connect(bf);
+                last = bf;
+                musicBiquads.push(bf);
+            });
+        }
         last.connect(musicMasterGain);
     };
     let scheduleLiveEqSync = () => {
@@ -2928,6 +2947,9 @@ function addExtra() {
     };
     filtersContainer.addEventListener("input", scheduleLiveEqSync);
     filtersContainer.addEventListener("change", scheduleLiveEqSync);
+    if (livePlaybackEqToggle) {
+        livePlaybackEqToggle.addEventListener("change", scheduleLiveEqSync);
+    }
     let stopPinkNoisePlayback = () => {
         if (!pinkNoisePlaying) {
             return;
@@ -3094,7 +3116,7 @@ function addExtra() {
         pinkNoiseContext = pinkNoiseContext || new (window.AudioContext || window.webkitAudioContext)();
         pinkNoiseProcessor = createPinkNoiseProcessor(pinkNoiseContext);
         pinkNoiseMasterGain = pinkNoiseContext.createGain();
-        pinkNoiseMasterGain.gain.value = livePlaybackOutputGain;
+        pinkNoiseMasterGain.gain.value = livePinkNoisePlaybackGain;
         // rebuildPinkNoiseEqChain requires pinkNoisePlaying — set before first build
         pinkNoisePlaying = true;
         rebuildPinkNoiseEqChain();
@@ -3208,7 +3230,7 @@ function addExtra() {
             toneGeneratorOsc.type = "sine";
             toneGeneratorOsc.frequency.value = parseInt(toneGeneratorText.innerText);
             toneGeneratorMasterGain = toneGeneratorContext.createGain();
-            toneGeneratorMasterGain.gain.value = livePlaybackOutputGain;
+            toneGeneratorMasterGain.gain.value = liveToneGeneratorPlaybackGain;
             rebuildToneGeneratorEqChain();
             toneGeneratorMasterGain.connect(toneGeneratorContext.destination);
             toneGeneratorOsc.start();
@@ -3297,7 +3319,7 @@ function addExtra() {
         });
         musicMediaSourceNode = musicContext.createMediaElementSource(musicAudio);
         musicMasterGain = musicContext.createGain();
-        musicMasterGain.gain.value = livePlaybackOutputGain;
+        musicMasterGain.gain.value = liveMusicPlaybackGain;
         rebuildMusicEqChain();
         musicMasterGain.connect(musicContext.destination);
         return true;
