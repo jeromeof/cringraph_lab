@@ -920,11 +920,51 @@ let activePhones = [];
 let baseline0 = { p:null, l:null, fn:l=>l },
     baseline = baseline0;
 
+/* EQ graph markers + FR curve strokes. Marker UNSEL_/SEL_* fill/stroke: "trace", "graph", or CSS. */
+const EQ_GRAPH_MARKER_HIT_PX = 28;
+const EQ_GRAPH_MARKER_R_BASE = 2.5;
+const EQ_GRAPH_MARKER_UNSEL_SCALE = 1;
+const EQ_GRAPH_MARKER_UNSEL_STROKE = "trace";
+const EQ_GRAPH_MARKER_UNSEL_FILL = "graph";
+const EQ_GRAPH_MARKER_UNSEL_HOVER_SCALE = 1;
+const EQ_GRAPH_MARKER_SEL_SCALE = 1.8;
+const EQ_GRAPH_MARKER_SEL_STROKE = "graph";
+const EQ_GRAPH_MARKER_SEL_FILL = "trace";
+const EQ_GRAPH_MARKER_SEL_HOVER_SCALE = 1.2;
+const EQ_GRAPH_MARKER_STROKE_W = 4;
+const EQ_GRAPH_MARKER_STROKE_HOVER_MULT = 2;
+const EQ_GRAPH_TRACE_STROKE_SAMPLE = 1.9;
+const EQ_GRAPH_TRACE_STROKE_NORMAL = 2.3;
+const EQ_GRAPH_TRACE_STROKE_EMPH_MULT = 2;
+
 let gpath = gr.insert("g",".dBScaler")
     .attr("fill","none")
-    .attr("stroke-width",2.3)
+    .attr("stroke-width", EQ_GRAPH_TRACE_STROKE_NORMAL)
     .attr("class", "curves-g")
     .attr("mask","url(#graphFade)");
+function eqMarkerResolvePaint(spec, traceCol) {
+    if (spec === "trace") {
+        return traceCol;
+    }
+    if (spec === "graph") {
+        return "var(--background-color-graph)";
+    }
+    return spec;
+}
+/** Named d3 transition for EQ trace emphasis only (do not interrupt path "d" tweens). */
+const EQ_GRAPH_TRACE_EM_TNAME = "eq-trace-em";
+/** After updatePaths join, paths must carry explicit stroke-width; inherited + d3.attr tween
+    from missing attribute can interpolate from 0 → hairline traces after Q/EQ updates. */
+function resetGraphPathStrokesToBase() {
+    gpath.selectAll("path").each(function () {
+        let n = d3.select(this);
+        n.interrupt(EQ_GRAPH_TRACE_EM_TNAME);
+        let base = this.classList.contains("sample")
+            ? EQ_GRAPH_TRACE_STROKE_SAMPLE
+            : EQ_GRAPH_TRACE_STROKE_NORMAL;
+        n.attr("stroke-width", base);
+    });
+}
 let gEqFilterMarkers = gr.append("g")
     .attr("class", "eq-filter-markers")
     .attr("pointer-events", "none")
@@ -938,6 +978,9 @@ let updateEqFilterMarkers = () => {};
 let graphPlotHitRect = null;
 /** Equalizer-tab graph: pointer gesture for add + vertical gain drag */
 let eqGraphPointerState = null;
+/** Last viewport client position over the graph (mousemove / drag); used to re-apply EQ hover
+    after updateEqFilterMarkers(), e.g. when focusin on a filter field runs in a later frame. */
+let lastGraphPlotPointerClient = null;
 let eqGraphSkipNextClick = false;
 let eqGraphSkipClickClearTimer = null;
 let eqGraphApplyEqDragTimer = null;
@@ -1377,6 +1420,7 @@ function updatePaths(trigger) {
         .filter(c=>c.p.isTarget)
         .attr("data-phone-name", c=>c.p.fullName)
         .attr("class", "target");
+    resetGraphPathStrokesToBase();
     if (targetDashed) t.style("stroke-dasharray", "6, 3");
     if (targetColorCustom) t.attr("stroke", targetColorCustom);
     if (ifURL && !trigger) addPhonesToUrl();
@@ -2194,6 +2238,10 @@ function pathTooltip(c, m) {
 }
 let interactInspect = false;
 let graphInteract = imm => function () {
+    let ev = d3.event;
+    if (ev && typeof ev.clientX === "number" && typeof ev.clientY === "number") {
+        lastGraphPlotPointerClient = { x: ev.clientX, y: ev.clientY };
+    }
     let cs = d3.merge(activePhones.map(p=>p.hide?[]:p.activeCurves));
     let m = d3.mouse(this);
     if (!cs.length) {
@@ -2297,8 +2345,30 @@ graphPlotHitRect = gr.append("rect")
         if (eqGraphPointerState) {
             return;
         }
-        syncEqHoverPreview(null);
-        interactInspect ? stopInspect() : pathHL(false);
+        /* After pointer capture release, some browsers emit mouseout even though the cursor is
+           still over the plot; defer and re-hit-test so EQ hover / path highlight stay in sync. */
+        let plot = graphPlotHitRect && graphPlotHitRect.node();
+        let ev = d3.event;
+        let cx = ev && typeof ev.clientX === "number" ? ev.clientX : NaN;
+        let cy = ev && typeof ev.clientY === "number" ? ev.clientY : NaN;
+        requestAnimationFrame(() => {
+            if (eqGraphPointerState) {
+                return;
+            }
+            if (plot && Number.isFinite(cx) && Number.isFinite(cy)) {
+                let r = plot.getBoundingClientRect();
+                if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) {
+                    lastGraphPlotPointerClient = { x: cx, y: cy };
+                    let m = clientToGraphPlotXY(cx, cy);
+                    if (m) {
+                        syncEqHoverPreview(m);
+                    }
+                    return;
+                }
+            }
+            syncEqHoverPreview(null);
+            interactInspect ? stopInspect() : pathHL(false);
+        });
     })
     .on("click", graphInteract(true));
 gEqFilterMarkers.raise();
@@ -2771,24 +2841,7 @@ function addExtra() {
             }
         });
     };
-    let applyEqGraphMarkerSelectionOpacity = (hoverOrDragRow) => {
-        gEqFilterMarkers.selectAll("circle.eq-filter-marker").each(function (d) {
-            if (!d) {
-                return;
-            }
-            let c = d3.select(this);
-            if (eqFilterSelectedRow === null) {
-                c.style("opacity", null);
-                return;
-            }
-            let sel = d.rowIndex === eqFilterSelectedRow;
-            let hi = hoverOrDragRow !== null && hoverOrDragRow !== undefined
-                && d.rowIndex === hoverOrDragRow;
-            c.style("opacity", (sel || hi) ? null : 0.38);
-        });
-    };
-    /* hoverHighlightRow: drag band or mouse-near marker; null = no pointer hover. Selection fill is
-       applied in addition when eqFilterSelectedRow matches. */
+    /* hoverHighlightRow: drag band or mouse-near marker; null = no pointer hover. */
     let applyEqFilterMarkerFillAndSize = (hoverHighlightRow) => {
         gEqFilterMarkers.selectAll("circle.eq-filter-marker").each(function (d) {
             if (!d) {
@@ -2798,29 +2851,38 @@ function addExtra() {
             let hoverOn = hoverHighlightRow !== null && hoverHighlightRow !== undefined
                 && d.rowIndex === hoverHighlightRow;
             let selOn = eqFilterSelectedRow !== null && d.rowIndex === eqFilterSelectedRow;
-            let filled = hoverOn || selOn;
+            let traceCol = c.attr("stroke");
+            let strokeW = selOn
+                ? EQ_GRAPH_MARKER_STROKE_W * EQ_GRAPH_MARKER_STROKE_HOVER_MULT
+                : (hoverOn ? EQ_GRAPH_MARKER_STROKE_W * EQ_GRAPH_MARKER_STROKE_HOVER_MULT
+                    : EQ_GRAPH_MARKER_STROKE_W);
+            let rUse = selOn
+                ? EQ_GRAPH_MARKER_R_BASE * EQ_GRAPH_MARKER_SEL_SCALE
+                    * (hoverOn ? EQ_GRAPH_MARKER_SEL_HOVER_SCALE : 1)
+                : EQ_GRAPH_MARKER_R_BASE * EQ_GRAPH_MARKER_UNSEL_SCALE
+                    * (hoverOn ? EQ_GRAPH_MARKER_UNSEL_HOVER_SCALE : 1);
             c.classed("eq-filter-marker-hover", hoverOn)
-                .attr("r", filled ? 6.5 : 4.25);
-            if (filled) {
-                c.style("fill", c.attr("stroke"));
+                .classed("eq-filter-marker-selected", selOn)
+                .attr("r", rUse)
+                .attr("stroke-width", strokeW);
+            if (selOn) {
+                c.style("fill", eqMarkerResolvePaint(EQ_GRAPH_MARKER_SEL_FILL, traceCol))
+                    .style("stroke", eqMarkerResolvePaint(EQ_GRAPH_MARKER_SEL_STROKE, traceCol));
             } else {
-                c.style("fill", null);
+                if (EQ_GRAPH_MARKER_UNSEL_STROKE === "trace") {
+                    c.style("stroke", null);
+                } else {
+                    c.style("stroke", eqMarkerResolvePaint(EQ_GRAPH_MARKER_UNSEL_STROKE, traceCol));
+                }
+                if (EQ_GRAPH_MARKER_UNSEL_FILL === "graph") {
+                    c.attr("fill", null)
+                        .style("fill", null);
+                } else {
+                    c.attr("fill", null)
+                        .style("fill", eqMarkerResolvePaint(EQ_GRAPH_MARKER_UNSEL_FILL, traceCol));
+                }
             }
         });
-    };
-    let eqFilterDeselectTimer = null;
-    let cancelEqFilterDeselectTimer = () => {
-        if (eqFilterDeselectTimer !== null) {
-            clearTimeout(eqFilterDeselectTimer);
-            eqFilterDeselectTimer = null;
-        }
-    };
-    let scheduleEqFilterDeselectTimer = () => {
-        cancelEqFilterDeselectTimer();
-        eqFilterDeselectTimer = setTimeout(() => {
-            eqFilterDeselectTimer = null;
-            setEqFilterSelectedRow(null);
-        }, 500);
     };
     /* Gap below panel top when snapping extra-eq into view (scroll slightly less than flush). */
     const EQ_FILTER_SCROLL_EQ_TOP_INSET_PX = 10;
@@ -2858,7 +2920,6 @@ function addExtra() {
         if (row !== null && (typeof row !== "number" || row < 0 || row >= eqBands)) {
             row = null;
         }
-        cancelEqFilterDeselectTimer();
         eqFilterSelectedRow = row;
         updateEqFilterRowSelectionStyles();
         updateEqFilterMarkers();
@@ -2998,8 +3059,21 @@ function addExtra() {
         }
         return { fHz, phoneObj, tracePhone, db, pts };
     };
-    /* Screen-space hit radius in CSS px: generous target vs drawn marker (~4px r); no cursor snap. */
-    const EQ_GRAPH_MARKER_HIT_PX = 28;
+    let applyEqGraphTraceStrokeEmphasis = (tracePhone, enabled) => {
+        gpath.selectAll("path").each(function (d) {
+            let n = d3.select(this);
+            let base = this.classList.contains("sample")
+                ? EQ_GRAPH_TRACE_STROKE_SAMPLE
+                : EQ_GRAPH_TRACE_STROKE_NORMAL;
+            let match = Boolean(enabled && tracePhone && d && d.p
+                && (d.p === tracePhone || d.p.fileName === tracePhone.fileName));
+            let w = match ? base * EQ_GRAPH_TRACE_STROKE_EMPH_MULT : base;
+            /* Always set via .attr; CSS transitions stroke-width on g.curves-g path. D3 transitions
+               here restarted every sync when de-emphasized and could stick thin if attr was inherited. */
+            n.interrupt(EQ_GRAPH_TRACE_EM_TNAME);
+            n.attr("stroke-width", w);
+        });
+    };
     let eqGraphPlotDistPx = (m, gx, gy) => {
         if (!m || m.length < 2) {
             return Infinity;
@@ -3138,6 +3212,13 @@ function addExtra() {
             gEqFilterMarkers.selectAll("circle.eq-filter-marker").remove();
             gEqFilterMarkers.raise();
             gEqHoverPreview.raise();
+            if (!eqGraphPointerState && lastGraphPlotPointerClient) {
+                let lp = lastGraphPlotPointerClient;
+                let mResync = clientToGraphPlotXY(lp.x, lp.y);
+                if (mResync) {
+                    syncEqHoverPreview(mResync);
+                }
+            }
             return;
         }
         let mk = gEqFilterMarkers.selectAll("circle.eq-filter-marker")
@@ -3145,28 +3226,35 @@ function addExtra() {
         mk.exit().remove();
         mk = mk.enter().append("circle")
             .attr("class", "eq-filter-marker")
-            .attr("r", 4.25)
+            .attr("r", EQ_GRAPH_MARKER_R_BASE)
             .merge(mk)
             .attr("cx", d => d.cx)
             .attr("cy", d => d.cy)
             .attr("stroke", layout.strokeCol)
-            .attr("stroke-width", 3);
+            .attr("stroke-width", EQ_GRAPH_MARKER_STROKE_W);
         let dragIx = eqGraphPointerState != null && eqGraphPointerState.filterIndex !== null
             ? eqGraphPointerState.filterIndex
             : null;
         applyEqFilterMarkerFillAndSize(dragIx);
-        applyEqGraphMarkerSelectionOpacity(dragIx);
         gEqFilterMarkers.raise();
         gEqHoverPreview.raise();
+        if (!eqGraphPointerState && lastGraphPlotPointerClient) {
+            let lp = lastGraphPlotPointerClient;
+            let mResync = clientToGraphPlotXY(lp.x, lp.y);
+            if (mResync) {
+                syncEqHoverPreview(mResync);
+            }
+        }
     };
     syncEqHoverPreview = (m) => {
         if (!m) {
+            lastGraphPlotPointerClient = null;
             gEqHoverPreview.selectAll("*").remove();
             if (graphPlotHitRect && graphPlotHitRect.node()) {
                 graphPlotHitRect.node().style.cursor = "";
             }
             applyEqFilterMarkerFillAndSize(null);
-            applyEqGraphMarkerSelectionOpacity(null);
+            applyEqGraphTraceStrokeEmphasis(null, false);
             return;
         }
         let mUse = m;
@@ -3190,7 +3278,18 @@ function addExtra() {
             gEqHoverPreview.selectAll("*").remove();
         }
         applyEqFilterMarkerFillAndSize(markerHighlightRow);
-        applyEqGraphMarkerSelectionOpacity(markerHighlightRow);
+        let emphasizeTrace = false;
+        let tracePhoneEm = null;
+        if (!draggingGraph && !near && stCurve) {
+            let yOffT = y(getOffset(stCurve.tracePhone)) - y(0);
+            let tcx = x(stCurve.fHz);
+            let tcy = y(stCurve.db) + yOffT;
+            emphasizeTrace = eqGraphPlotDistPx(mUse, tcx, tcy) <= EQ_GRAPH_MARKER_HIT_PX;
+            if (emphasizeTrace) {
+                tracePhoneEm = stCurve.tracePhone;
+            }
+        }
+        applyEqGraphTraceStrokeEmphasis(tracePhoneEm, emphasizeTrace);
         if (near) {
             return;
         }
@@ -3253,7 +3352,6 @@ function addExtra() {
     };
     updateFilterElements();
     updateEqFilterMarkers();
-    eqPhoneSelect.addEventListener("focusin", cancelEqFilterDeselectTimer);
     eqPhoneSelect.addEventListener("input", () => {
         setEqFilterSelectedRow(null);
         applyEQ();
@@ -4254,6 +4352,10 @@ function addExtra() {
     let eqGraphPerformDragCleanup = (st, endEvent) => {
         let didTapAddNewBand = !st.dragging && st.filterIndex === null;
         let queuedEqGraphFieldFocus = false;
+        if (endEvent && typeof endEvent.clientX === "number"
+                && typeof endEvent.clientY === "number") {
+            lastGraphPlotPointerClient = { x: endEvent.clientX, y: endEvent.clientY };
+        }
         eqGraphExitPointerLockIfAny();
         if (st.captureEl) {
             try {
@@ -4293,7 +4395,6 @@ function addExtra() {
                 el = filterFreqInput[ix];
             }
             if (el) {
-                cancelEqFilterDeselectTimer();
                 queuedEqGraphFieldFocus = true;
                 requestAnimationFrame(() => {
                     el.focus();
@@ -4306,9 +4407,9 @@ function addExtra() {
             if (mUp) {
                 syncEqHoverPreview(mUp);
             }
-            if (!queuedEqGraphFieldFocus
-                    && !filtersContainer.contains(document.activeElement)) {
-                scheduleEqFilterDeselectTimer();
+            /* Touch has no hover; clear stored client pos for stale hit-tests. */
+            if (endEvent.pointerType === "touch") {
+                lastGraphPlotPointerClient = null;
             }
         }
     };
@@ -4326,6 +4427,9 @@ function addExtra() {
         let st = eqGraphPointerState;
         let svg = st.captureEl;
         let locked = document.pointerLockElement === svg;
+        if (!locked) {
+            lastGraphPlotPointerClient = { x: e.clientX, y: e.clientY };
+        }
         let mx;
         let mClient = null;
         if (locked) {
@@ -4474,6 +4578,7 @@ function addExtra() {
         if (!m) {
             return;
         }
+        lastGraphPlotPointerClient = { x: e.clientX, y: e.clientY };
         let hit = findEqGraphMarkerHit(m);
         let stPreview;
         let initialAccumMovementY = 0;
@@ -4557,7 +4662,6 @@ function addExtra() {
             svgScaleY: svgScaleY,
             pointerLockActive: false,
         };
-        cancelEqFilterDeselectTimer();
         try {
             svg.setPointerCapture(e.pointerId);
         } catch (err) { /* noop */ }
@@ -4565,10 +4669,13 @@ function addExtra() {
         document.addEventListener("pointerup", eqGraphDragEnd, true);
         document.addEventListener("pointercancel", eqGraphDragEnd, true);
     }
-    /* Wheel Q: normalize to ~pixel scale, then sublinear steps; each unit is 0.1 Q (tenths only).
-       Sensitivity tapers toward Qmin so low-Q tweaks are not huge jumps; a float per band accumulates
-       sub-tenth motion until rounding (manual Q edits resync via |float − input|). */
+    /* Wheel Q: normalize to ~pixel scale, then sublinear steps. Above Q_FINE_MAX use 0.1; at that
+       value and below use 0.01 for smoother low-Q tweaks. Sensitivity tapers toward Qmin; a float per
+       band accumulates until rounding (manual Q edits resync via |float − input|). */
     const EQ_GRAPH_WHEEL_Q_STEP = 0.1;
+    const EQ_GRAPH_WHEEL_Q_STEP_FINE = 0.01;
+    const EQ_GRAPH_WHEEL_Q_FINE_MAX = 0.3;
+    const EQ_GRAPH_WHEEL_Q_SYNC_TOL_FINE = 0.009;
     const EQ_GRAPH_WHEEL_SENS_REF_PX = 42;
     const EQ_GRAPH_WHEEL_MAX_STEPS = 5;
     const EQ_GRAPH_WHEEL_Q_SENS_KNEE = 2;
@@ -4611,10 +4718,14 @@ function addExtra() {
             qDisplay = 1;
         }
         let qFloat = eqGraphWheelQFloat[i];
-        if (!Number.isFinite(qFloat) || Math.abs(qFloat - qDisplay) > 0.051) {
+        let qSyncTol = qDisplay <= EQ_GRAPH_WHEEL_Q_FINE_MAX
+            ? EQ_GRAPH_WHEEL_Q_SYNC_TOL_FINE
+            : 0.051;
+        if (!Number.isFinite(qFloat) || Math.abs(qFloat - qDisplay) > qSyncTol) {
             eqGraphWheelQFloat[i] = qDisplay;
             qFloat = qDisplay;
         }
+        let qFloatBeforeWheel = qFloat;
         let dy = e.deltaY;
         if (e.deltaMode === 1) {
             dy *= 16;
@@ -4629,18 +4740,35 @@ function addExtra() {
         let notchEq = Math.pow(mag, 0.58) / Math.pow(EQ_GRAPH_WHEEL_SENS_REF_PX, 0.58);
         let steps = Math.max(1, Math.min(EQ_GRAPH_WHEEL_MAX_STEPS, Math.round(notchEq)));
         let sens = eqGraphWheelQSensitivity(qFloat);
-        let dq = dir * EQ_GRAPH_WHEEL_Q_STEP * steps * sens;
+        let qStep = qFloat <= EQ_GRAPH_WHEEL_Q_FINE_MAX
+            ? EQ_GRAPH_WHEEL_Q_STEP_FINE
+            : EQ_GRAPH_WHEEL_Q_STEP;
+        let dq = dir * qStep * steps * sens;
         /* Scroll up → lower Q, scroll down → higher Q (invert raw deltaY convention). */
         qFloat = Math.min(10, Math.max(0.1, qFloat - dq));
         eqGraphWheelQFloat[i] = qFloat;
-        let q = Math.round(qFloat * 10) / 10;
+        let q;
+        if (qFloat <= EQ_GRAPH_WHEEL_Q_FINE_MAX) {
+            q = Math.round(qFloat * 100) / 100;
+        } else {
+            q = Math.round(qFloat * 10) / 10;
+            /* 0.31…0.34 rounds to one decimal as 0.3 — same as fine cap, so display/input never
+               advances and tight fine-band resync fights the float (feels “stuck”). Leaving the
+               fine band upward: jump to the next tenth (0.4). */
+            if (q <= EQ_GRAPH_WHEEL_Q_FINE_MAX && qFloat > EQ_GRAPH_WHEEL_Q_FINE_MAX
+                    && qFloatBeforeWheel <= EQ_GRAPH_WHEEL_Q_FINE_MAX) {
+                q = EQ_GRAPH_WHEEL_Q_FINE_MAX + EQ_GRAPH_WHEEL_Q_STEP;
+                eqGraphWheelQFloat[i] = q;
+            }
+        }
         q = Math.max(0.1, q);
-        filterQInput[i].value = String(q);
+        filterQInput[i].value = q <= EQ_GRAPH_WHEEL_Q_FINE_MAX
+            ? q.toFixed(2)
+            : String(q);
         clearTimeout(applyEQHandle);
         applyEQHandle = null;
         applyEQExec();
         scheduleLiveEqSync();
-        cancelEqFilterDeselectTimer();
         setEqFilterSelectedRow(i);
         requestAnimationFrame(() => {
             let qEl = filterQInput[i];
@@ -4678,9 +4806,6 @@ function addExtra() {
         applyEQExec();
         scheduleLiveEqSync();
         setEqFilterSelectedRow(hit.rowIndex);
-        if (!filtersContainer.contains(document.activeElement)) {
-            scheduleEqFilterDeselectTimer();
-        }
         syncEqHoverPreview(m);
     }
     if (graphPlotHitRect && graphPlotHitRect.node()) {
@@ -5337,15 +5462,6 @@ function addExtra() {
         }
         syncToneGeneratorToEqFrequencyHz(hz);
     });
-    filtersContainer.addEventListener("focusout", (e) => {
-        if (filtersContainer.contains(e.relatedTarget)) {
-            return;
-        }
-        if (eqGraphPointerState) {
-            return;
-        }
-        scheduleEqFilterDeselectTimer();
-    }, true);
     let eqFreqToToneDebounceTimer = null;
     filtersContainer.addEventListener("input", (e) => {
         if (!(e.target.matches && e.target.matches("input[name='freq']"))) {

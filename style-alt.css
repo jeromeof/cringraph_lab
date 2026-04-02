@@ -143,6 +143,10 @@ svg#fr-graph {
     overflow: visible;
 }
 
+svg#fr-graph g.curves-g path {
+    transition: stroke-width 0.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 rect.graphBackground {
     opacity: 0.0;
 }
@@ -163,11 +167,13 @@ svg#fr-graph g.eq-filter-markers circle.eq-filter-marker {
     /* Optical vertical tweak (e.g. 0.35px–0.8px); sign flips if dots sit high vs low */
     --eq-filter-marker-cy-nudge: 0.5px;
     transform: translateY(var(--eq-filter-marker-cy-nudge, 0px));
-    vector-effect: non-scaling-stroke;
     paint-order: stroke fill;
+    transition: r 0.1s cubic-bezier(0.22, 1, 0.36, 1),
+                stroke-width 0.1s cubic-bezier(0.22, 1, 0.36, 1),
+                fill 0.1s ease;
 }
 
-/* Hover fill is set in JS to match stroke (trace color). */
+/* EQ marker fill/stroke set in JS (graphtool.js); default fill from theme when cleared. */
 
 g.dBScaler {
     fill: var(--background-color-contrast-more);
