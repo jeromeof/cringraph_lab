@@ -5028,7 +5028,9 @@ function addExtra() {
             musicSpectrumViz.syncSpectrumViz();
         });
     };
-    let wireMusicLoadedFromBlob = (blob, segOpt) => {
+    let wireMusicLoadedFromBlob = (blob, segOpt, loadOpts) => {
+        loadOpts = loadOpts || {};
+        let autoPlayAfterLoad = loadOpts.autoPlay === true;
         if (!musicAudio || !musicPlayButton || !musicCard || !musicSegmentSliderEl || !musicAddRemoveButton) {
             return;
         }
@@ -5065,15 +5067,17 @@ function addExtra() {
         syncMusicSegmentVisuals();
         musicAddRemoveButton.textContent = "- Remove Music";
         rebuildMusicEqChain();
-        let autoPlayWhenReady = () => {
-            startMusicPlayback().catch(() => {
-                /* autoplay may be blocked without further gesture; user can press play */
-            });
-        };
-        if (musicAudio.readyState >= 2) {
-            autoPlayWhenReady();
-        } else {
-            musicAudio.addEventListener("canplay", autoPlayWhenReady, { once: true });
+        if (autoPlayAfterLoad) {
+            let autoPlayWhenReady = () => {
+                startMusicPlayback().catch(() => {
+                    /* autoplay may be blocked without further gesture; user can press play */
+                });
+            };
+            if (musicAudio.readyState >= 2) {
+                autoPlayWhenReady();
+            } else {
+                musicAudio.addEventListener("canplay", autoPlayWhenReady, { once: true });
+            }
         }
     };
     if (musicPlayButton && musicSegmentSliderEl && musicSegmentTrackEl && musicSegmentSeekEl
@@ -5100,7 +5104,7 @@ function addExtra() {
                 musicFileInput.value = "";
                 return;
             }
-            wireMusicLoadedFromBlob(file, null);
+            wireMusicLoadedFromBlob(file, null, { autoPlay: true });
             persistMusicFileToIndexedDb(file);
             musicFileInput.value = "";
             setTimeout(() => {
