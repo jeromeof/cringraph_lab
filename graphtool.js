@@ -3283,6 +3283,45 @@ function addExtra() {
         applyEQ(); // May removed effective filter
         scheduleLiveEqSync();
     });
+    let resolveEqFilterRowIndexForShortcut = () => {
+        let el = document.activeElement;
+        if (el && filtersContainer && filtersContainer.contains(el)) {
+            let rowEl = el.closest("div.filter");
+            if (rowEl && filtersContainer.contains(rowEl)) {
+                let rows = filtersContainer.querySelectorAll("div.filter");
+                let ix = Array.prototype.indexOf.call(rows, rowEl);
+                if (ix >= 0) {
+                    return ix;
+                }
+            }
+        }
+        if (eqFilterSelectedRow !== null && eqFilterSelectedRow >= 0
+                && eqFilterSelectedRow < eqBands) {
+            return eqFilterSelectedRow;
+        }
+        return null;
+    };
+    let deleteSelectedEqFilterRow = (rowIx) => {
+        let ix = rowIx !== undefined && rowIx !== null ? rowIx : eqFilterSelectedRow;
+        if (ix === null || ix < 0 || ix >= eqBands) {
+            return;
+        }
+        let all = elemToFilters(true);
+        if (eqBands > 1) {
+            all.splice(ix, 1);
+            eqBands = all.length;
+            updateFilterElements();
+            filtersToElem(all);
+            setEqFilterSelectedRow(Math.min(ix, eqBands - 1));
+        } else {
+            filtersToElem([{ disabled: false, type: "PK", freq: 0, q: 0, gain: 0 }]);
+            setEqFilterSelectedRow(0);
+        }
+        clearTimeout(applyEQHandle);
+        applyEQHandle = null;
+        applyEQExec();
+        scheduleLiveEqSync();
+    };
     // Sort filters by frequency
     document.querySelector("div.extra-eq button.sort-filters").addEventListener("click", () => {
         filtersToElem(elemToFilters(true).sort((a, b) =>
@@ -4076,10 +4115,6 @@ function addExtra() {
         return f === 0 && q === 0 && g === 0;
     };
     const EQ_GRAPH_BASE_GAIN = 0.1;
-    /* Exponential smoothing of plot Y during vertical gain drags: same 1:1 dB mapping as the axis,
-       but the effective Y lags the pointer so fast flicks change gain more gently. Release snaps
-       to the true pointer position (accumPlotY), so the band ends on the cursor. */
-    const EQ_GRAPH_GAIN_DRAG_SMOOTH_TAU_MS = 72;
     /* Movement past this (px) starts a drag; first motion picks freq-only vs gain-only by |dx| vs |dy|. */
     const EQ_GRAPH_DRAG_THRESHOLD_PX = 5;
     /* Hysteresis: lock when pointer (svg space) leaves plot; unlock when it returns inside this inset. */
@@ -4217,15 +4252,8 @@ function addExtra() {
     };
     let eqGraphTypeCycleOrder = { PK: "LSQ", LSQ: "HSQ", HSQ: "PK" };
     let eqGraphPerformDragCleanup = (st, endEvent) => {
-        if (st.dragging && st.axisLock === "gain" && st.filterIndex !== null) {
-            let rawPlotY = st.originPlotMy + st.accumPlotY * st.svgScaleY;
-            let gSnap = eqGraphGainFromPlotY(
-                st.gainDragAnchorDb,
-                st.gainDragRefPlotY,
-                rawPlotY);
-            filterGainInput[st.filterIndex].value = String(gSnap);
-        }
         let didTapAddNewBand = !st.dragging && st.filterIndex === null;
+        let queuedEqGraphFieldFocus = false;
         eqGraphExitPointerLockIfAny();
         if (st.captureEl) {
             try {
@@ -4256,12 +4284,30 @@ function addExtra() {
             applyEQExec();
             scheduleLiveEqSync();
         }
+        if (st.filterIndex !== null && st.dragging && st.axisLock) {
+            let ix = st.filterIndex;
+            let el = null;
+            if (st.axisLock === "gain" && filterGainInput[ix]) {
+                el = filterGainInput[ix];
+            } else if (st.axisLock === "freq" && filterFreqInput[ix]) {
+                el = filterFreqInput[ix];
+            }
+            if (el) {
+                cancelEqFilterDeselectTimer();
+                queuedEqGraphFieldFocus = true;
+                requestAnimationFrame(() => {
+                    el.focus();
+                    el.select();
+                });
+            }
+        }
         if (endEvent) {
             let mUp = clientToGraphPlotXY(endEvent.clientX, endEvent.clientY);
             if (mUp) {
                 syncEqHoverPreview(mUp);
             }
-            if (!filtersContainer.contains(document.activeElement)) {
+            if (!queuedEqGraphFieldFocus
+                    && !filtersContainer.contains(document.activeElement)) {
                 scheduleEqFilterDeselectTimer();
             }
         }
@@ -4316,20 +4362,10 @@ function addExtra() {
         let currentPlotY = locked
             ? st.originPlotMy + st.accumPlotY * st.svgScaleY
             : mClient[1];
-        let dtMs = Math.min(120, Math.max(0, e.timeStamp - st.gainDragSmoothLastTs));
-        st.gainDragSmoothLastTs = e.timeStamp;
-        let aSmooth = st.axisLock === "gain"
-            ? 1 - Math.exp(-dtMs / EQ_GRAPH_GAIN_DRAG_SMOOTH_TAU_MS)
-            : 1;
-        st.gainDragSmoothedPlotY += aSmooth * (currentPlotY - st.gainDragSmoothedPlotY);
-        let gainAtRaw = eqGraphGainFromPlotY(
+        let gainT = eqGraphGainFromPlotY(
             st.gainDragAnchorDb,
             st.gainDragRefPlotY,
             currentPlotY);
-        let gainAtSmooth = eqGraphGainFromPlotY(
-            st.gainDragAnchorDb,
-            st.gainDragRefPlotY,
-            st.gainDragSmoothedPlotY);
         let freqT = Math.round(Math.min(20000, Math.max(20, x.invert(mx))));
         let adx;
         let ady;
@@ -4355,13 +4391,15 @@ function addExtra() {
             if (st.axisLock === null) {
                 st.axisLock = Math.abs(adx) >= Math.abs(ady) ? "freq" : "gain";
                 if (st.axisLock === "freq") {
-                    st.lockGainDb = gainAtRaw;
+                    /* Ignore vertical bleed before axis lock: keep gain at pointer-down anchor. */
+                    st.lockGainDb = roundEqGraphGainDb(st.gainDragAnchorDb);
                 } else {
-                    st.lockFreqHz = freqT;
+                    /* Ignore horizontal bleed before lock: keep freq at drag start. */
+                    st.lockFreqHz = Math.round(Math.min(20000, Math.max(20, st.fHz)));
                 }
             }
             let freq = st.axisLock === "freq" ? freqT : st.lockFreqHz;
-            let gain = st.axisLock === "gain" ? gainAtSmooth : st.lockGainDb;
+            let gain = st.axisLock === "gain" ? gainT : st.lockGainDb;
             st.dragging = true;
             let idx = addPeakingFilterFromHz(freq, gain, {
                 skipFocus: true,
@@ -4402,13 +4440,13 @@ function addExtra() {
         if (st.axisLock === null) {
             st.axisLock = Math.abs(adx) >= Math.abs(ady) ? "freq" : "gain";
             if (st.axisLock === "freq") {
-                st.lockGainDb = gainAtRaw;
+                st.lockGainDb = roundEqGraphGainDb(st.gainDragAnchorDb);
             } else {
-                st.lockFreqHz = freqT;
+                st.lockFreqHz = Math.round(Math.min(20000, Math.max(20, st.fHz)));
             }
         }
         let freq = st.axisLock === "freq" ? freqT : st.lockFreqHz;
-        let gain = st.axisLock === "gain" ? gainAtSmooth : st.lockGainDb;
+        let gain = st.axisLock === "gain" ? gainT : st.lockGainDb;
         st.dragging = true;
         st.liveFHz = freq;
         filterFreqInput[st.filterIndex].value = String(freq);
@@ -4507,8 +4545,6 @@ function addExtra() {
             lockGainDb: null,
             gainDragAnchorDb: gainDragAnchorDb,
             gainDragRefPlotY: gainDragRefPlotY,
-            gainDragSmoothedPlotY: originMy,
-            gainDragSmoothLastTs: e.timeStamp,
             pointerId: e.pointerId,
             captureEl: svg,
             originPlotMx: originMx,
@@ -4604,6 +4640,15 @@ function addExtra() {
         applyEQHandle = null;
         applyEQExec();
         scheduleLiveEqSync();
+        cancelEqFilterDeselectTimer();
+        setEqFilterSelectedRow(i);
+        requestAnimationFrame(() => {
+            let qEl = filterQInput[i];
+            if (qEl) {
+                qEl.focus();
+                qEl.select();
+            }
+        });
     }
     function eqGraphPlotContextMenu(e) {
         if (interactInspect || eqGraphPointerState) {
@@ -5328,6 +5373,30 @@ function addExtra() {
             void musicContext.resume();
         }
     };
+    document.addEventListener("keydown", (e) => {
+        if (e.repeat) {
+            return;
+        }
+        /* ⌘/Ctrl+Backspace or Alt+Backspace: remove/clear selected EQ band (see deleteSelectedEqFilterRow). */
+        if (!e.metaKey && !e.altKey) {
+            return;
+        }
+        if (e.code !== "Backspace") {
+            return;
+        }
+        let tab = document.querySelector("div.select");
+        if (!extraEnabled || !extraEQEnabled || !tab
+                || tab.getAttribute("data-selected") !== "extra") {
+            return;
+        }
+        let rowIx = resolveEqFilterRowIndexForShortcut();
+        if (rowIx === null) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        deleteSelectedEqFilterRow(rowIx);
+    }, true);
     document.addEventListener("keydown", (e) => {
         if (e.code !== "Space" && e.key !== " ") {
             return;
