@@ -4535,6 +4535,9 @@ function addExtra() {
             st.liveFHz = freq;
             setEqFilterSelectedRow(idx, true);
             scheduleApplyEqDuringGraphDrag();
+            if (st.axisLock === "freq") {
+                syncToneGeneratorToEqFrequencyHz(freq);
+            }
             return;
         }
         let distExisting = locked
@@ -4560,6 +4563,9 @@ function addExtra() {
         filterFreqInput[st.filterIndex].value = String(freq);
         filterGainInput[st.filterIndex].value = String(gain);
         scheduleApplyEqDuringGraphDrag();
+        if (st.axisLock === "freq") {
+            syncToneGeneratorToEqFrequencyHz(freq);
+        }
     }
     function eqGraphDragEnd(e) {
         if (!eqGraphPointerState || e.pointerId !== eqGraphPointerState.pointerId) {
