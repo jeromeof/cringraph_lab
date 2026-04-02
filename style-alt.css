@@ -167,8 +167,10 @@ svg#fr-graph g.eq-filter-markers circle.eq-filter-marker {
     /* Optical vertical tweak (e.g. 0.35px–0.8px); sign flips if dots sit high vs low */
     --eq-filter-marker-cy-nudge: 0.5px;
     transform: translateY(var(--eq-filter-marker-cy-nudge, 0px));
+    /* Omit non-scaling-stroke so marker stroke scales with SVG like curves-g traces (classic layout uses it). */
     paint-order: stroke fill;
-    transition: r 0.1s cubic-bezier(0.22, 1, 0.36, 1),
+    transition: opacity 0.15s ease,
+                r 0.1s cubic-bezier(0.22, 1, 0.36, 1),
                 stroke-width 0.1s cubic-bezier(0.22, 1, 0.36, 1),
                 fill 0.1s ease;
 }

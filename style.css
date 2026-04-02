@@ -318,10 +318,6 @@ svg#fr-graph {
     overflow: visible;
 }
 
-svg#fr-graph g.curves-g path {
-    transition: stroke-width 0.1s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
 svg#fr-graph g.music-spectrum-viz path.music-spectrum-fill {
     fill: var(--background-color-contrast-more);
     opacity: 0.2;
@@ -336,11 +332,9 @@ svg#fr-graph g.eq-filter-markers circle.eq-filter-marker {
     fill: var(--background-color-graph);
     --eq-filter-marker-cy-nudge: 0.5px;
     transform: translateY(var(--eq-filter-marker-cy-nudge, 0px));
+    vector-effect: non-scaling-stroke;
     paint-order: stroke fill;
-    transition: opacity 0.15s ease,
-                r 0.1s cubic-bezier(0.22, 1, 0.36, 1),
-                stroke-width 0.1s cubic-bezier(0.22, 1, 0.36, 1),
-                fill 0.1s ease;
+    transition: opacity 0.15s ease;
 }
 
 /* EQ panel (classic layout): selected vs dimmed filter rows */

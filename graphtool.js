@@ -1144,10 +1144,6 @@ function getDivColor(id, active) {
     return c;
 }
 function color_curveToText(c) {
-    if (!alt_layout) {
-        c.l = c.l/5 + 10;
-        c.c /= 3;
-    }
     return c;
 }
 let getTooltipColor = curve => color_curveToText(getColor_AC(curve));
@@ -5719,7 +5715,7 @@ function addHeader() {
         }
     });
 }
-if (alt_layout && alt_header) { addHeader(); }
+if (alt_header) { addHeader(); }
 
 // Add external links to bar at bottom of page, if configured
 function addExternalLinks() {
