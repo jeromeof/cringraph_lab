@@ -207,7 +207,17 @@ doc.html(`
               </div>
             </div>
             <div class="extra-eq">
-              <h5>Parametric Equalizer</h2>
+              <div class="extra-eq-head">
+                <h5 class="extra-eq-panel-title">Parametric Equalizer</h5>
+                <div class="extra-eq-reset-row">
+                  <span class="live-sound-eq-toggle-text">Reset EQ</span>
+                  <button type="button" class="extra-eq-reset-btn" aria-label="Reset all EQ bands: frequency, gain, and Q to zero">
+                    <svg class="extra-eq-reset-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                      <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0l6-6M3 9h12a6 6 0 0 1 6 6v0a6 6 0 0 1-6 6H9"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
               <div class="select-eq-phone">
                 <select name="phone">
                     <option value="" selected>Choose EQ model</option>
@@ -2812,6 +2822,8 @@ function addExtra() {
             setEqFilterSelectedRow(null);
         }, 500);
     };
+    /* Gap below panel top when snapping extra-eq into view (scroll slightly less than flush). */
+    const EQ_FILTER_SCROLL_EQ_TOP_INSET_PX = 10;
     let scrollEqFilterRowIntoView = (row) => {
         if (row === null || !filtersContainer) {
             return;
@@ -2826,7 +2838,20 @@ function addExtra() {
             return;
         }
         requestAnimationFrame(() => {
-            el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+            let panel = document.querySelector("div.select > div.extra-panel");
+            let eqRoot = filtersContainer.closest("div.extra-eq");
+            if (panel && eqRoot) {
+                let pr = panel.getBoundingClientRect();
+                let deltaEq = eqRoot.getBoundingClientRect().top - pr.top
+                    - EQ_FILTER_SCROLL_EQ_TOP_INSET_PX;
+                let deltaRow = el.getBoundingClientRect().bottom - pr.bottom;
+                let delta = Math.max(deltaEq, deltaRow);
+                let maxTop = Math.max(0, panel.scrollHeight - panel.clientHeight);
+                let nextTop = Math.max(0, Math.min(maxTop, panel.scrollTop + delta));
+                panel.scrollTo({ top: nextTop, behavior: "smooth" });
+            } else {
+                el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+            }
         });
     };
     let setEqFilterSelectedRow = (row) => {
@@ -3232,6 +3257,18 @@ function addExtra() {
     eqPhoneSelect.addEventListener("input", () => {
         setEqFilterSelectedRow(null);
         applyEQ();
+    });
+    let resetAllEqBandsToZero = () => {
+        for (let i = 0; i < eqBands; i++) {
+            filterFreqInput[i].value = "0";
+            filterGainInput[i].value = "0";
+            filterQInput[i].value = "0";
+        }
+        applyEQ();
+        scheduleLiveEqSync();
+    };
+    document.querySelector("div.extra-eq button.extra-eq-reset-btn").addEventListener("click", () => {
+        resetAllEqBandsToZero();
     });
     // Add new filter
     document.querySelector("div.extra-eq button.add-filter").addEventListener("click", () => {
@@ -4039,9 +4076,12 @@ function addExtra() {
         return f === 0 && q === 0 && g === 0;
     };
     const EQ_GRAPH_BASE_GAIN = 0.1;
+    /* Exponential smoothing of plot Y during vertical gain drags: same 1:1 dB mapping as the axis,
+       but the effective Y lags the pointer so fast flicks change gain more gently. Release snaps
+       to the true pointer position (accumPlotY), so the band ends on the cursor. */
+    const EQ_GRAPH_GAIN_DRAG_SMOOTH_TAU_MS = 72;
     /* Movement past this (px) starts a drag; first motion picks freq-only vs gain-only by |dx| vs |dy|. */
     const EQ_GRAPH_DRAG_THRESHOLD_PX = 5;
-    const EQ_GRAPH_DB_PER_PX = 24 / 220;
     /* Hysteresis: lock when pointer (svg space) leaves plot; unlock when it returns inside this inset. */
     const EQ_GRAPH_POINTER_LOCK_INSET = 3;
     let roundEqGraphGainDb = (db) => {
@@ -4050,8 +4090,13 @@ function addExtra() {
         }
         return Math.round(db * 10) / 10;
     };
-    let eqGraphGainFromDy = (dy) =>
-        roundEqGraphGainDb(EQ_GRAPH_BASE_GAIN + dy * EQ_GRAPH_DB_PER_PX);
+    let clampEqGraphGainToInputRange = (db) =>
+        Math.min(40, Math.max(-40, db));
+    /** Gain from plot Y vs drag-start ref: 1:1 with graph Y-axis dB (same d3 `y` as curves). */
+    let eqGraphGainFromPlotY = (anchorDb, refPlotY, currentPlotY) => {
+        let dDb = y.invert(currentPlotY) - y.invert(refPlotY);
+        return clampEqGraphGainToInputRange(roundEqGraphGainDb(anchorDb + dDb));
+    };
     /* applyEQ() debounces 100ms — continuous graph drag bypasses that via scheduleApplyEqDuringGraphDrag.
        Throttle applyEQExec + live audio during graph drag (~2–3 frames). */
     const EQ_GRAPH_DRAG_APPLY_MS = 32;
@@ -4172,6 +4217,14 @@ function addExtra() {
     };
     let eqGraphTypeCycleOrder = { PK: "LSQ", LSQ: "HSQ", HSQ: "PK" };
     let eqGraphPerformDragCleanup = (st, endEvent) => {
+        if (st.dragging && st.axisLock === "gain" && st.filterIndex !== null) {
+            let rawPlotY = st.originPlotMy + st.accumPlotY * st.svgScaleY;
+            let gSnap = eqGraphGainFromPlotY(
+                st.gainDragAnchorDb,
+                st.gainDragRefPlotY,
+                rawPlotY);
+            filterGainInput[st.filterIndex].value = String(gSnap);
+        }
         let didTapAddNewBand = !st.dragging && st.filterIndex === null;
         eqGraphExitPointerLockIfAny();
         if (st.captureEl) {
@@ -4228,13 +4281,12 @@ function addExtra() {
         let svg = st.captureEl;
         let locked = document.pointerLockElement === svg;
         let mx;
-        let rawDy;
+        let mClient = null;
         if (locked) {
             st.pointerLockActive = true;
             st.accumMovementX += e.movementX;
             st.accumMovementY += e.movementY;
             st.accumPlotY += e.movementY;
-            rawDy = -st.accumMovementY;
             mx = st.originPlotMx + st.accumMovementX * st.svgScaleX;
             mx = Math.min(pad.l + W, Math.max(pad.l, mx));
             let plotX = st.originPlotMx + st.accumMovementX * st.svgScaleX;
@@ -4248,20 +4300,36 @@ function addExtra() {
         } else {
             let refX = e.clientX - st.grabOffClientX;
             let refY = e.clientY - st.grabOffClientY;
-            let m = clientToGraphPlotXY(refX, refY);
-            if (!m) {
+            mClient = clientToGraphPlotXY(refX, refY);
+            if (!mClient) {
                 return;
             }
-            mx = Math.min(pad.l + W, Math.max(pad.l, m[0]));
-            rawDy = st.startClientY - refY;
+            mx = Math.min(pad.l + W, Math.max(pad.l, mClient[0]));
+            let rawDy = st.startClientY - refY;
             st.accumMovementX = (mx - st.originPlotMx) / st.svgScaleX;
             st.accumMovementY = -rawDy;
-            st.accumPlotY = (m[1] - st.originPlotMy) / st.svgScaleY;
+            st.accumPlotY = (mClient[1] - st.originPlotMy) / st.svgScaleY;
             /* Do not request pointer lock: on unlock the OS restores the cursor to the pre-lock
                position, which desyncs it from the node after a drag. Pointer capture on the SVG
                already keeps move/up events while the button is held. */
         }
-        let gainT = eqGraphGainFromDy(rawDy);
+        let currentPlotY = locked
+            ? st.originPlotMy + st.accumPlotY * st.svgScaleY
+            : mClient[1];
+        let dtMs = Math.min(120, Math.max(0, e.timeStamp - st.gainDragSmoothLastTs));
+        st.gainDragSmoothLastTs = e.timeStamp;
+        let aSmooth = st.axisLock === "gain"
+            ? 1 - Math.exp(-dtMs / EQ_GRAPH_GAIN_DRAG_SMOOTH_TAU_MS)
+            : 1;
+        st.gainDragSmoothedPlotY += aSmooth * (currentPlotY - st.gainDragSmoothedPlotY);
+        let gainAtRaw = eqGraphGainFromPlotY(
+            st.gainDragAnchorDb,
+            st.gainDragRefPlotY,
+            currentPlotY);
+        let gainAtSmooth = eqGraphGainFromPlotY(
+            st.gainDragAnchorDb,
+            st.gainDragRefPlotY,
+            st.gainDragSmoothedPlotY);
         let freqT = Math.round(Math.min(20000, Math.max(20, x.invert(mx))));
         let adx;
         let ady;
@@ -4287,13 +4355,13 @@ function addExtra() {
             if (st.axisLock === null) {
                 st.axisLock = Math.abs(adx) >= Math.abs(ady) ? "freq" : "gain";
                 if (st.axisLock === "freq") {
-                    st.lockGainDb = gainT;
+                    st.lockGainDb = gainAtRaw;
                 } else {
                     st.lockFreqHz = freqT;
                 }
             }
             let freq = st.axisLock === "freq" ? freqT : st.lockFreqHz;
-            let gain = st.axisLock === "gain" ? gainT : st.lockGainDb;
+            let gain = st.axisLock === "gain" ? gainAtSmooth : st.lockGainDb;
             st.dragging = true;
             let idx = addPeakingFilterFromHz(freq, gain, {
                 skipFocus: true,
@@ -4334,13 +4402,13 @@ function addExtra() {
         if (st.axisLock === null) {
             st.axisLock = Math.abs(adx) >= Math.abs(ady) ? "freq" : "gain";
             if (st.axisLock === "freq") {
-                st.lockGainDb = gainT;
+                st.lockGainDb = gainAtRaw;
             } else {
                 st.lockFreqHz = freqT;
             }
         }
         let freq = st.axisLock === "freq" ? freqT : st.lockFreqHz;
-        let gain = st.axisLock === "gain" ? gainT : st.lockGainDb;
+        let gain = st.axisLock === "gain" ? gainAtSmooth : st.lockGainDb;
         st.dragging = true;
         st.liveFHz = freq;
         filterFreqInput[st.filterIndex].value = String(freq);
@@ -4370,17 +4438,15 @@ function addExtra() {
         }
         let hit = findEqGraphMarkerHit(m);
         let stPreview;
-        let startDyOff = 0;
         let initialAccumMovementY = 0;
         let initialFilterIndex = null;
+        let gainDragAnchorDb = EQ_GRAPH_BASE_GAIN;
         if (hit) {
             let g0 = parseFloat(filterGainInput[hit.rowIndex].value) || 0;
             if (!Number.isFinite(g0)) {
                 g0 = 0;
             }
-            let dyForGain = (g0 - EQ_GRAPH_BASE_GAIN) / EQ_GRAPH_DB_PER_PX;
-            startDyOff = dyForGain;
-            initialAccumMovementY = -dyForGain;
+            gainDragAnchorDb = g0;
             initialFilterIndex = hit.rowIndex;
             let fCell = parseInt(filterFreqInput[hit.rowIndex].value, 10) || 20;
             stPreview = { fHz: Math.min(20000, Math.max(20, fCell)) };
@@ -4411,17 +4477,18 @@ function addExtra() {
         let grabOffClientY = 0;
         let originMx = Math.min(pad.l + W, Math.max(pad.l, m[0]));
         let originMy = Math.min(pad.t + H, Math.max(pad.t, m[1]));
-        let startClientYVal = e.clientY + startDyOff;
+        let startClientYVal = e.clientY;
         if (hit) {
             let nc = graphPlotXYToClient(hit.cx, hit.cy);
             if (nc) {
                 grabOffClientX = e.clientX - nc[0];
                 grabOffClientY = e.clientY - nc[1];
-                startClientYVal = nc[1] + startDyOff;
+                startClientYVal = nc[1];
                 originMx = hit.cx;
                 originMy = hit.cy;
             }
         }
+        let gainDragRefPlotY = originMy;
         clearTimeout(eqGraphApplyEqDragTimer);
         eqGraphApplyEqDragTimer = null;
         eqGraphDragApplyLastRun = 0;
@@ -4438,6 +4505,10 @@ function addExtra() {
             axisLock: null,
             lockFreqHz: null,
             lockGainDb: null,
+            gainDragAnchorDb: gainDragAnchorDb,
+            gainDragRefPlotY: gainDragRefPlotY,
+            gainDragSmoothedPlotY: originMy,
+            gainDragSmoothLastTs: e.timeStamp,
             pointerId: e.pointerId,
             captureEl: svg,
             originPlotMx: originMx,
@@ -4458,7 +4529,28 @@ function addExtra() {
         document.addEventListener("pointerup", eqGraphDragEnd, true);
         document.addEventListener("pointercancel", eqGraphDragEnd, true);
     }
-    const EQ_GRAPH_WHEEL_Q_PIXEL_SCALE = 0.005;
+    /* Wheel Q: normalize to ~pixel scale, then sublinear steps; each unit is 0.1 Q (tenths only).
+       Sensitivity tapers toward Qmin so low-Q tweaks are not huge jumps; a float per band accumulates
+       sub-tenth motion until rounding (manual Q edits resync via |float − input|). */
+    const EQ_GRAPH_WHEEL_Q_STEP = 0.1;
+    const EQ_GRAPH_WHEEL_SENS_REF_PX = 42;
+    const EQ_GRAPH_WHEEL_MAX_STEPS = 5;
+    const EQ_GRAPH_WHEEL_Q_SENS_KNEE = 2;
+    const EQ_GRAPH_WHEEL_Q_SENS_FLOOR = 0.22;
+    const EQ_GRAPH_WHEEL_Q_SENS_GAMMA = 1.2;
+    let eqGraphWheelQFloat = Object.create(null);
+    let eqGraphWheelQSensitivity = (q) => {
+        if (!Number.isFinite(q)) {
+            return 1;
+        }
+        if (q >= EQ_GRAPH_WHEEL_Q_SENS_KNEE) {
+            return 1;
+        }
+        let t = (q - 0.1) / (EQ_GRAPH_WHEEL_Q_SENS_KNEE - 0.1);
+        t = Math.max(0, Math.min(1, t));
+        return EQ_GRAPH_WHEEL_Q_SENS_FLOOR
+            + (1 - EQ_GRAPH_WHEEL_Q_SENS_FLOOR) * Math.pow(t, EQ_GRAPH_WHEEL_Q_SENS_GAMMA);
+    };
     function eqGraphPlotWheel(e) {
         if (eqGraphPointerState || interactInspect) {
             return;
@@ -4478,20 +4570,34 @@ function addExtra() {
         }
         e.preventDefault();
         let i = hit.rowIndex;
-        let q = parseFloat(filterQInput[i].value);
-        if (!Number.isFinite(q)) {
-            q = 1;
+        let qDisplay = parseFloat(filterQInput[i].value);
+        if (!Number.isFinite(qDisplay)) {
+            qDisplay = 1;
         }
-        let dq = 0;
+        let qFloat = eqGraphWheelQFloat[i];
+        if (!Number.isFinite(qFloat) || Math.abs(qFloat - qDisplay) > 0.051) {
+            eqGraphWheelQFloat[i] = qDisplay;
+            qFloat = qDisplay;
+        }
+        let dy = e.deltaY;
         if (e.deltaMode === 1) {
-            dq = Math.sign(e.deltaY) * 0.1 * Math.max(1, Math.abs(e.deltaY));
+            dy *= 16;
         } else if (e.deltaMode === 2) {
-            dq = Math.sign(e.deltaY) * 0.5;
-        } else {
-            dq = e.deltaY * EQ_GRAPH_WHEEL_Q_PIXEL_SCALE;
+            dy *= 100;
         }
-        q = Math.min(10, Math.max(0.1, q + dq));
-        q = Math.round(q * 10) / 10;
+        let dir = dy > 0 ? 1 : dy < 0 ? -1 : 0;
+        if (!dir) {
+            return;
+        }
+        let mag = Math.abs(dy);
+        let notchEq = Math.pow(mag, 0.58) / Math.pow(EQ_GRAPH_WHEEL_SENS_REF_PX, 0.58);
+        let steps = Math.max(1, Math.min(EQ_GRAPH_WHEEL_MAX_STEPS, Math.round(notchEq)));
+        let sens = eqGraphWheelQSensitivity(qFloat);
+        let dq = dir * EQ_GRAPH_WHEEL_Q_STEP * steps * sens;
+        /* Scroll up → lower Q, scroll down → higher Q (invert raw deltaY convention). */
+        qFloat = Math.min(10, Math.max(0.1, qFloat - dq));
+        eqGraphWheelQFloat[i] = qFloat;
+        let q = Math.round(qFloat * 10) / 10;
         q = Math.max(0.1, q);
         filterQInput[i].value = String(q);
         clearTimeout(applyEQHandle);

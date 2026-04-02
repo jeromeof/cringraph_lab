@@ -1175,6 +1175,86 @@ div.extra-panel select[name="phone"] {
     calc(100% - 9px) calc(1em + 3px);
 }
 
+div.extra-panel .extra-eq-head {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    column-gap: 12px;
+    row-gap: 6px;
+    margin: 0 0 8px 0;
+    width: 100%;
+}
+
+div.extra-panel .extra-eq-panel-title {
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-primary);
+    font-size: 13px;
+    line-height: 1.2;
+    font-weight: 600;
+    color: var(--background-color-contrast-more);
+}
+
+div.extra-panel .extra-eq-reset-row {
+    flex: 0 0 auto;
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-primary);
+    font-size: 12px;
+    line-height: 1.2;
+    font-weight: 500;
+    color: var(--background-color-contrast-more);
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+div.extra-panel .extra-eq-reset-btn {
+    box-sizing: border-box;
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--background-color-contrast-more);
+    cursor: pointer;
+    transition: color 200ms ease;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+div.extra-panel .extra-eq-reset-btn:hover {
+    color: var(--accent-color);
+}
+
+div.extra-panel .extra-eq-reset-btn:focus {
+    outline: none;
+}
+
+div.extra-panel .extra-eq-reset-btn:focus-visible {
+    box-shadow: 0 0 0 2px var(--background-color-graph), 0 0 0 4px var(--accent-color-contrast);
+    border-radius: 4px;
+}
+
+div.extra-panel .extra-eq-reset-icon {
+    width: 15px;
+    height: 15px;
+    display: block;
+}
+
 div.extra-panel > div.extra-eq > div.select-eq-phone,
 div.extra-panel > div.extra-eq > div.filters,
 div.extra-panel div.settings-row {
