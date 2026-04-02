@@ -952,6 +952,7 @@ let eqPointerFollowerX = 0;
 let eqPointerFollowerY = 0;
 let eqPointerFollowerO = 1;
 let eqPointerFollowerNearRow = null;
+let eqPointerFollowerLastTraceSnap = false;
 let eqPointerFollowerLastCx = 0;
 let eqPointerFollowerLastCy = 0;
 let eqPointerFollowerChaseX = 0;
@@ -972,7 +973,7 @@ function eqPointerFollowerApply() {
         .attr("opacity", eqPointerFollowerO);
 }
 function eqPointerFollowerOnFrame(now) {
-    if (eqPointerFollowerMode !== "to-node") {
+    if (eqPointerFollowerMode !== "to-node" && eqPointerFollowerMode !== "to-trace") {
         eqPointerFollowerAnimId = null;
         return;
     }
@@ -1014,9 +1015,9 @@ function eqPointerFollowerAwayFrame() {
     }
     eqPointerFollowerAnimId = requestAnimationFrame(eqPointerFollowerAwayFrame);
 }
-function eqPointerFollowerStartAnim(x0, y0, o0, x1, y1, o1) {
+function eqPointerFollowerStartTween(x0, y0, o0, x1, y1, o1, mode) {
     eqPointerFollowerCancelAnim();
-    eqPointerFollowerMode = "to-node";
+    eqPointerFollowerMode = mode;
     eqPointerFollowerAnimT0 = performance.now();
     eqPointerFollowerSx = x0;
     eqPointerFollowerSy = y0;
@@ -1031,6 +1032,12 @@ function eqPointerFollowerStartAnim(x0, y0, o0, x1, y1, o1) {
     gEqPointerFollower.style("display", null);
     gEqPointerFollower.raise();
     eqPointerFollowerAnimId = requestAnimationFrame(eqPointerFollowerOnFrame);
+}
+function eqPointerFollowerStartAnim(x0, y0, o0, x1, y1, o1) {
+    eqPointerFollowerStartTween(x0, y0, o0, x1, y1, o1, "to-node");
+}
+function eqPointerFollowerStartTraceSnapAnim(x0, y0, x1, y1) {
+    eqPointerFollowerStartTween(x0, y0, 1, x1, y1, 1, "to-trace");
 }
 function eqPointerFollowerStartAwayFromNode() {
     eqPointerFollowerCancelAnim();
@@ -2354,6 +2361,7 @@ let graphInteract = imm => function () {
         return;
     }
     if (imm && !interactInspect && tryEqGraphClickAddFilter(m)) {
+        syncEqHoverPreview(m);
         return;
     }
     syncEqHoverPreview(m);
@@ -2798,12 +2806,6 @@ function addExtra() {
         document.querySelector("div.select").setAttribute("data-selected", "extra");
         if (analyticsEnabled) { pushEventTag("clicked_equalizerTab", targetWindow); }
     };
-    window.hideExtraPanel = (selectedList) => {
-        document.querySelector("div.select > div.selector-panel").style["display"] = "flex";
-        document.querySelector("div.select > div.extra-panel").style["display"] = "none";
-        document.querySelector("div.select").setAttribute("data-selected", selectedList);
-        syncEqHoverPreview(null);
-    };
     extraButton.addEventListener("click", showExtraPanel);
     // Upload function
     let uploadType = null;
@@ -2884,6 +2886,110 @@ function addExtra() {
     let filterEnabledInput, filterTypeSelect,
         filterFreqInput, filterQInput, filterGainInput;
     let eqBands = extraEQBands;
+    let eqFilterSelectedRow = null;
+    let updateEqFilterRowSelectionStyles = () => {
+        if (!filtersContainer) {
+            return;
+        }
+        filtersContainer.querySelectorAll("div.filter").forEach((el, i) => {
+            el.classList.remove("eq-filter-row-selected", "eq-filter-row-dimmed");
+            if (eqFilterSelectedRow === null) {
+                return;
+            }
+            if (i === eqFilterSelectedRow) {
+                el.classList.add("eq-filter-row-selected");
+            } else {
+                el.classList.add("eq-filter-row-dimmed");
+            }
+        });
+    };
+    let applyEqGraphMarkerSelectionOpacity = (hoverOrDragRow) => {
+        gEqFilterMarkers.selectAll("circle.eq-filter-marker").each(function (d) {
+            if (!d) {
+                return;
+            }
+            let c = d3.select(this);
+            if (eqFilterSelectedRow === null) {
+                c.style("opacity", null);
+                return;
+            }
+            let sel = d.rowIndex === eqFilterSelectedRow;
+            let hi = hoverOrDragRow !== null && hoverOrDragRow !== undefined
+                && d.rowIndex === hoverOrDragRow;
+            c.style("opacity", (sel || hi) ? null : 0.38);
+        });
+    };
+    /* hoverHighlightRow: drag band or mouse-near marker; null = no pointer hover. Selection fill is
+       applied in addition when eqFilterSelectedRow matches. */
+    let applyEqFilterMarkerFillAndSize = (hoverHighlightRow) => {
+        gEqFilterMarkers.selectAll("circle.eq-filter-marker").each(function (d) {
+            if (!d) {
+                return;
+            }
+            let c = d3.select(this);
+            let hoverOn = hoverHighlightRow !== null && hoverHighlightRow !== undefined
+                && d.rowIndex === hoverHighlightRow;
+            let selOn = eqFilterSelectedRow !== null && d.rowIndex === eqFilterSelectedRow;
+            let filled = hoverOn || selOn;
+            c.classed("eq-filter-marker-hover", hoverOn)
+                .attr("r", filled ? 6.5 : 4.25);
+            if (filled) {
+                c.style("fill", c.attr("stroke"));
+            } else {
+                c.style("fill", null);
+            }
+        });
+    };
+    let eqFilterDeselectTimer = null;
+    let cancelEqFilterDeselectTimer = () => {
+        if (eqFilterDeselectTimer !== null) {
+            clearTimeout(eqFilterDeselectTimer);
+            eqFilterDeselectTimer = null;
+        }
+    };
+    let scheduleEqFilterDeselectTimer = () => {
+        cancelEqFilterDeselectTimer();
+        eqFilterDeselectTimer = setTimeout(() => {
+            eqFilterDeselectTimer = null;
+            setEqFilterSelectedRow(null);
+        }, 500);
+    };
+    let scrollEqFilterRowIntoView = (row) => {
+        if (row === null || !filtersContainer) {
+            return;
+        }
+        let tab = document.querySelector("div.select");
+        if (!tab || tab.getAttribute("data-selected") !== "extra") {
+            return;
+        }
+        let rows = filtersContainer.querySelectorAll("div.filter");
+        let el = rows[row];
+        if (!el) {
+            return;
+        }
+        requestAnimationFrame(() => {
+            el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        });
+    };
+    let setEqFilterSelectedRow = (row) => {
+        if (row !== null && (typeof row !== "number" || row < 0 || row >= eqBands)) {
+            row = null;
+        }
+        cancelEqFilterDeselectTimer();
+        eqFilterSelectedRow = row;
+        updateEqFilterRowSelectionStyles();
+        updateEqFilterMarkers();
+        if (row !== null) {
+            scrollEqFilterRowIntoView(row);
+        }
+    };
+    window.hideExtraPanel = (selectedList) => {
+        document.querySelector("div.select > div.selector-panel").style["display"] = "flex";
+        document.querySelector("div.select > div.extra-panel").style["display"] = "none";
+        document.querySelector("div.select").setAttribute("data-selected", selectedList);
+        setEqFilterSelectedRow(null);
+        syncEqHoverPreview(null);
+    };
     let updateFilterElements = () => {
         let node = filtersContainer.querySelector("div.filter");
         while (filtersContainer.childElementCount < eqBands) {
@@ -2907,6 +3013,11 @@ function addExtra() {
             el.removeEventListener("input", applyEQ);
             el.addEventListener("input", applyEQ);
         });
+        if (eqFilterSelectedRow !== null
+                && eqFilterSelectedRow >= filtersContainer.querySelectorAll("div.filter").length) {
+            eqFilterSelectedRow = null;
+        }
+        updateEqFilterRowSelectionStyles();
     };
     let elemToFilters = (includeAll) => {
         // Collect filters from ui
@@ -3004,11 +3115,52 @@ function addExtra() {
         }
         return { fHz, phoneObj, tracePhone, db, pts };
     };
-    /* Screen-space radius in CSS px for marker hit / hover snap (see findEqGraphMarkerHit). */
+    /* Screen-space radius in CSS px for marker hit / trace snap (see findEqGraphMarkerHit). */
     const EQ_GRAPH_MARKER_HIT_PX = 28;
+    let eqGraphPlotDistPx = (m, gx, gy) => {
+        if (!m || m.length < 2) {
+            return Infinity;
+        }
+        let plot = graphPlotHitRect && graphPlotHitRect.node();
+        if (!plot) {
+            return Infinity;
+        }
+        let svg = plot.ownerSVGElement || (plot.closest && plot.closest("svg"));
+        if (!svg || !svg.viewBox || !svg.getBoundingClientRect) {
+            return Infinity;
+        }
+        let rect = svg.getBoundingClientRect();
+        let vb = svg.viewBox.baseVal;
+        let pxPerSvgX = rect.width / Math.max(1e-6, vb.width);
+        let pxPerSvgY = rect.height / Math.max(1e-6, vb.height);
+        let dxPx = (m[0] - gx) * pxPerSvgX;
+        let dyPx = (m[1] - gy) * pxPerSvgY;
+        return Math.hypot(dxPx, dyPx);
+    };
+    /* Same enabled-band list as elemToFilters(); if shelfRowAsPk === j and row j is LSQ/HSQ, use PK
+       so the summed response matches “this band as a peak” for marker anchoring. */
+    let eqFiltersListForApply = (shelfRowAsPk) => {
+        let out = [];
+        for (let j = 0; j < eqBands; ++j) {
+            let disabled = !filterEnabledInput[j].checked;
+            let t = (filterTypeSelect[j].value || "").trim();
+            let f = parseInt(filterFreqInput[j].value, 10) || 0;
+            let qv = parseFloat(filterQInput[j].value) || 0;
+            let g = parseFloat(filterGainInput[j].value) || 0;
+            if (disabled || !t || !f || !qv || !g) {
+                continue;
+            }
+            let typ = t;
+            if (shelfRowAsPk !== null && shelfRowAsPk !== undefined && j === shelfRowAsPk
+                    && (t === "LSQ" || t === "HSQ")) {
+                typ = "PK";
+            }
+            out.push({ type: typ, freq: f, q: qv, gain: g });
+        }
+        return out;
+    };
     let buildEqGraphMarkerLayout = () => {
-        let phoneSel = eqPhoneSelect && eqPhoneSelect.value;
-        let phoneObj = phoneSel && activePhones.filter(p => p.fullName === phoneSel)[0];
+        let phoneObj = resolveEqGraphPhoneObj();
         if (!phoneObj) {
             return null;
         }
@@ -3032,7 +3184,27 @@ function addExtra() {
             if (disabled || !type || !freq || !q || !gain) {
                 continue;
             }
-            let db = eqInterpDbAtHz(pts, freq);
+            let typeTrim = (type || "").trim();
+            /* Shelves: Y = EQ trace at this freq if this band were PK (same f/q/gain), so toggling
+               PK <-> shelf does not move the node; the drawn EQ curve still uses the real shelf. */
+            let db;
+            if ((typeTrim === "LSQ" || typeTrim === "HSQ")
+                    && phoneObj.rawChannels && phoneObj.rawChannels[0]
+                    && typeof Equalizer !== "undefined" && Equalizer.apply) {
+                let filtPk = eqFiltersListForApply(i);
+                try {
+                    let frEq = Equalizer.apply(phoneObj.rawChannels[0], filtPk);
+                    let ptsPk = baseline.fn(frEq);
+                    db = eqInterpDbAtHz(ptsPk, freq);
+                } catch (err) {
+                    db = null;
+                }
+                if (db === null || !Number.isFinite(db)) {
+                    db = eqInterpDbAtHz(pts, freq);
+                }
+            } else {
+                db = eqInterpDbAtHz(pts, freq);
+            }
             if (db === null || !Number.isFinite(db)) {
                 continue;
             }
@@ -3061,26 +3233,12 @@ function addExtra() {
         if (!layout || !layout.rows.length) {
             return null;
         }
-        let plot = graphPlotHitRect && graphPlotHitRect.node();
-        if (!plot) {
-            return null;
-        }
-        let svg = plot.ownerSVGElement || (plot.closest && plot.closest("svg"));
-        if (!svg || !svg.viewBox || !svg.getBoundingClientRect) {
-            return null;
-        }
-        let rect = svg.getBoundingClientRect();
-        let vb = svg.viewBox.baseVal;
-        let pxPerSvgX = rect.width / Math.max(1e-6, vb.width);
-        let pxPerSvgY = rect.height / Math.max(1e-6, vb.height);
         let hitR = EQ_GRAPH_MARKER_HIT_PX;
         let best = null;
         let bestD = Infinity;
         for (let j = 0; j < layout.rows.length; j++) {
             let row = layout.rows[j];
-            let dxPx = (m[0] - row.cx) * pxPerSvgX;
-            let dyPx = (m[1] - row.cy) * pxPerSvgY;
-            let d = Math.hypot(dxPx, dyPx);
+            let d = eqGraphPlotDistPx(m, row.cx, row.cy);
             if (d > hitR) {
                 continue;
             }
@@ -3090,12 +3248,6 @@ function addExtra() {
             }
         }
         return best;
-    };
-    let resetEqFilterMarkerHoverStyles = () => {
-        gEqFilterMarkers.selectAll("circle.eq-filter-marker")
-            .classed("eq-filter-marker-hover", false)
-            .attr("r", 4.25)
-            .style("fill", null);
     };
     updateEqFilterMarkers = () => {
         let layout = buildEqGraphMarkerLayout();
@@ -3117,29 +3269,23 @@ function addExtra() {
             .attr("cy", d => d.cy)
             .attr("stroke", layout.strokeCol)
             .attr("stroke-width", 3);
-        if (eqGraphPointerState != null && eqGraphPointerState.filterIndex !== null) {
-            let ix = eqGraphPointerState.filterIndex;
-            gEqFilterMarkers.selectAll("circle.eq-filter-marker").each(function (d) {
-                let c = d3.select(this);
-                let on = d && d.rowIndex === ix;
-                c.classed("eq-filter-marker-hover", on)
-                    .attr("r", on ? 6.5 : 4.25);
-                if (on) {
-                    c.style("fill", c.attr("stroke"));
-                } else {
-                    c.style("fill", null);
-                }
-            });
-        }
+        let dragIx = eqGraphPointerState != null && eqGraphPointerState.filterIndex !== null
+            ? eqGraphPointerState.filterIndex
+            : null;
+        applyEqFilterMarkerFillAndSize(dragIx);
+        applyEqGraphMarkerSelectionOpacity(dragIx);
         gEqFilterMarkers.raise();
         gEqHoverPreview.raise();
         gEqPointerFollower.raise();
     };
     syncEqHoverPreview = (m) => {
+        let markerHighlightRow = null;
         if (!m) {
             gEqHoverPreview.selectAll("*").remove();
             setGraphEqPreviewCursor(false);
-            resetEqFilterMarkerHoverStyles();
+            eqPointerFollowerLastTraceSnap = false;
+            applyEqFilterMarkerFillAndSize(null);
+            applyEqGraphMarkerSelectionOpacity(null);
             return;
         }
         let mUse = m;
@@ -3153,43 +3299,47 @@ function addExtra() {
             }
             gEqPointerFollower.style("display", "none");
             eqPointerFollowerCancelAnim();
-        } else {
-            eqPointerFollowerChaseX = mUse[0];
-            eqPointerFollowerChaseY = mUse[1];
         }
+        let stCurve = computeEqNodePreviewAtMouse(mUse);
+        let curveCx = null;
+        let curveCy = null;
+        if (stCurve) {
+            let yOffSnap = y(getOffset(stCurve.tracePhone)) - y(0);
+            curveCx = x(stCurve.fHz);
+            curveCy = y(stCurve.db) + yOffSnap;
+        }
+        let traceSnap = !!(stCurve && curveCx !== null
+            && eqGraphPlotDistPx(mUse, curveCx, curveCy) <= EQ_GRAPH_MARKER_HIT_PX);
         let near = findEqGraphMarkerHit(mUse);
         let nearRow = near ? near.rowIndex : null;
         let dragBandIx = draggingGraph && eqGraphPointerState.filterIndex !== null
             ? eqGraphPointerState.filterIndex
             : null;
-        let markerHighlightRow = dragBandIx !== null ? dragBandIx : nearRow;
+        markerHighlightRow = dragBandIx !== null ? dragBandIx : nearRow;
         if (markerHighlightRow !== null) {
             gEqHoverPreview.selectAll("*").remove();
-            gEqFilterMarkers.selectAll("circle.eq-filter-marker").each(function (d) {
-                let on = d && d.rowIndex === markerHighlightRow;
-                let c = d3.select(this);
-                c.classed("eq-filter-marker-hover", on)
-                    .attr("r", on ? 6.5 : 4.25);
-                if (on) {
-                    /* Inline style beats stylesheet fill on .eq-filter-marker (attr fill does not). */
-                    c.style("fill", c.attr("stroke"));
-                } else {
-                    c.style("fill", null);
-                }
-            });
-        } else {
-            resetEqFilterMarkerHoverStyles();
         }
+        applyEqFilterMarkerFillAndSize(markerHighlightRow);
+        applyEqGraphMarkerSelectionOpacity(markerHighlightRow);
         if (near) {
+            eqPointerFollowerLastTraceSnap = false;
             if (!draggingGraph) {
                 if (nearRow !== eqPointerFollowerNearRow) {
-                    let x0 = mUse[0];
-                    let y0 = mUse[1];
-                    let o0 = 1;
+                    let x0;
+                    let y0;
+                    let o0;
                     if (eqPointerFollowerNearRow !== null || eqPointerFollowerAnimId !== null) {
                         x0 = eqPointerFollowerX;
                         y0 = eqPointerFollowerY;
                         o0 = eqPointerFollowerO;
+                    } else if (traceSnap) {
+                        x0 = curveCx;
+                        y0 = curveCy;
+                        o0 = 1;
+                    } else {
+                        x0 = mUse[0];
+                        y0 = mUse[1];
+                        o0 = 1;
                     }
                     eqPointerFollowerStartAnim(x0, y0, o0, near.cx, near.cy, 0);
                     eqPointerFollowerNearRow = nearRow;
@@ -3209,46 +3359,48 @@ function addExtra() {
             eqPointerFollowerStartAwayFromNode();
             eqPointerFollowerNearRow = null;
         }
-        let st = computeEqNodePreviewAtMouse(mUse);
-        if (!st) {
+        if (!stCurve || curveCx === null) {
             gEqHoverPreview.selectAll("*").remove();
             setGraphEqPreviewCursor(false);
+            eqPointerFollowerLastTraceSnap = false;
             return;
         }
-        let yOff = y(getOffset(st.tracePhone)) - y(0);
-        let cx = x(st.fHz);
-        let cy = y(st.db) + yOff;
-        let root = gEqHoverPreview.selectAll("g.eq-hover-preview-root").data([1]);
-        let enter = root.enter().append("g").attr("class", "eq-hover-preview-root");
-        let inner = enter.append("g").attr("class", "eq-hover-preview-nudge");
-        inner.append("circle")
-            .attr("class", "eq-hover-preview-disc")
-            /* Outer size matches PEQ markers: r 4.25 + half of stroke-width 3 */
-            .attrs({ r: 4.25 + 1.5, cx: 0, cy: 0 });
-        let mg = root.merge(enter).attr("transform", "translate(" + cx + "," + cy + ")");
-        mg.selectAll("text.eq-hover-preview-plus").remove();
-        let prevDisc = mg.select("circle.eq-hover-preview-disc");
-        if (draggingGraph) {
-            let trCol = getCurveColor(st.tracePhone.id, 0);
-            prevDisc.attr("r", 6.5)
-                .style("fill", trCol)
-                .style("stroke", trCol)
-                .attr("stroke-width", 3);
-        } else {
-            prevDisc.attr("r", 4.25 + 1.5)
-                .style("fill", null)
-                .style("stroke", null)
-                .attr("stroke-width", null);
+        if (!draggingGraph) {
+            if (traceSnap) {
+                eqPointerFollowerChaseX = curveCx;
+                eqPointerFollowerChaseY = curveCy;
+            } else {
+                eqPointerFollowerChaseX = mUse[0];
+                eqPointerFollowerChaseY = mUse[1];
+            }
         }
-        gEqHoverPreview.raise();
-        if (!draggingGraph && !eqPointerFollowerAnimId && eqPointerFollowerMode !== "away") {
-            eqPointerFollowerShowAt(mUse[0], mUse[1], 1);
+        gEqHoverPreview.selectAll("*").remove();
+        if (!draggingGraph) {
+            if (eqPointerFollowerMode === "to-trace") {
+                eqPointerFollowerEx = curveCx;
+                eqPointerFollowerEy = curveCy;
+            }
+            if (!traceSnap) {
+                eqPointerFollowerLastTraceSnap = false;
+                if (!eqPointerFollowerAnimId && eqPointerFollowerMode !== "away") {
+                    eqPointerFollowerShowAt(mUse[0], mUse[1], 1);
+                }
+            } else if (eqPointerFollowerMode === "away") {
+                /* Latch trace entry anim until away finishes (lastTraceSnap stays false). */
+            } else if (!eqPointerFollowerLastTraceSnap) {
+                eqPointerFollowerStartTraceSnapAnim(
+                    eqPointerFollowerX, eqPointerFollowerY, curveCx, curveCy);
+                eqPointerFollowerLastTraceSnap = true;
+            } else if (!eqPointerFollowerAnimId) {
+                eqPointerFollowerShowAt(curveCx, curveCy, 1);
+            }
         }
         setGraphEqPreviewCursor(true);
         gEqPointerFollower.raise();
     };
     let applyEQHandle = null;
-    let applyEQExec = () => {
+    let applyEQExec = (execOpt) => {
+        execOpt = execOpt || {};
         // Create and show phone with eq applied
         let activeElem = document.activeElement;
         let phoneSelected = eqPhoneSelect.value;
@@ -3270,8 +3422,10 @@ function addExtra() {
             phoneObj.rawChannels.map(c => c ? Equalizer.apply(c, filters) : null));
         phoneObj.eq = phoneObjEQ;
         phoneObjEQ.eqParent = phoneObj;
-        showPhone(phoneObjEQ, false);
-        activeElem.focus();
+        showPhone(phoneObjEQ, false, !!execOpt.skipRestoreFocus);
+        if (!execOpt.skipRestoreFocus) {
+            activeElem.focus();
+        }
         updateEqFilterMarkers();
     };
     let applyEQ = () => {
@@ -3294,7 +3448,11 @@ function addExtra() {
     };
     updateFilterElements();
     updateEqFilterMarkers();
-    eqPhoneSelect.addEventListener("input", applyEQ);
+    eqPhoneSelect.addEventListener("focusin", cancelEqFilterDeselectTimer);
+    eqPhoneSelect.addEventListener("input", () => {
+        setEqFilterSelectedRow(null);
+        applyEQ();
+    });
     // Add new filter
     document.querySelector("div.extra-eq button.add-filter").addEventListener("click", () => {
         eqBands = Math.min(eqBands + 1, extraEQBandsMax);
@@ -4107,7 +4265,7 @@ function addExtra() {
         if (options.skipFocus) {
             clearTimeout(applyEQHandle);
             applyEQHandle = null;
-            applyEQExec();
+            applyEQExec({ skipRestoreFocus: true });
         } else {
             applyEQ();
         }
@@ -4131,7 +4289,20 @@ function addExtra() {
         if (findEqGraphMarkerHit(m)) {
             return false;
         }
-        return addPeakingFilterFromHz(st.fHz, EQ_GRAPH_BASE_GAIN) >= 0;
+        let yOff = y(getOffset(st.tracePhone)) - y(0);
+        let cx = x(st.fHz);
+        let cy = y(st.db) + yOff;
+        if (eqGraphPlotDistPx(m, cx, cy) > EQ_GRAPH_MARKER_HIT_PX) {
+            return false;
+        }
+        /* skipFocus: immediate applyEQExec + updateEqFilterMarkers so syncEqHoverPreview can
+           hit the new marker; avoid focusing gain (OS cursor) so the next click can target the graph. */
+        let newIx = addPeakingFilterFromHz(st.fHz, EQ_GRAPH_BASE_GAIN, { skipFocus: true });
+        if (newIx < 0) {
+            return false;
+        }
+        setEqFilterSelectedRow(newIx);
+        return true;
     };
     let eqGraphRemoveDragListeners = () => {
         document.removeEventListener("pointermove", eqGraphDragMove, true);
@@ -4161,7 +4332,8 @@ function addExtra() {
         }
     };
     let eqGraphTypeCycleOrder = { PK: "LSQ", LSQ: "HSQ", HSQ: "PK" };
-    let eqGraphPerformDragCleanup = (st) => {
+    let eqGraphPerformDragCleanup = (st, endEvent) => {
+        let didTapAddNewBand = !st.dragging && st.filterIndex === null;
         try {
             eqGraphExitPointerLockIfAny();
             if (st.captureEl) {
@@ -4181,16 +4353,13 @@ function addExtra() {
                 eqGraphSkipClickClearTimer = null;
                 eqGraphSkipNextClick = false;
             }, 800);
-            if (!st.dragging && st.filterIndex === null) {
-                addPeakingFilterFromHz(st.fHz, EQ_GRAPH_BASE_GAIN);
-            } else if (st.filterIndex !== null) {
-                if (!st.dragging) {
-                    let sel = filterTypeSelect[st.filterIndex];
-                    if (sel) {
-                        let cur = (sel.value || "").trim();
-                        sel.value = eqGraphTypeCycleOrder[cur] || "PK";
-                    }
+            if (didTapAddNewBand) {
+                /* Same as graph click-add: immediate markers, no gain focus / refocus steal */
+                let newIx = addPeakingFilterFromHz(st.fHz, EQ_GRAPH_BASE_GAIN, { skipFocus: true });
+                if (newIx >= 0) {
+                    setEqFilterSelectedRow(newIx);
                 }
+            } else if (st.filterIndex !== null && st.dragging) {
                 clearTimeout(applyEQHandle);
                 applyEQHandle = null;
                 applyEQExec();
@@ -4198,6 +4367,15 @@ function addExtra() {
             }
         } finally {
             eqGraphSetRootCursorHidden(false);
+        }
+        if (endEvent) {
+            let mUp = clientToGraphPlotXY(endEvent.clientX, endEvent.clientY);
+            if (mUp) {
+                syncEqHoverPreview(mUp);
+            }
+            if (!filtersContainer.contains(document.activeElement)) {
+                scheduleEqFilterDeselectTimer();
+            }
         }
     };
     function eqGraphOnPointerLockChange() {
@@ -4299,6 +4477,7 @@ function addExtra() {
             }
             st.filterIndex = idx;
             st.liveFHz = freq;
+            setEqFilterSelectedRow(idx);
             scheduleApplyEqDuringGraphDrag();
             return;
         }
@@ -4320,7 +4499,7 @@ function addExtra() {
         if (!eqGraphPointerState || e.pointerId !== eqGraphPointerState.pointerId) {
             return;
         }
-        eqGraphPerformDragCleanup(eqGraphPointerState);
+        eqGraphPerformDragCleanup(eqGraphPointerState, e);
     }
     function eqGraphPointerDown(e) {
         if (interactInspect) {
@@ -4353,11 +4532,19 @@ function addExtra() {
             initialFilterIndex = hit.rowIndex;
             let fCell = parseInt(filterFreqInput[hit.rowIndex].value, 10) || 20;
             stPreview = { fHz: Math.min(20000, Math.max(20, fCell)) };
+            setEqFilterSelectedRow(hit.rowIndex);
         } else {
             stPreview = computeEqNodePreviewAtMouse(m);
-        }
-        if (!stPreview) {
-            return;
+            if (!stPreview) {
+                return;
+            }
+            let yOff = y(getOffset(stPreview.tracePhone)) - y(0);
+            let cx = x(stPreview.fHz);
+            let cy = y(stPreview.db) + yOff;
+            if (eqGraphPlotDistPx(m, cx, cy) > EQ_GRAPH_MARKER_HIT_PX) {
+                return;
+            }
+            setEqFilterSelectedRow(null);
         }
         /* preventDefault on mouse breaks compatibility mouse events; only touch needs it (scroll). */
         if (e.pointerType === "touch") {
@@ -4393,6 +4580,7 @@ function addExtra() {
             svgScaleY: svgScaleY,
             pointerLockActive: false,
         };
+        cancelEqFilterDeselectTimer();
         eqGraphSetRootCursorHidden(true);
         try {
             svg.setPointerCapture(e.pointerId);
@@ -4442,11 +4630,47 @@ function addExtra() {
         applyEQExec();
         scheduleLiveEqSync();
     }
+    function eqGraphPlotContextMenu(e) {
+        if (interactInspect || eqGraphPointerState) {
+            return;
+        }
+        let tab = document.querySelector("div.select");
+        if (!extraEnabled || !extraEQEnabled || !tab
+                || tab.getAttribute("data-selected") !== "extra") {
+            return;
+        }
+        let m = clientToGraphPlotXY(e.clientX, e.clientY);
+        if (!m) {
+            return;
+        }
+        let hit = findEqGraphMarkerHit(m);
+        if (!hit) {
+            return;
+        }
+        e.preventDefault();
+        let sel = filterTypeSelect[hit.rowIndex];
+        if (sel) {
+            let cur = (sel.value || "").trim();
+            sel.value = eqGraphTypeCycleOrder[cur] || "PK";
+        }
+        clearTimeout(applyEQHandle);
+        applyEQHandle = null;
+        applyEQExec();
+        scheduleLiveEqSync();
+        setEqFilterSelectedRow(hit.rowIndex);
+        if (!filtersContainer.contains(document.activeElement)) {
+            scheduleEqFilterDeselectTimer();
+        }
+        syncEqHoverPreview(m);
+    }
     if (graphPlotHitRect && graphPlotHitRect.node()) {
         graphPlotHitRect.node().addEventListener("pointerdown", eqGraphPointerDown, {
             passive: false,
         });
         graphPlotHitRect.node().addEventListener("wheel", eqGraphPlotWheel, { passive: false });
+        graphPlotHitRect.node().addEventListener("contextmenu", eqGraphPlotContextMenu, {
+            passive: false,
+        });
     }
     toneGeneratorAddFilterButton.addEventListener("click", () => {
         let hz = parseInt(toneGeneratorText.innerText, 10) || 0;
@@ -5072,6 +5296,14 @@ function addExtra() {
         }
     };
     filtersContainer.addEventListener("focusin", (e) => {
+        let rowEl = e.target.closest && e.target.closest("div.filter");
+        if (rowEl && filtersContainer.contains(rowEl)) {
+            let rows = filtersContainer.querySelectorAll("div.filter");
+            let ix = Array.prototype.indexOf.call(rows, rowEl);
+            if (ix >= 0) {
+                setEqFilterSelectedRow(ix);
+            }
+        }
         if (!(e.target.matches && e.target.matches("input[name='freq']"))) {
             return;
         }
@@ -5081,6 +5313,15 @@ function addExtra() {
         }
         syncToneGeneratorToEqFrequencyHz(hz);
     });
+    filtersContainer.addEventListener("focusout", (e) => {
+        if (filtersContainer.contains(e.relatedTarget)) {
+            return;
+        }
+        if (eqGraphPointerState) {
+            return;
+        }
+        scheduleEqFilterDeselectTimer();
+    }, true);
     let eqFreqToToneDebounceTimer = null;
     filtersContainer.addEventListener("input", (e) => {
         if (!(e.target.matches && e.target.matches("input[name='freq']"))) {

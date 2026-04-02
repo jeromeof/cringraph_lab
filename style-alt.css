@@ -169,21 +169,6 @@ svg#fr-graph g.eq-filter-markers circle.eq-filter-marker {
 
 /* Hover fill is set in JS to match stroke (trace color). */
 
-/* EQ node preview (Equalizer tab); fill matches PEQ emphasis token; cursor hidden on plot hit rect in JS */
-svg#fr-graph g.eq-hover-preview {
-    pointer-events: none;
-}
-
-svg#fr-graph g.eq-hover-preview g.eq-hover-preview-nudge {
-    --eq-filter-marker-cy-nudge: 0.5px;
-    transform: translateY(var(--eq-filter-marker-cy-nudge, 0px));
-}
-
-svg#fr-graph g.eq-hover-preview circle.eq-hover-preview-disc {
-    fill: var(--background-color-contrast-more);
-    stroke: none;
-}
-
 svg#fr-graph g.eq-pointer-follower {
     pointer-events: none;
 }
@@ -1310,6 +1295,19 @@ div.filter {
     box-sizing: border-box;
     display: flex;
     gap: 4px;
+    border-radius: 6px;
+    transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+div.extra-eq div.filters > div.filter.eq-filter-row-selected {
+    opacity: 1;
+    filter: none;
+}
+
+div.extra-eq div.filters > div.filter.eq-filter-row-dimmed {
+    opacity: 0.42;
+    filter: saturate(0.65);
+    pointer-events: auto;
 }
 
 div.extra-eq-overlay {
