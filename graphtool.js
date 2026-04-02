@@ -144,6 +144,29 @@ doc.html(`
                 </label>
               </div>
               <div class="live-sound-sources">
+                <div class="live-sound-source extra-pink-noise">
+                  <div class="live-sound-source-head">
+                    <span class="live-sound-source-title">Pink Noise</span>
+                  </div>
+                  <div class="live-sound-source-actions">
+                    <button type="button" class="play" aria-label="Toggle pink noise playback">▶</button>
+                  </div>
+                </div>
+                <div class="live-sound-source extra-tone-generator">
+                  <div class="live-sound-source-head">
+                    <span class="live-sound-source-title">Tone Generator</span>
+                  </div>
+                  <div class="live-sound-source-actions tone-generator-play-row">
+                    <button type="button" class="play" aria-label="Toggle tone playback">▶</button>
+                  </div>
+                  <div class="live-sound-slider-row tone-generator-slider-row">
+                    <input name="tone-generator-freq" type="range" min="0" max="1" step="0.0001" value="0" aria-label="Tone frequency along band" />
+                    <span class="live-sound-tone-freq-display"><span class="freq-text">1000</span> Hz</span>
+                  </div>
+                  <div class="live-sound-tone-create-filter">
+                    <button type="button" class="tone-generator-add-filter">+ Add Filter</button>
+                  </div>
+                </div>
                 <div class="live-sound-source extra-music">
                   <div class="live-sound-source-head">
                     <span class="live-sound-source-title">Music</span>
@@ -172,29 +195,6 @@ doc.html(`
                   <div class="live-sound-music-file">
                     <button type="button" class="music-add-remove">+ Add Music</button>
                     <input type="file" class="music-file-input" accept="audio/*" tabindex="-1" aria-hidden="true" />
-                  </div>
-                </div>
-                <div class="live-sound-source extra-pink-noise">
-                  <div class="live-sound-source-head">
-                    <span class="live-sound-source-title">Pink Noise</span>
-                  </div>
-                  <div class="live-sound-source-actions">
-                    <button type="button" class="play" aria-label="Toggle pink noise playback">▶</button>
-                  </div>
-                </div>
-                <div class="live-sound-source extra-tone-generator">
-                  <div class="live-sound-source-head">
-                    <span class="live-sound-source-title">Tone Generator</span>
-                  </div>
-                  <div class="live-sound-source-actions tone-generator-play-row">
-                    <button type="button" class="play" aria-label="Toggle tone playback">▶</button>
-                  </div>
-                  <div class="live-sound-slider-row tone-generator-slider-row">
-                    <input name="tone-generator-freq" type="range" min="0" max="1" step="0.0001" value="0" aria-label="Tone frequency along band" />
-                    <span class="live-sound-tone-freq-display"><span class="freq-text">20</span> Hz</span>
-                  </div>
-                  <div class="live-sound-tone-create-filter">
-                    <button type="button" class="tone-generator-add-filter">+ Add Filter</button>
                   </div>
                 </div>
               </div>
@@ -2916,14 +2916,14 @@ function addExtra() {
             }
         });
     };
-    let setEqFilterSelectedRow = (row) => {
+    let setEqFilterSelectedRow = (row, scrollBandIntoView) => {
         if (row !== null && (typeof row !== "number" || row < 0 || row >= eqBands)) {
             row = null;
         }
         eqFilterSelectedRow = row;
         updateEqFilterRowSelectionStyles();
         updateEqFilterMarkers();
-        if (row !== null) {
+        if (row !== null && scrollBandIntoView) {
             scrollEqFilterRowIntoView(row);
         }
     };
@@ -3815,10 +3815,7 @@ function addExtra() {
     };
     let rebuildLiveEqChain = (sourceNode, audioContext, masterGain, biquadsArr) => {
         let specs = computeLiveEqSpecs();
-        if (biquadsArr.length === specs.length && (specs.length > 0 || biquadsArr.length === 0)) {
-            if (specs.length === 0) {
-                return;
-            }
+        if (biquadsArr.length === specs.length && specs.length > 0) {
             syncEqBiquadsInPlace(audioContext, biquadsArr, specs);
             return;
         }
@@ -4029,6 +4026,17 @@ function addExtra() {
     let toneGeneratorText = document.querySelector("div.extra-tone-generator .freq-text");
     let toneGeneratorAddFilterButton = document.querySelector(
         "div.extra-tone-generator button.tone-generator-add-filter");
+    const TONE_GENERATOR_DEFAULT_HZ = 1000;
+    if (toneGeneratorSlider && toneGeneratorFromInput && toneGeneratorToInput && toneGeneratorText) {
+        let from = Math.min(Math.max(parseInt(toneGeneratorFromInput.value, 10) || 20, 20), 20000);
+        let to = Math.min(Math.max(parseInt(toneGeneratorToInput.value, 10) || from, from), 20000);
+        let target = Math.min(Math.max(TONE_GENERATOR_DEFAULT_HZ, from), to);
+        if (from < to) {
+            let u = (Math.log(target) - Math.log(from)) / (Math.log(to) - Math.log(from));
+            toneGeneratorSlider.value = String(Math.min(1, Math.max(0, u)));
+        }
+        toneGeneratorText.innerText = String(target);
+    }
     let musicPlayButton = document.querySelector("div.extra-music .play");
     let musicAddRemoveButton = document.querySelector("div.extra-music button.music-add-remove");
     let musicFileInput = document.querySelector("div.extra-music input.music-file-input");
@@ -4330,7 +4338,7 @@ function addExtra() {
         if (newIx < 0) {
             return false;
         }
-        setEqFilterSelectedRow(newIx);
+        setEqFilterSelectedRow(newIx, true);
         return true;
     };
     let eqGraphRemoveDragListeners = () => {
@@ -4378,7 +4386,7 @@ function addExtra() {
             /* Same as graph click-add: immediate markers, no gain focus / refocus steal */
             let newIx = addPeakingFilterFromHz(st.fHz, EQ_GRAPH_BASE_GAIN, { skipFocus: true });
             if (newIx >= 0) {
-                setEqFilterSelectedRow(newIx);
+                setEqFilterSelectedRow(newIx, true);
             }
         } else if (st.filterIndex !== null && st.dragging) {
             clearTimeout(applyEQHandle);
@@ -4529,7 +4537,7 @@ function addExtra() {
             }
             st.filterIndex = idx;
             st.liveFHz = freq;
-            setEqFilterSelectedRow(idx);
+            setEqFilterSelectedRow(idx, true);
             scheduleApplyEqDuringGraphDrag();
             return;
         }
@@ -4593,7 +4601,7 @@ function addExtra() {
             initialFilterIndex = hit.rowIndex;
             let fCell = parseInt(filterFreqInput[hit.rowIndex].value, 10) || 20;
             stPreview = { fHz: Math.min(20000, Math.max(20, fCell)) };
-            setEqFilterSelectedRow(hit.rowIndex);
+            setEqFilterSelectedRow(hit.rowIndex, true);
         } else {
             stPreview = computeEqNodePreviewAtMouse(m);
             if (!stPreview) {
@@ -5552,7 +5560,7 @@ function addExtra() {
                 pinkNoisePlayButton.click();
             } else {
                 let order = hasMusicSlot
-                    ? ["music", "pink", "tone"]
+                    ? ["pink", "tone", "music"]
                     : ["pink", "tone"];
                 let idx = order.indexOf(lastEqPlaybackSource);
                 if (idx < 0) {
