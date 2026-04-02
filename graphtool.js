@@ -644,7 +644,6 @@ function drawLabels() {
     setLabelButton(true);
     gEqFilterMarkers.raise();
     gEqHoverPreview.raise();
-    gEqPointerFollower.raise();
 }
 
 labelButton.on("click", () => (labelsShown?clearLabels:drawLabels)());
@@ -924,170 +923,9 @@ let gEqHoverPreview = gr.append("g")
     .attr("class", "eq-hover-preview")
     .attr("pointer-events", "none")
     .attr("mask", "url(#graphFade)");
-let gEqPointerFollower = gr.append("g")
-    .attr("class", "eq-pointer-follower")
-    .attr("pointer-events", "none")
-    .attr("opacity", 1)
-    .style("display", "none");
-gEqPointerFollower.append("circle")
-    .attr("class", "eq-pointer-follower-disc")
-    /* Visually match hovered marker: r 6.5 + ~half of stroke-width 3 */
-    .attr("r", 8)
-    .attr("cx", 0)
-    .attr("cy", 0);
 let updateEqFilterMarkers = () => {};
 /** @type {d3.Selection|null} */
 let graphPlotHitRect = null;
-const EQ_POINTER_FOLLOWER_MS = 220;
-let eqPointerFollowerAnimId = null;
-let eqPointerFollowerMode = null;
-let eqPointerFollowerAnimT0 = 0;
-let eqPointerFollowerSx = 0;
-let eqPointerFollowerSy = 0;
-let eqPointerFollowerEx = 0;
-let eqPointerFollowerEy = 0;
-let eqPointerFollowerSo = 1;
-let eqPointerFollowerEo = 1;
-let eqPointerFollowerX = 0;
-let eqPointerFollowerY = 0;
-let eqPointerFollowerO = 1;
-let eqPointerFollowerNearRow = null;
-let eqPointerFollowerLastTraceSnap = false;
-let eqPointerFollowerLastCx = 0;
-let eqPointerFollowerLastCy = 0;
-let eqPointerFollowerChaseX = 0;
-let eqPointerFollowerChaseY = 0;
-function eqPointerFollowerEase(t) {
-    return t * t * (3 - 2 * t);
-}
-function eqPointerFollowerCancelAnim() {
-    if (eqPointerFollowerAnimId !== null) {
-        cancelAnimationFrame(eqPointerFollowerAnimId);
-        eqPointerFollowerAnimId = null;
-    }
-    eqPointerFollowerMode = null;
-}
-function eqPointerFollowerApply() {
-    gEqPointerFollower
-        .attr("transform", "translate(" + eqPointerFollowerX + "," + eqPointerFollowerY + ")")
-        .attr("opacity", eqPointerFollowerO);
-}
-function eqPointerFollowerOnFrame(now) {
-    if (eqPointerFollowerMode !== "to-node" && eqPointerFollowerMode !== "to-trace") {
-        eqPointerFollowerAnimId = null;
-        return;
-    }
-    let t = Math.min(1, (now - eqPointerFollowerAnimT0) / EQ_POINTER_FOLLOWER_MS);
-    let k = eqPointerFollowerEase(t);
-    eqPointerFollowerX = eqPointerFollowerSx + (eqPointerFollowerEx - eqPointerFollowerSx) * k;
-    eqPointerFollowerY = eqPointerFollowerSy + (eqPointerFollowerEy - eqPointerFollowerSy) * k;
-    eqPointerFollowerO = eqPointerFollowerSo + (eqPointerFollowerEo - eqPointerFollowerSo) * k;
-    eqPointerFollowerApply();
-    if (t < 1) {
-        eqPointerFollowerAnimId = requestAnimationFrame(eqPointerFollowerOnFrame);
-    } else {
-        eqPointerFollowerAnimId = null;
-        eqPointerFollowerMode = null;
-    }
-}
-const EQ_POINTER_FOLLOW_AWAY_ALPHA = 0.34;
-const EQ_POINTER_FOLLOW_AWAY_SNAP_SVG = 1.5;
-function eqPointerFollowerAwayFrame() {
-    if (eqPointerFollowerMode !== "away") {
-        eqPointerFollowerAnimId = null;
-        return;
-    }
-    let a = EQ_POINTER_FOLLOW_AWAY_ALPHA;
-    eqPointerFollowerX += (eqPointerFollowerChaseX - eqPointerFollowerX) * a;
-    eqPointerFollowerY += (eqPointerFollowerChaseY - eqPointerFollowerY) * a;
-    eqPointerFollowerO += (1 - eqPointerFollowerO) * a;
-    eqPointerFollowerApply();
-    let dx = eqPointerFollowerChaseX - eqPointerFollowerX;
-    let dy = eqPointerFollowerChaseY - eqPointerFollowerY;
-    if (Math.hypot(dx, dy) < EQ_POINTER_FOLLOW_AWAY_SNAP_SVG && eqPointerFollowerO > 0.99) {
-        eqPointerFollowerX = eqPointerFollowerChaseX;
-        eqPointerFollowerY = eqPointerFollowerChaseY;
-        eqPointerFollowerO = 1;
-        eqPointerFollowerApply();
-        eqPointerFollowerAnimId = null;
-        eqPointerFollowerMode = null;
-        return;
-    }
-    eqPointerFollowerAnimId = requestAnimationFrame(eqPointerFollowerAwayFrame);
-}
-function eqPointerFollowerStartTween(x0, y0, o0, x1, y1, o1, mode) {
-    eqPointerFollowerCancelAnim();
-    eqPointerFollowerMode = mode;
-    eqPointerFollowerAnimT0 = performance.now();
-    eqPointerFollowerSx = x0;
-    eqPointerFollowerSy = y0;
-    eqPointerFollowerSo = o0;
-    eqPointerFollowerEx = x1;
-    eqPointerFollowerEy = y1;
-    eqPointerFollowerEo = o1;
-    eqPointerFollowerX = x0;
-    eqPointerFollowerY = y0;
-    eqPointerFollowerO = o0;
-    eqPointerFollowerApply();
-    gEqPointerFollower.style("display", null);
-    gEqPointerFollower.raise();
-    eqPointerFollowerAnimId = requestAnimationFrame(eqPointerFollowerOnFrame);
-}
-function eqPointerFollowerStartAnim(x0, y0, o0, x1, y1, o1) {
-    eqPointerFollowerStartTween(x0, y0, o0, x1, y1, o1, "to-node");
-}
-function eqPointerFollowerStartTraceSnapAnim(x0, y0, x1, y1) {
-    eqPointerFollowerStartTween(x0, y0, 1, x1, y1, 1, "to-trace");
-}
-function eqPointerFollowerStartAwayFromNode() {
-    eqPointerFollowerCancelAnim();
-    eqPointerFollowerMode = "away";
-    eqPointerFollowerX = eqPointerFollowerLastCx;
-    eqPointerFollowerY = eqPointerFollowerLastCy;
-    eqPointerFollowerO = 0;
-    eqPointerFollowerApply();
-    gEqPointerFollower.style("display", null);
-    gEqPointerFollower.raise();
-    eqPointerFollowerAnimId = requestAnimationFrame(eqPointerFollowerAwayFrame);
-}
-function eqPointerFollowerHide() {
-    eqPointerFollowerCancelAnim();
-    eqPointerFollowerNearRow = null;
-    gEqPointerFollower.style("display", "none");
-}
-function eqPointerFollowerShowAt(x, y, o) {
-    eqPointerFollowerCancelAnim();
-    eqPointerFollowerX = x;
-    eqPointerFollowerY = y;
-    eqPointerFollowerO = o;
-    eqPointerFollowerApply();
-    gEqPointerFollower.style("display", null);
-    gEqPointerFollower.raise();
-}
-function setGraphEqPreviewCursor(useCircle) {
-    let node = graphPlotHitRect && graphPlotHitRect.node();
-    if (!node) {
-        return;
-    }
-    if (!useCircle) {
-        node.style.cursor = "";
-        eqPointerFollowerHide();
-        return;
-    }
-    node.style.cursor = "none";
-}
-/** Hides OS cursor during graph EQ drag (rect cursor:none is not enough when pointer leaves the plot). */
-function eqGraphSetRootCursorHidden(hidden) {
-    let v = hidden ? "none" : "";
-    document.body.style.cursor = v;
-    document.documentElement.style.cursor = v;
-    if (graphPlotHitRect && graphPlotHitRect.node()) {
-        graphPlotHitRect.node().style.cursor = hidden ? "none" : "";
-    }
-    if (hidden) {
-        eqPointerFollowerHide();
-    }
-}
 /** Equalizer-tab graph: pointer gesture for add + vertical gain drag */
 let eqGraphPointerState = null;
 let eqGraphSkipNextClick = false;
@@ -1097,8 +935,8 @@ let eqGraphApplyEqDragTimer = null;
 let tryEqGraphClickAddFilter = (_m) => false;
 /** @type {(m: number[] | null) => void} */
 let syncEqHoverPreview = (m) => {
-    if (!m) {
-        setGraphEqPreviewCursor(false);
+    if (!m && graphPlotHitRect && graphPlotHitRect.node()) {
+        graphPlotHitRect.node().style.cursor = "";
     }
 };
 let gSpectrum = gr.insert("g", ".curves-g")
@@ -2455,7 +2293,6 @@ graphPlotHitRect = gr.append("rect")
     .on("click", graphInteract(true));
 gEqFilterMarkers.raise();
 gEqHoverPreview.raise();
-gEqPointerFollower.raise();
 
 /** SVG user-space [x,y] matching d3.mouse(plot rect); works with native event listeners (d3.mouse does not). */
 function clientToGraphPlotXY(clientX, clientY) {
@@ -2475,6 +2312,27 @@ function clientToGraphPlotXY(clientX, clientY) {
     pt.x = clientX;
     pt.y = clientY;
     let p = pt.matrixTransform(ctm.inverse());
+    return [p.x, p.y];
+}
+
+/** Inverse of clientToGraphPlotXY: graph SVG coords → viewport client pixels. */
+function graphPlotXYToClient(svgX, svgY) {
+    let plot = graphPlotHitRect && graphPlotHitRect.node();
+    if (!plot) {
+        return null;
+    }
+    let svg = plot.ownerSVGElement || (plot.closest && plot.closest("svg"));
+    if (!svg || !svg.createSVGPoint) {
+        return null;
+    }
+    let ctm = svg.getScreenCTM();
+    if (!ctm) {
+        return null;
+    }
+    let pt = svg.createSVGPoint();
+    pt.x = svgX;
+    pt.y = svgY;
+    let p = pt.matrixTransform(ctm);
     return [p.x, p.y];
 }
 
@@ -3115,7 +2973,7 @@ function addExtra() {
         }
         return { fHz, phoneObj, tracePhone, db, pts };
     };
-    /* Screen-space radius in CSS px for marker hit / trace snap (see findEqGraphMarkerHit). */
+    /* Screen-space hit radius in CSS px: generous target vs drawn marker (~4px r); no cursor snap. */
     const EQ_GRAPH_MARKER_HIT_PX = 28;
     let eqGraphPlotDistPx = (m, gx, gy) => {
         if (!m || m.length < 2) {
@@ -3255,7 +3113,6 @@ function addExtra() {
             gEqFilterMarkers.selectAll("circle.eq-filter-marker").remove();
             gEqFilterMarkers.raise();
             gEqHoverPreview.raise();
-            gEqPointerFollower.raise();
             return;
         }
         let mk = gEqFilterMarkers.selectAll("circle.eq-filter-marker")
@@ -3276,14 +3133,13 @@ function addExtra() {
         applyEqGraphMarkerSelectionOpacity(dragIx);
         gEqFilterMarkers.raise();
         gEqHoverPreview.raise();
-        gEqPointerFollower.raise();
     };
     syncEqHoverPreview = (m) => {
-        let markerHighlightRow = null;
         if (!m) {
             gEqHoverPreview.selectAll("*").remove();
-            setGraphEqPreviewCursor(false);
-            eqPointerFollowerLastTraceSnap = false;
+            if (graphPlotHitRect && graphPlotHitRect.node()) {
+                graphPlotHitRect.node().style.cursor = "";
+            }
             applyEqFilterMarkerFillAndSize(null);
             applyEqGraphMarkerSelectionOpacity(null);
             return;
@@ -3297,106 +3153,30 @@ function addExtra() {
             if (typeof hz === "number") {
                 mUse = [x(hz), m[1]];
             }
-            gEqPointerFollower.style("display", "none");
-            eqPointerFollowerCancelAnim();
         }
         let stCurve = computeEqNodePreviewAtMouse(mUse);
-        let curveCx = null;
-        let curveCy = null;
-        if (stCurve) {
-            let yOffSnap = y(getOffset(stCurve.tracePhone)) - y(0);
-            curveCx = x(stCurve.fHz);
-            curveCy = y(stCurve.db) + yOffSnap;
-        }
-        let traceSnap = !!(stCurve && curveCx !== null
-            && eqGraphPlotDistPx(mUse, curveCx, curveCy) <= EQ_GRAPH_MARKER_HIT_PX);
         let near = findEqGraphMarkerHit(mUse);
         let nearRow = near ? near.rowIndex : null;
         let dragBandIx = draggingGraph && eqGraphPointerState.filterIndex !== null
             ? eqGraphPointerState.filterIndex
             : null;
-        markerHighlightRow = dragBandIx !== null ? dragBandIx : nearRow;
+        let markerHighlightRow = dragBandIx !== null ? dragBandIx : nearRow;
         if (markerHighlightRow !== null) {
             gEqHoverPreview.selectAll("*").remove();
         }
         applyEqFilterMarkerFillAndSize(markerHighlightRow);
         applyEqGraphMarkerSelectionOpacity(markerHighlightRow);
         if (near) {
-            eqPointerFollowerLastTraceSnap = false;
-            if (!draggingGraph) {
-                if (nearRow !== eqPointerFollowerNearRow) {
-                    let x0;
-                    let y0;
-                    let o0;
-                    if (eqPointerFollowerNearRow !== null || eqPointerFollowerAnimId !== null) {
-                        x0 = eqPointerFollowerX;
-                        y0 = eqPointerFollowerY;
-                        o0 = eqPointerFollowerO;
-                    } else if (traceSnap) {
-                        x0 = curveCx;
-                        y0 = curveCy;
-                        o0 = 1;
-                    } else {
-                        x0 = mUse[0];
-                        y0 = mUse[1];
-                        o0 = 1;
-                    }
-                    eqPointerFollowerStartAnim(x0, y0, o0, near.cx, near.cy, 0);
-                    eqPointerFollowerNearRow = nearRow;
-                    eqPointerFollowerLastCx = near.cx;
-                    eqPointerFollowerLastCy = near.cy;
-                } else if (!eqPointerFollowerAnimId) {
-                    eqPointerFollowerShowAt(near.cx, near.cy, 0);
-                }
-                setGraphEqPreviewCursor(true);
-            } else {
-                setGraphEqPreviewCursor(true);
-            }
-            gEqPointerFollower.raise();
             return;
         }
-        if (!draggingGraph && eqPointerFollowerNearRow !== null) {
-            eqPointerFollowerStartAwayFromNode();
-            eqPointerFollowerNearRow = null;
-        }
-        if (!stCurve || curveCx === null) {
+        if (!stCurve) {
             gEqHoverPreview.selectAll("*").remove();
-            setGraphEqPreviewCursor(false);
-            eqPointerFollowerLastTraceSnap = false;
-            return;
-        }
-        if (!draggingGraph) {
-            if (traceSnap) {
-                eqPointerFollowerChaseX = curveCx;
-                eqPointerFollowerChaseY = curveCy;
-            } else {
-                eqPointerFollowerChaseX = mUse[0];
-                eqPointerFollowerChaseY = mUse[1];
+            if (graphPlotHitRect && graphPlotHitRect.node()) {
+                graphPlotHitRect.node().style.cursor = "";
             }
+            return;
         }
         gEqHoverPreview.selectAll("*").remove();
-        if (!draggingGraph) {
-            if (eqPointerFollowerMode === "to-trace") {
-                eqPointerFollowerEx = curveCx;
-                eqPointerFollowerEy = curveCy;
-            }
-            if (!traceSnap) {
-                eqPointerFollowerLastTraceSnap = false;
-                if (!eqPointerFollowerAnimId && eqPointerFollowerMode !== "away") {
-                    eqPointerFollowerShowAt(mUse[0], mUse[1], 1);
-                }
-            } else if (eqPointerFollowerMode === "away") {
-                /* Latch trace entry anim until away finishes (lastTraceSnap stays false). */
-            } else if (!eqPointerFollowerLastTraceSnap) {
-                eqPointerFollowerStartTraceSnapAnim(
-                    eqPointerFollowerX, eqPointerFollowerY, curveCx, curveCy);
-                eqPointerFollowerLastTraceSnap = true;
-            } else if (!eqPointerFollowerAnimId) {
-                eqPointerFollowerShowAt(curveCx, curveCy, 1);
-            }
-        }
-        setGraphEqPreviewCursor(true);
-        gEqPointerFollower.raise();
     };
     let applyEQHandle = null;
     let applyEQExec = (execOpt) => {
@@ -3782,12 +3562,65 @@ function addExtra() {
         } catch (e) { /* noop */ }
         return idbDeleteCringraphMusicRecord();
     };
-    let liveEqSyncTimer = null;
+    let liveEqSyncRafId = null;
     let livePlaybackEqToggle = document.querySelector("input.live-sound-eq-toggle");
     let isLivePlaybackEqEnabled = () =>
         !livePlaybackEqToggle || livePlaybackEqToggle.checked;
     let mapFilterTypeToBiquad = (t) =>
         (t === "LSQ" ? "lowshelf" : t === "HSQ" ? "highshelf" : "peaking");
+    let computeLiveEqSpecs = () => {
+        if (!isLivePlaybackEqEnabled()) {
+            return [];
+        }
+        return elemToFilters().map((f) => ({
+            type: f.type,
+            freq: Math.min(20000, Math.max(20, f.freq)),
+            q: Math.max(1e-4, Math.min(1000, f.q)),
+            gain: Math.max(-40, Math.min(40, f.gain)),
+        }));
+    };
+    const LIVE_EQ_PARAM_TAU_SEC = 0.016;
+    let smoothAudioParamTo = (param, value, ctx) => {
+        let t = ctx.currentTime;
+        try {
+            param.cancelScheduledValues(t);
+            param.setTargetAtTime(value, t, LIVE_EQ_PARAM_TAU_SEC);
+        } catch (e) {
+            param.value = value;
+        }
+    };
+    let syncEqBiquadsInPlace = (ctx, biquadsArr, specs) => {
+        if (biquadsArr.length !== specs.length) {
+            return false;
+        }
+        for (let i = 0; i < specs.length; i++) {
+            let bf = biquadsArr[i];
+            let s = specs[i];
+            let wantType = mapFilterTypeToBiquad(s.type);
+            if (bf.type !== wantType) {
+                bf.type = wantType;
+            }
+            smoothAudioParamTo(bf.frequency, s.freq, ctx);
+            smoothAudioParamTo(bf.Q, s.q, ctx);
+            smoothAudioParamTo(bf.gain, s.gain, ctx);
+        }
+        return true;
+    };
+    let syncBandShelfFiltersInPlace = (ctx, bandArr, fromHz, toHz) => {
+        if (!bandArr || bandArr.length !== 2) {
+            return false;
+        }
+        smoothAudioParamTo(bandArr[0].frequency, fromHz, ctx);
+        smoothAudioParamTo(bandArr[1].frequency, toHz, ctx);
+        return true;
+    };
+    let readLiveSoundBandEdgeHz = () => {
+        let fromEl = document.querySelector("div.live-sound-tools input[name='tone-generator-from']");
+        let toEl = document.querySelector("div.live-sound-tools input[name='tone-generator-to']");
+        let fromHz = Math.min(Math.max(parseInt(fromEl && fromEl.value) || 0, 20), 20000);
+        let toHz = Math.min(Math.max(parseInt(toEl && toEl.value) || 0, fromHz), 20000);
+        return { fromHz, toHz };
+    };
     let disconnectEqBiquads = (biquadsArr) => {
         biquadsArr.forEach((b) => {
             try { b.disconnect(); } catch (e) { /* noop */ }
@@ -3807,17 +3640,24 @@ function addExtra() {
         musicBandFilters.length = 0;
     };
     let rebuildLiveEqChain = (sourceNode, audioContext, masterGain, biquadsArr) => {
+        let specs = computeLiveEqSpecs();
+        if (biquadsArr.length === specs.length && (specs.length > 0 || biquadsArr.length === 0)) {
+            if (specs.length === 0) {
+                return;
+            }
+            syncEqBiquadsInPlace(audioContext, biquadsArr, specs);
+            return;
+        }
         sourceNode.disconnect();
         disconnectEqBiquads(biquadsArr);
         let last = sourceNode;
         if (isLivePlaybackEqEnabled()) {
-            let filters = elemToFilters();
-            filters.forEach((f) => {
+            specs.forEach((s) => {
                 let bf = audioContext.createBiquadFilter();
-                bf.type = mapFilterTypeToBiquad(f.type);
-                bf.frequency.value = Math.min(20000, Math.max(20, f.freq));
-                bf.Q.value = Math.max(1e-4, Math.min(1000, f.q));
-                bf.gain.value = Math.max(-40, Math.min(40, f.gain));
+                bf.type = mapFilterTypeToBiquad(s.type);
+                bf.frequency.value = s.freq;
+                bf.Q.value = s.q;
+                bf.gain.value = s.gain;
                 last.connect(bf);
                 last = bf;
                 biquadsArr.push(bf);
@@ -3829,10 +3669,15 @@ function addExtra() {
         if (!pinkNoisePlaying || !pinkNoiseContext || !pinkNoiseProcessor || !pinkNoiseMasterGain) {
             return;
         }
-        let fromEl = document.querySelector("div.live-sound-tools input[name='tone-generator-from']");
-        let toEl = document.querySelector("div.live-sound-tools input[name='tone-generator-to']");
-        let fromHz = Math.min(Math.max(parseInt(fromEl && fromEl.value) || 0, 20), 20000);
-        let toHz = Math.min(Math.max(parseInt(toEl && toEl.value) || 0, fromHz), 20000);
+        let { fromHz, toHz } = readLiveSoundBandEdgeHz();
+        let specs = computeLiveEqSpecs();
+        if (pinkNoiseBandFilters.length === 2
+                && specs.length === pinkNoiseBiquads.length
+                && syncBandShelfFiltersInPlace(pinkNoiseContext, pinkNoiseBandFilters, fromHz, toHz)) {
+            if (specs.length === 0 || syncEqBiquadsInPlace(pinkNoiseContext, pinkNoiseBiquads, specs)) {
+                return;
+            }
+        }
         pinkNoiseProcessor.disconnect();
         disconnectEqBiquads(pinkNoiseBiquads);
         disconnectPinkBandFilters();
@@ -3851,19 +3696,16 @@ function addExtra() {
         last.connect(lp);
         last = lp;
         pinkNoiseBandFilters.push(lp);
-        if (isLivePlaybackEqEnabled()) {
-            let filters = elemToFilters();
-            filters.forEach((f) => {
-                let bf = pinkNoiseContext.createBiquadFilter();
-                bf.type = mapFilterTypeToBiquad(f.type);
-                bf.frequency.value = Math.min(20000, Math.max(20, f.freq));
-                bf.Q.value = Math.max(1e-4, Math.min(1000, f.q));
-                bf.gain.value = Math.max(-40, Math.min(40, f.gain));
-                last.connect(bf);
-                last = bf;
-                pinkNoiseBiquads.push(bf);
-            });
-        }
+        specs.forEach((s) => {
+            let bf = pinkNoiseContext.createBiquadFilter();
+            bf.type = mapFilterTypeToBiquad(s.type);
+            bf.frequency.value = s.freq;
+            bf.Q.value = s.q;
+            bf.gain.value = s.gain;
+            last.connect(bf);
+            last = bf;
+            pinkNoiseBiquads.push(bf);
+        });
         last.connect(pinkNoiseMasterGain);
     };
     let rebuildToneGeneratorEqChain = () => {
@@ -3876,10 +3718,15 @@ function addExtra() {
         if (!musicMediaSourceNode || !musicContext || !musicMasterGain) {
             return;
         }
-        let fromEl = document.querySelector("div.live-sound-tools input[name='tone-generator-from']");
-        let toEl = document.querySelector("div.live-sound-tools input[name='tone-generator-to']");
-        let fromHz = Math.min(Math.max(parseInt(fromEl && fromEl.value) || 0, 20), 20000);
-        let toHz = Math.min(Math.max(parseInt(toEl && toEl.value) || 0, fromHz), 20000);
+        let { fromHz, toHz } = readLiveSoundBandEdgeHz();
+        let specs = computeLiveEqSpecs();
+        if (musicBandFilters.length === 2
+                && specs.length === musicBiquads.length
+                && syncBandShelfFiltersInPlace(musicContext, musicBandFilters, fromHz, toHz)) {
+            if (specs.length === 0 || syncEqBiquadsInPlace(musicContext, musicBiquads, specs)) {
+                return;
+            }
+        }
         musicMediaSourceNode.disconnect();
         disconnectEqBiquads(musicBiquads);
         disconnectMusicBandFilters();
@@ -3898,32 +3745,31 @@ function addExtra() {
         last.connect(lp);
         last = lp;
         musicBandFilters.push(lp);
-        if (isLivePlaybackEqEnabled()) {
-            let filters = elemToFilters();
-            filters.forEach((f) => {
-                let bf = musicContext.createBiquadFilter();
-                bf.type = mapFilterTypeToBiquad(f.type);
-                bf.frequency.value = Math.min(20000, Math.max(20, f.freq));
-                bf.Q.value = Math.max(1e-4, Math.min(1000, f.q));
-                bf.gain.value = Math.max(-40, Math.min(40, f.gain));
-                last.connect(bf);
-                last = bf;
-                musicBiquads.push(bf);
-            });
-        }
+        specs.forEach((s) => {
+            let bf = musicContext.createBiquadFilter();
+            bf.type = mapFilterTypeToBiquad(s.type);
+            bf.frequency.value = s.freq;
+            bf.Q.value = s.q;
+            bf.gain.value = s.gain;
+            last.connect(bf);
+            last = bf;
+            musicBiquads.push(bf);
+        });
         last.connect(musicMasterGain);
     };
     let scheduleLiveEqSync = () => {
         if (!pinkNoisePlaying && !toneGeneratorOsc && !musicMediaSourceNode) {
             return;
         }
-        clearTimeout(liveEqSyncTimer);
-        liveEqSyncTimer = setTimeout(() => {
-            liveEqSyncTimer = null;
+        if (liveEqSyncRafId !== null) {
+            return;
+        }
+        liveEqSyncRafId = requestAnimationFrame(() => {
+            liveEqSyncRafId = null;
             rebuildPinkNoiseEqChain();
             rebuildToneGeneratorEqChain();
             rebuildMusicEqChain();
-        }, 50);
+        });
     };
     filtersContainer.addEventListener("input", scheduleLiveEqSync);
     filtersContainer.addEventListener("change", scheduleLiveEqSync);
@@ -3953,8 +3799,10 @@ function addExtra() {
         pinkNoisePlaying = false;
         pinkNoisePlayButton.innerText = "▶";
         pinkNoisePlayButton.classList.remove("playback-active");
-        clearTimeout(liveEqSyncTimer);
-        liveEqSyncTimer = null;
+        if (liveEqSyncRafId !== null) {
+            cancelAnimationFrame(liveEqSyncRafId);
+            liveEqSyncRafId = null;
+        }
         if (pinkNoiseProcessor) {
             pinkNoiseProcessor.disconnect();
             pinkNoiseProcessor.onaudioprocess = null;
@@ -4191,19 +4039,22 @@ function addExtra() {
         return f === 0 && q === 0 && g === 0;
     };
     const EQ_GRAPH_BASE_GAIN = 0.1;
+    /* Movement past this (px) starts a drag; first motion picks freq-only vs gain-only by |dx| vs |dy|. */
     const EQ_GRAPH_DRAG_THRESHOLD_PX = 5;
     const EQ_GRAPH_DB_PER_PX = 24 / 220;
-    const EQ_GRAPH_GAIN_DY_MIN = (-12 - EQ_GRAPH_BASE_GAIN) / EQ_GRAPH_DB_PER_PX;
-    const EQ_GRAPH_GAIN_DY_MAX = (12 - EQ_GRAPH_BASE_GAIN) / EQ_GRAPH_DB_PER_PX;
     /* Hysteresis: lock when pointer (svg space) leaves plot; unlock when it returns inside this inset. */
     const EQ_GRAPH_POINTER_LOCK_INSET = 3;
-    let clampEqGraphGainDb = (db) =>
-        Math.min(12, Math.max(-12, Math.round(db * 10) / 10));
+    let roundEqGraphGainDb = (db) => {
+        if (!Number.isFinite(db)) {
+            return EQ_GRAPH_BASE_GAIN;
+        }
+        return Math.round(db * 10) / 10;
+    };
     let eqGraphGainFromDy = (dy) =>
-        clampEqGraphGainDb(EQ_GRAPH_BASE_GAIN + dy * EQ_GRAPH_DB_PER_PX);
-    /* applyEQ() debounces 100ms and resets on every call — continuous drag never flushes.
-       Throttle direct applyEQExec so the curve updates ~every 100ms while moving. */
-    const EQ_GRAPH_DRAG_APPLY_MS = 50;
+        roundEqGraphGainDb(EQ_GRAPH_BASE_GAIN + dy * EQ_GRAPH_DB_PER_PX);
+    /* applyEQ() debounces 100ms — continuous graph drag bypasses that via scheduleApplyEqDuringGraphDrag.
+       Throttle applyEQExec + live audio during graph drag (~2–3 frames). */
+    const EQ_GRAPH_DRAG_APPLY_MS = 32;
     let eqGraphDragApplyLastRun = 0;
     let scheduleApplyEqDuringGraphDrag = () => {
         let now = performance.now();
@@ -4319,54 +4170,38 @@ function addExtra() {
             } catch (err) { /* noop */ }
         }
     };
-    let eqGraphTryRequestPointerLock = (svg) => {
-        if (document.pointerLockElement === svg) {
-            return;
-        }
-        let rpl =
-            svg.requestPointerLock
-            || svg.webkitRequestPointerLock
-            || svg.mozRequestPointerLock;
-        if (rpl) {
-            Promise.resolve(rpl.call(svg)).catch(() => {});
-        }
-    };
     let eqGraphTypeCycleOrder = { PK: "LSQ", LSQ: "HSQ", HSQ: "PK" };
     let eqGraphPerformDragCleanup = (st, endEvent) => {
         let didTapAddNewBand = !st.dragging && st.filterIndex === null;
-        try {
-            eqGraphExitPointerLockIfAny();
-            if (st.captureEl) {
-                try {
-                    st.captureEl.releasePointerCapture(st.pointerId);
-                } catch (err) { /* noop */ }
+        eqGraphExitPointerLockIfAny();
+        if (st.captureEl) {
+            try {
+                st.captureEl.releasePointerCapture(st.pointerId);
+            } catch (err) { /* noop */ }
+        }
+        eqGraphRemoveDragListeners();
+        clearTimeout(eqGraphApplyEqDragTimer);
+        eqGraphApplyEqDragTimer = null;
+        eqGraphPointerState = null;
+        eqGraphSkipNextClick = true;
+        if (eqGraphSkipClickClearTimer) {
+            clearTimeout(eqGraphSkipClickClearTimer);
+        }
+        eqGraphSkipClickClearTimer = setTimeout(() => {
+            eqGraphSkipClickClearTimer = null;
+            eqGraphSkipNextClick = false;
+        }, 800);
+        if (didTapAddNewBand) {
+            /* Same as graph click-add: immediate markers, no gain focus / refocus steal */
+            let newIx = addPeakingFilterFromHz(st.fHz, EQ_GRAPH_BASE_GAIN, { skipFocus: true });
+            if (newIx >= 0) {
+                setEqFilterSelectedRow(newIx);
             }
-            eqGraphRemoveDragListeners();
-            clearTimeout(eqGraphApplyEqDragTimer);
-            eqGraphApplyEqDragTimer = null;
-            eqGraphPointerState = null;
-            eqGraphSkipNextClick = true;
-            if (eqGraphSkipClickClearTimer) {
-                clearTimeout(eqGraphSkipClickClearTimer);
-            }
-            eqGraphSkipClickClearTimer = setTimeout(() => {
-                eqGraphSkipClickClearTimer = null;
-                eqGraphSkipNextClick = false;
-            }, 800);
-            if (didTapAddNewBand) {
-                /* Same as graph click-add: immediate markers, no gain focus / refocus steal */
-                let newIx = addPeakingFilterFromHz(st.fHz, EQ_GRAPH_BASE_GAIN, { skipFocus: true });
-                if (newIx >= 0) {
-                    setEqFilterSelectedRow(newIx);
-                }
-            } else if (st.filterIndex !== null && st.dragging) {
-                clearTimeout(applyEQHandle);
-                applyEQHandle = null;
-                applyEQExec();
-                scheduleLiveEqSync();
-            }
-        } finally {
-            eqGraphSetRootCursorHidden(false);
+        } else if (st.filterIndex !== null && st.dragging) {
+            clearTimeout(applyEQHandle);
+            applyEQHandle = null;
+            applyEQExec();
+            scheduleLiveEqSync();
         }
         if (endEvent) {
             let mUp = clientToGraphPlotXY(endEvent.clientX, endEvent.clientY);
@@ -4400,13 +4235,6 @@ function addExtra() {
             st.accumMovementY += e.movementY;
             st.accumPlotY += e.movementY;
             rawDy = -st.accumMovementY;
-            if (rawDy > EQ_GRAPH_GAIN_DY_MAX) {
-                st.accumMovementY = -EQ_GRAPH_GAIN_DY_MAX;
-            }
-            if (rawDy < EQ_GRAPH_GAIN_DY_MIN) {
-                st.accumMovementY = -EQ_GRAPH_GAIN_DY_MIN;
-            }
-            rawDy = -st.accumMovementY;
             mx = st.originPlotMx + st.accumMovementX * st.svgScaleX;
             mx = Math.min(pad.l + W, Math.max(pad.l, mx));
             let plotX = st.originPlotMx + st.accumMovementX * st.svgScaleX;
@@ -4418,32 +4246,37 @@ function addExtra() {
                 st.pointerLockActive = false;
             }
         } else {
-            let m = clientToGraphPlotXY(e.clientX, e.clientY);
+            let refX = e.clientX - st.grabOffClientX;
+            let refY = e.clientY - st.grabOffClientY;
+            let m = clientToGraphPlotXY(refX, refY);
             if (!m) {
                 return;
             }
             mx = Math.min(pad.l + W, Math.max(pad.l, m[0]));
-            rawDy = st.startClientY - e.clientY;
-            if (rawDy > EQ_GRAPH_GAIN_DY_MAX) {
-                st.startClientY = e.clientY + EQ_GRAPH_GAIN_DY_MAX;
-            }
-            if (rawDy < EQ_GRAPH_GAIN_DY_MIN) {
-                st.startClientY = e.clientY + EQ_GRAPH_GAIN_DY_MIN;
-            }
-            rawDy = st.startClientY - e.clientY;
+            rawDy = st.startClientY - refY;
             st.accumMovementX = (mx - st.originPlotMx) / st.svgScaleX;
             st.accumMovementY = -rawDy;
             st.accumPlotY = (m[1] - st.originPlotMy) / st.svgScaleY;
-            if (e.pointerType !== "touch") {
-                let px = m[0];
-                let py = m[1];
-                if (px < pad.l || px > pad.l + W || py < pad.t || py > pad.t + H) {
-                    eqGraphTryRequestPointerLock(svg);
-                }
-            }
+            /* Do not request pointer lock: on unlock the OS restores the cursor to the pre-lock
+               position, which desyncs it from the node after a drag. Pointer capture on the SVG
+               already keeps move/up events while the button is held. */
         }
-        let gain = eqGraphGainFromDy(rawDy);
-        let freq = Math.round(Math.min(20000, Math.max(20, x.invert(mx))));
+        let gainT = eqGraphGainFromDy(rawDy);
+        let freqT = Math.round(Math.min(20000, Math.max(20, x.invert(mx))));
+        let adx;
+        let ady;
+        if (locked) {
+            if (st.filterIndex === null) {
+                adx = st.accumMovementX;
+                ady = st.accumMovementY;
+            } else {
+                adx = st.accumMovementX;
+                ady = st.accumMovementY - st.baseAccumMovementY;
+            }
+        } else {
+            adx = e.clientX - st.startClientX;
+            ady = e.clientY - st.downClientY;
+        }
         if (st.filterIndex === null) {
             let dist = locked
                 ? Math.hypot(st.accumMovementX, st.accumMovementY)
@@ -4451,6 +4284,16 @@ function addExtra() {
             if (dist < EQ_GRAPH_DRAG_THRESHOLD_PX) {
                 return;
             }
+            if (st.axisLock === null) {
+                st.axisLock = Math.abs(adx) >= Math.abs(ady) ? "freq" : "gain";
+                if (st.axisLock === "freq") {
+                    st.lockGainDb = gainT;
+                } else {
+                    st.lockFreqHz = freqT;
+                }
+            }
+            let freq = st.axisLock === "freq" ? freqT : st.lockFreqHz;
+            let gain = st.axisLock === "gain" ? gainT : st.lockGainDb;
             st.dragging = true;
             let idx = addPeakingFilterFromHz(freq, gain, {
                 skipFocus: true,
@@ -4460,7 +4303,6 @@ function addExtra() {
                 eqGraphPointerState = null;
                 eqGraphRemoveDragListeners();
                 eqGraphExitPointerLockIfAny();
-                eqGraphSetRootCursorHidden(false);
                 if (eqGraphSkipClickClearTimer) {
                     clearTimeout(eqGraphSkipClickClearTimer);
                 }
@@ -4489,6 +4331,16 @@ function addExtra() {
         if (distExisting < EQ_GRAPH_DRAG_THRESHOLD_PX) {
             return;
         }
+        if (st.axisLock === null) {
+            st.axisLock = Math.abs(adx) >= Math.abs(ady) ? "freq" : "gain";
+            if (st.axisLock === "freq") {
+                st.lockGainDb = gainT;
+            } else {
+                st.lockFreqHz = freqT;
+            }
+        }
+        let freq = st.axisLock === "freq" ? freqT : st.lockFreqHz;
+        let gain = st.axisLock === "gain" ? gainT : st.lockGainDb;
         st.dragging = true;
         st.liveFHz = freq;
         filterFreqInput[st.filterIndex].value = String(freq);
@@ -4523,10 +4375,10 @@ function addExtra() {
         let initialFilterIndex = null;
         if (hit) {
             let g0 = parseFloat(filterGainInput[hit.rowIndex].value) || 0;
-            g0 = clampEqGraphGainDb(g0);
+            if (!Number.isFinite(g0)) {
+                g0 = 0;
+            }
             let dyForGain = (g0 - EQ_GRAPH_BASE_GAIN) / EQ_GRAPH_DB_PER_PX;
-            dyForGain = Math.min(EQ_GRAPH_GAIN_DY_MAX,
-                Math.max(EQ_GRAPH_GAIN_DY_MIN, dyForGain));
             startDyOff = dyForGain;
             initialAccumMovementY = -dyForGain;
             initialFilterIndex = hit.rowIndex;
@@ -4555,19 +4407,37 @@ function addExtra() {
         let vb = svg.viewBox.baseVal;
         let svgScaleX = vb.width / Math.max(1e-6, plotRect.width);
         let svgScaleY = vb.height / Math.max(1e-6, plotRect.height);
+        let grabOffClientX = 0;
+        let grabOffClientY = 0;
         let originMx = Math.min(pad.l + W, Math.max(pad.l, m[0]));
         let originMy = Math.min(pad.t + H, Math.max(pad.t, m[1]));
+        let startClientYVal = e.clientY + startDyOff;
+        if (hit) {
+            let nc = graphPlotXYToClient(hit.cx, hit.cy);
+            if (nc) {
+                grabOffClientX = e.clientX - nc[0];
+                grabOffClientY = e.clientY - nc[1];
+                startClientYVal = nc[1] + startDyOff;
+                originMx = hit.cx;
+                originMy = hit.cy;
+            }
+        }
         clearTimeout(eqGraphApplyEqDragTimer);
         eqGraphApplyEqDragTimer = null;
         eqGraphDragApplyLastRun = 0;
         eqGraphPointerState = {
             startClientX: e.clientX,
-            startClientY: e.clientY + startDyOff,
+            startClientY: startClientYVal,
+            grabOffClientX: grabOffClientX,
+            grabOffClientY: grabOffClientY,
             downClientY: e.clientY,
             fHz: stPreview.fHz,
             liveFHz: stPreview.fHz,
             filterIndex: initialFilterIndex,
             dragging: false,
+            axisLock: null,
+            lockFreqHz: null,
+            lockGainDb: null,
             pointerId: e.pointerId,
             captureEl: svg,
             originPlotMx: originMx,
@@ -4581,7 +4451,6 @@ function addExtra() {
             pointerLockActive: false,
         };
         cancelEqFilterDeselectTimer();
-        eqGraphSetRootCursorHidden(true);
         try {
             svg.setPointerCapture(e.pointerId);
         } catch (err) { /* noop */ }

@@ -355,15 +355,6 @@ div.extra-eq div.filters > div.filter.eq-filter-row-dimmed {
 
 /* Hover fill is set in JS to match stroke (trace color). */
 
-svg#fr-graph g.eq-pointer-follower {
-    pointer-events: none;
-}
-
-svg#fr-graph g.eq-pointer-follower circle.eq-pointer-follower-disc {
-    fill: var(--font-color-primary);
-    stroke: none;
-}
-
 div.manage {
     grid-column-start: 2;
     grid-column-end: 3;
