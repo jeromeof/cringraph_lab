@@ -1224,6 +1224,15 @@ div.extra-panel .extra-eq-reset-row {
     -webkit-user-select: none;
 }
 
+div.extra-panel .extra-eq-reset-row label.live-sound-eq-toggle-text {
+    cursor: pointer;
+    margin: 0;
+}
+
+div.extra-panel .extra-eq-reset-row label.live-sound-eq-toggle-text:hover {
+    color: var(--accent-color);
+}
+
 div.extra-panel .extra-eq-reset-btn {
     box-sizing: border-box;
     flex-shrink: 0;

@@ -210,8 +210,8 @@ doc.html(`
               <div class="extra-eq-head">
                 <h5 class="extra-eq-panel-title">Parametric Equalizer</h5>
                 <div class="extra-eq-reset-row">
-                  <span class="live-sound-eq-toggle-text">Reset EQ</span>
-                  <button type="button" class="extra-eq-reset-btn" aria-label="Reset all EQ bands: frequency, gain, and Q to zero">
+                  <label class="live-sound-eq-toggle-text" for="extra-eq-reset-btn">Reset EQ</label>
+                  <button type="button" id="extra-eq-reset-btn" class="extra-eq-reset-btn" aria-label="Reset all EQ bands: frequency, gain, and Q to zero">
                     <svg class="extra-eq-reset-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
                       <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0l6-6M3 9h12a6 6 0 0 1 6 6v0a6 6 0 0 1-6 6H9"/>
                     </svg>
