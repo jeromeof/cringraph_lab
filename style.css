@@ -353,6 +353,13 @@ div.extra-eq div.filters > div.filter.eq-filter-row-dimmed {
     filter: saturate(0.65);
 }
 
+div.extra-eq div.filters > div.filter > span > input[name="freq"]:focus:hover,
+div.extra-eq div.filters > div.filter > span > input[name="gain"]:focus:hover,
+div.extra-eq div.filters > div.filter > span > input[name="q"]:focus:hover {
+    outline: 2px solid var(--background-color-contrast-more, #5a5348);
+    outline-offset: 1px;
+}
+
 /* Hover fill is set in JS to match stroke (trace color). */
 
 div.manage {

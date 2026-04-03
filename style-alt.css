@@ -1310,6 +1310,13 @@ div.extra-panel .live-sound-range-pair > span > input {
     outline: none;
 }
 
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="freq"]:focus:hover,
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="gain"]:focus:hover,
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="q"]:focus:hover {
+    outline: 2px solid var(--background-color-contrast-more);
+    outline-offset: 1px;
+}
+
 span:has(input[name="freq"]),
 span:has(input[name="gain"]),
 span:has(input[name="autoeq-to"]),

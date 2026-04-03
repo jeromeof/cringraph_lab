@@ -3298,7 +3298,13 @@ function addExtra() {
         }
         gEqHoverPreview.selectAll("*").remove();
     };
-    let applyEQHandle = null;
+    let applyEQRafId = null;
+    let cancelDeferredApplyEQ = () => {
+        if (applyEQRafId !== null) {
+            cancelAnimationFrame(applyEQRafId);
+            applyEQRafId = null;
+        }
+    };
     let applyEQExec = (execOpt) => {
         execOpt = execOpt || {};
         // Create and show phone with eq applied
@@ -3328,10 +3334,112 @@ function addExtra() {
         }
         updateEqFilterMarkers();
     };
+    /* Coalesce to one apply per animation frame so the trace follows typing / wheel without
+       the old 100ms debounce pause, while bounding work during rapid input. */
     let applyEQ = () => {
-        clearTimeout(applyEQHandle);
-        applyEQHandle = setTimeout(applyEQExec, 100);
+        if (applyEQRafId !== null) {
+            return;
+        }
+        applyEQRafId = requestAnimationFrame(() => {
+            applyEQRafId = null;
+            applyEQExec();
+        });
     };
+    /* ~Equal motion on the log-frequency graph: multiply/divide by a ratio instead of +1 Hz. */
+    let eqParametricFreqLogStep = (hz, dir, fine) => {
+        let f = hz;
+        if (!Number.isFinite(f) || f < 20) {
+            f = 20;
+        }
+        f = Math.min(20000, Math.max(20, f));
+        /* ~½ semitone / ~⅛ semitone with Shift (halved vs original for slower scroll). */
+        let ratio = fine ? Math.pow(2, 1 / 96) : Math.pow(2, 1 / 24);
+        let next = dir > 0 ? f * ratio : f / ratio;
+        return Math.round(Math.min(20000, Math.max(20, next)));
+    };
+    if (filtersContainer) {
+        filtersContainer.addEventListener("wheel", (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                return;
+            }
+            let ae = document.activeElement;
+            if (!ae || ae.tagName !== "INPUT") {
+                return;
+            }
+            let nm = ae.getAttribute("name");
+            if (nm !== "freq" && nm !== "gain" && nm !== "q") {
+                return;
+            }
+            if (!filtersContainer.contains(ae)) {
+                return;
+            }
+            let path = typeof e.composedPath === "function" ? e.composedPath() : [];
+            if (path.indexOf(ae) === -1) {
+                return;
+            }
+            let dy = e.deltaY;
+            if (!dy) {
+                return;
+            }
+            if (Math.abs(e.deltaX) > Math.abs(dy)) {
+                return;
+            }
+            e.preventDefault();
+            let dir = dy > 0 ? -1 : 1;
+            let v = parseFloat(ae.value);
+            if (!Number.isFinite(v)) {
+                v = 0;
+            }
+            if (nm === "freq") {
+                ae.value = String(eqParametricFreqLogStep(v, dir, e.shiftKey));
+                applyEQ();
+                return;
+            }
+            let min = parseFloat(ae.getAttribute("min"));
+            let max = parseFloat(ae.getAttribute("max"));
+            let step = parseFloat(ae.getAttribute("step"));
+            if (!Number.isFinite(step) || step <= 0) {
+                step = 0.1;
+            }
+            step *= 0.5;
+            if (e.shiftKey) {
+                step *= 0.1;
+            }
+            let next = v + dir * step;
+            if (Number.isFinite(min)) {
+                next = Math.max(min, next);
+            }
+            if (Number.isFinite(max)) {
+                next = Math.min(max, next);
+            }
+            next = Math.round(next / step) * step;
+            ae.value = String(parseFloat(next.toFixed(4)));
+            applyEQ();
+        }, { capture: true, passive: false });
+        filtersContainer.addEventListener("keydown", (e) => {
+            if (e.code !== "ArrowUp" && e.code !== "ArrowDown") {
+                return;
+            }
+            if (e.ctrlKey || e.metaKey || e.altKey) {
+                return;
+            }
+            let t = e.target;
+            if (!t || t.tagName !== "INPUT" || t.getAttribute("name") !== "freq") {
+                return;
+            }
+            if (!filtersContainer.contains(t)) {
+                return;
+            }
+            e.preventDefault();
+            let dir = e.code === "ArrowUp" ? 1 : -1;
+            let v = parseFloat(t.value);
+            if (!Number.isFinite(v)) {
+                v = 0;
+            }
+            t.value = String(eqParametricFreqLogStep(v, dir, e.shiftKey));
+            applyEQ();
+        }, true);
+    }
     window.updateEQPhoneSelect = () => {
         let oldValue = eqPhoneSelect.value;
         let optionValues = activePhones.filter(p =>
@@ -3411,8 +3519,7 @@ function addExtra() {
             filtersToElem([{ disabled: false, type: "PK", freq: 0, q: 0, gain: 0 }]);
             setEqFilterSelectedRow(0);
         }
-        clearTimeout(applyEQHandle);
-        applyEQHandle = null;
+        cancelDeferredApplyEQ();
         applyEQExec();
         scheduleLiveEqSync();
     };
@@ -4234,8 +4341,8 @@ function addExtra() {
         let dDb = y.invert(currentPlotY) - y.invert(refPlotY);
         return clampEqGraphGainToInputRange(roundEqGraphGainDb(anchorDb + dDb));
     };
-    /* applyEQ() debounces 100ms — continuous graph drag bypasses that via scheduleApplyEqDuringGraphDrag.
-       Throttle applyEQExec + live audio during graph drag (~2–3 frames). */
+    /* applyEQ() uses rAF coalescing; graph drag uses scheduleApplyEqDuringGraphDrag to throttle
+       applyEQExec + live audio (~32ms). */
     const EQ_GRAPH_DRAG_APPLY_MS = 32;
     let eqGraphDragApplyLastRun = 0;
     let scheduleApplyEqDuringGraphDrag = () => {
@@ -4243,8 +4350,7 @@ function addExtra() {
         let flushDragEq = () => {
             eqGraphApplyEqDragTimer = null;
             eqGraphDragApplyLastRun = performance.now();
-            clearTimeout(applyEQHandle);
-            applyEQHandle = null;
+            cancelDeferredApplyEQ();
             applyEQExec();
             scheduleLiveEqSync();
         };
@@ -4296,8 +4402,7 @@ function addExtra() {
             focusGainIndex = j;
         }
         if (options.skipFocus) {
-            clearTimeout(applyEQHandle);
-            applyEQHandle = null;
+            cancelDeferredApplyEQ();
             applyEQExec({ skipRestoreFocus: true });
         } else {
             applyEQ();
@@ -4384,8 +4489,7 @@ function addExtra() {
                 setEqFilterSelectedRow(newIx, true);
             }
         } else if (st.filterIndex !== null && st.dragging) {
-            clearTimeout(applyEQHandle);
-            applyEQHandle = null;
+            cancelDeferredApplyEQ();
             applyEQExec();
             scheduleLiveEqSync();
         }
@@ -4774,8 +4878,7 @@ function addExtra() {
         filterQInput[i].value = q <= EQ_GRAPH_WHEEL_Q_FINE_MAX
             ? q.toFixed(2)
             : String(q);
-        clearTimeout(applyEQHandle);
-        applyEQHandle = null;
+        cancelDeferredApplyEQ();
         applyEQExec();
         scheduleLiveEqSync();
         setEqFilterSelectedRow(i);
@@ -4810,8 +4913,7 @@ function addExtra() {
             let cur = (sel.value || "").trim();
             sel.value = eqGraphTypeCycleOrder[cur] || "PK";
         }
-        clearTimeout(applyEQHandle);
-        applyEQHandle = null;
+        cancelDeferredApplyEQ();
         applyEQExec();
         scheduleLiveEqSync();
         setEqFilterSelectedRow(hit.rowIndex);
@@ -4826,6 +4928,39 @@ function addExtra() {
             passive: false,
         });
     }
+    let clientPointOverGraphPlot = (clientX, clientY) => {
+        let plot = graphPlotHitRect && graphPlotHitRect.node();
+        if (!plot) {
+            return false;
+        }
+        let r = plot.getBoundingClientRect();
+        return clientX >= r.left && clientX <= r.right
+            && clientY >= r.top && clientY <= r.bottom;
+    };
+    document.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) {
+            return;
+        }
+        if (eqFilterSelectedRow === null) {
+            return;
+        }
+        let tab = document.querySelector("div.select");
+        if (!extraEnabled || !extraEQEnabled || !tab
+                || tab.getAttribute("data-selected") !== "extra") {
+            return;
+        }
+        let t = e.target;
+        if (filtersContainer && filtersContainer.contains(t)) {
+            return;
+        }
+        if (clientPointOverGraphPlot(e.clientX, e.clientY)) {
+            let m = clientToGraphPlotXY(e.clientX, e.clientY);
+            if (m && findEqGraphMarkerHit(m)) {
+                return;
+            }
+        }
+        setEqFilterSelectedRow(null);
+    }, true);
     toneGeneratorAddFilterButton.addEventListener("click", () => {
         let hz = parseInt(toneGeneratorText.innerText, 10) || 0;
         addPeakingFilterFromHz(hz);
