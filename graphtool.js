@@ -4355,7 +4355,6 @@ function addExtra() {
     let eqGraphTypeCycleOrder = { PK: "LSQ", LSQ: "HSQ", HSQ: "PK" };
     let eqGraphPerformDragCleanup = (st, endEvent) => {
         let didTapAddNewBand = !st.dragging && st.filterIndex === null;
-        let queuedEqGraphFieldFocus = false;
         if (endEvent && typeof endEvent.clientX === "number"
                 && typeof endEvent.clientY === "number") {
             lastGraphPlotPointerClient = { x: endEvent.clientX, y: endEvent.clientY };
@@ -4398,8 +4397,8 @@ function addExtra() {
             } else if (st.axisLock === "freq" && filterFreqInput[ix]) {
                 el = filterFreqInput[ix];
             }
-            if (el) {
-                queuedEqGraphFieldFocus = true;
+            /* Touch: focusing number inputs opens the on-screen keyboard; desktop mouse/pen keep focus for editing. */
+            if (el && endEvent && endEvent.pointerType !== "touch") {
                 requestAnimationFrame(() => {
                     el.focus();
                     el.select();
