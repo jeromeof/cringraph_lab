@@ -3587,6 +3587,7 @@ function addExtra() {
     eqPhoneSelect.addEventListener("input", () => {
         setEqFilterSelectedRow(null);
         applyEQ();
+        scheduleLiveEqSync();
     });
     let resetAllEqBandsToZero = () => {
         for (let i = 0; i < eqBands; i++) {
@@ -3811,6 +3812,9 @@ function addExtra() {
     let livePinkNoisePlaybackGain = 0.5;
     let liveToneGeneratorPlaybackGain = 0.2;
     let liveMusicPlaybackGain = 1;
+    /* How much of the pink-weighted bypass match to apply: 1 = full, 0 = off (unity). 0.85 → blend r toward 1:
+       effective = 1 + (r - 1) * blend. */
+    let liveMusicBypassPinkMatchBlend = 0.85;
     let lastEqPlaybackSource = "pink";
     // Pink noise (parametric EQ in audio path)
     let pinkNoisePlayButton = document.querySelector("div.extra-pink-noise .play");
@@ -3973,16 +3977,63 @@ function addExtra() {
         !livePlaybackEqToggle || livePlaybackEqToggle.checked;
     let mapFilterTypeToBiquad = (t) =>
         (t === "LSQ" ? "lowshelf" : t === "HSQ" ? "highshelf" : "peaking");
-    let computeLiveEqSpecs = () => {
-        if (!isLivePlaybackEqEnabled()) {
-            return [];
-        }
-        return elemToFilters().map((f) => ({
+    /* Same bands as live biquads; independent of the Apply EQ toggle (used for
+       preamp + A/B level match when EQ is bypassed). */
+    let elemToLiveEqSpecsClamped = () =>
+        elemToFilters().map((f) => ({
             type: f.type,
             freq: Math.min(20000, Math.max(20, f.freq)),
             q: Math.max(1e-4, Math.min(1000, f.q)),
             gain: Math.max(-40, Math.min(40, f.gain)),
         }));
+    let computeLiveEqSpecs = () => {
+        if (!isLivePlaybackEqEnabled()) {
+            return [];
+        }
+        return elemToLiveEqSpecsClamped();
+    };
+    let getLiveMusicEqFrAnalysis = (sampleRate) => {
+        let specs = elemToLiveEqSpecsClamped();
+        if (!specs.length) {
+            return null;
+        }
+        let phoneObj = resolveEqGraphPhoneObj();
+        if (!phoneObj || !phoneObj.rawChannels) {
+            return null;
+        }
+        let raw = phoneObj.rawChannels.filter(Boolean)[0];
+        if (!raw || !raw.length) {
+            return null;
+        }
+        let frEq = Equalizer.apply(raw, specs, sampleRate);
+        let preDb = Equalizer.calc_preamp(raw, frEq);
+        return { raw, frEq, preDb };
+    };
+    /* Match export semantics: headroom from max EQ boost vs raw FR (see Equalizer.calc_preamp). */
+    let computeLiveMusicPreampDb = (sampleRate) => {
+        let a = getLiveMusicEqFrAnalysis(sampleRate);
+        return a ? a.preDb : 0;
+    };
+    /* Pink-weighted (1/f) power ratio of EQ+preamp vs flat on the FR grid (needs analysis object). */
+    let computeLiveMusicBypassPinkMatchLinearFromAnalysis = (a) => {
+        let { raw, frEq, preDb } = a;
+        let num = 0;
+        let den = 0;
+        for (let i = 0; i < raw.length; i++) {
+            let f = raw[i][0];
+            if (!(f > 0)) {
+                continue;
+            }
+            let w = 1 / f;
+            let deltaDb = frEq[i][1] - raw[i][1];
+            num += w * Math.pow(10, (deltaDb + preDb) / 10);
+            den += w;
+        }
+        if (!(den > 0) || !(num > 0)) {
+            return 1;
+        }
+        let ratio = Math.sqrt(num / den);
+        return Math.min(4, Math.max(0.04, ratio));
     };
     const LIVE_EQ_PARAM_TAU_SEC = 0.016;
     let smoothAudioParamTo = (param, value, ctx) => {
@@ -3993,6 +4044,23 @@ function addExtra() {
         } catch (e) {
             param.value = value;
         }
+    };
+    /* Static bypass trim: pink 1/f match blended toward unity (liveMusicBypassPinkMatchBlend) when Apply EQ off. */
+    let syncMusicOutputGain = (ctx) => {
+        if (!musicMasterGain || !ctx) {
+            return;
+        }
+        let preDb = computeLiveMusicPreampDb(ctx.sampleRate);
+        let lin = liveMusicPlaybackGain * Math.pow(10, preDb / 20);
+        if (!isLivePlaybackEqEnabled()) {
+            let bypassAnalysis = getLiveMusicEqFrAnalysis(ctx.sampleRate);
+            if (bypassAnalysis) {
+                let r = computeLiveMusicBypassPinkMatchLinearFromAnalysis(bypassAnalysis);
+                let b = liveMusicBypassPinkMatchBlend;
+                lin *= 1 + (r - 1) * b;
+            }
+        }
+        smoothAudioParamTo(musicMasterGain.gain, lin, ctx);
     };
     let syncEqBiquadsInPlace = (ctx, biquadsArr, specs) => {
         if (biquadsArr.length !== specs.length) {
@@ -4126,6 +4194,7 @@ function addExtra() {
                 && specs.length === musicBiquads.length
                 && syncBandShelfFiltersInPlace(musicContext, musicBandFilters, fromHz, toHz)) {
             if (specs.length === 0 || syncEqBiquadsInPlace(musicContext, musicBiquads, specs)) {
+                syncMusicOutputGain(musicContext);
                 return;
             }
         }
@@ -4158,6 +4227,7 @@ function addExtra() {
             musicBiquads.push(bf);
         });
         last.connect(musicMasterGain);
+        syncMusicOutputGain(musicContext);
     };
     let scheduleLiveEqSync = () => {
         if (!pinkNoisePlaying && !toneGeneratorOsc && !musicMediaSourceNode) {
