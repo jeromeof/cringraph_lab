@@ -1650,7 +1650,7 @@ div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row
 div.extra-panel .live-sound-tools .extra-music .music-play-row button.play {
     flex: 100% 0 0;
     width: 100%;
-    border: none !important;
+    border: 1px solid var(--background-color-contrast-more) !important;
     box-sizing: border-box;
     display: flex;
     align-items: center;
@@ -1669,7 +1669,7 @@ div.extra-panel .live-sound-tools .extra-pink-noise button.play.playback-active,
 div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row button.play.playback-active,
 div.extra-panel .live-sound-tools .extra-music .music-play-row button.play.playback-active {
     background-color: var(--background-color-contrast-more) !important;
-    border: none !important;
+    border: 1px solid var(--background-color-contrast-more) !important;
     color: var(--background-color) !important;
     font-size: 19px;
     line-height: 1;
