@@ -870,21 +870,29 @@ let getO = i => LR.length>1 ? -1+i*2/(LR.length-1) : 0;
 const sampnums = typeof num_samples !== "undefined" ? d3.range(1,num_samples+1)
                                                     : [""];
 function loadFiles(p, callback) {
-    let l = f => d3.text(DIR+f+".txt").catch(()=>null);
-    let f = p.isTarget ? [l(p.fileName)]
+    let fetchTxt = base => d3.text(DIR+base+".txt").catch(()=>null);
+    let f = p.isTarget ? [fetchTxt(p.fileName)]
           : d3.merge(LR.map(s =>
-                sampnums.map(n => l(p.fileName+" "+s+n))));
+                sampnums.map(n => fetchTxt(p.fileName+" "+s+n))));
     Promise.all(f).then(function (frs) {
         if (!frs.some(f=>f!==null)) {
             alert("Headphone not found!");
         } else {
-            let ch = frs.map(f => f && Equalizer.interp(f_values, tsvParse(f)));
-            ch = ch.filter(c => c !== null);
+            /* Keep null slots so indices stay LR × samples; filtering breaks setCurves(n = len/2). */
+            let ch = frs.map(f => {
+                if (!f) return null;
+                try {
+                    return Equalizer.interp(f_values, tsvParse(f));
+                } catch (e) {
+                    return null;
+                }
+            });
             callback(ch);
         }
     });
 }
 let validChannels = p => p.channels.filter(c=>c!==null);
+let firstPresentChannel = chs => chs && chs.find(c => c != null);
 let numChannels = p => d3.sum(p.channels, c=>c!==null);
 let notMultichannel = LR.length===1 ? p=>true : p=>p.isTarget;
 let hasChannelSel = p => !notMultichannel(p) && numChannels(p)>1;
@@ -893,19 +901,26 @@ let keyLeft= keyExt ? 0 : sampnums.length>1 ? 11 : 0;
 if (keyLeft) d3.select(".key").style("width","17%")
 
 function avgCurves(curves) {
+    if (!curves.length) return null;
+    if (curves.length === 1) return curves[0];
     return curves
         .map(c=>c.map(d=>Math.pow(10,d[1]/20)))
         .reduce((as,bs) => as.map((a,i) => a+bs[i]))
         .map((x,i) => [curves[0][i][0], 20*Math.log10(x/curves.length)]);
 }
 function getAvg(p) {
-    if (p.avg) return p.activeCurves[0].l;
+    if (p.avg) {
+        return p.activeCurves && p.activeCurves[0] ? p.activeCurves[0].l : null;
+    }
     let v = validChannels(p);
+    if (!v.length) return null;
     return v.length===1 ? v[0] : avgCurves(v);
 }
 function hasImbalance(p) {
     if (!hasChannelSel(p)) return false;
-    let as = p.channels[0], bs = p.channels[1];
+    let nSide = sampnums.length;
+    let as = p.channels[0], bs = LR.length > 1 ? p.channels[nSide] : p.channels[1];
+    if (!as || !bs) return false;
     let s0=0, s1=0;
     return as.some((a,i) => {
         let d = a[1]-bs[i][1];
@@ -955,7 +970,11 @@ let gpath = gr.insert("g",".dBScaler")
     .attr("mask","url(#graphFade)");
 function eqMarkerResolvePaint(spec, traceCol) {
     if (spec === "trace") {
-        return traceCol;
+        /* d3 / browser color parsing may call .match on strings; null/empty breaks updates. */
+        if (traceCol != null && traceCol !== "" && traceCol !== "none") {
+            return traceCol;
+        }
+        return "#888888";
     }
     if (spec === "graph") {
         return "var(--background-color-graph)";
@@ -1280,7 +1299,7 @@ function setCurves(p, avg, lr, samp) {
     if (samp===undefined) samp = avg ? false : LR.length===1||p.ssamp||false;
     else { p.ssamp = samp; if (samp) avg = false; }
     let dx = +avg - +p.avg,
-        n  = p.channels.length/2,
+        n  = LR.length ? p.channels.length / LR.length : p.channels.length,
         selCh = (l,i) => l.slice(i*n,(i+1)*n);
     p.avg = avg;
     p.samp = samp = n>1 && samp;
@@ -1294,7 +1313,7 @@ function setCurves(p, avg, lr, samp) {
                                      o:oi===undefined?0:getO(oi)});
         p.activeCurves
             = avg && mc ? [pc("AVG", avgCurves(cv))]
-            : !samp && mc ? LR.map((l,i) => pc(l, avgCurves(v(selCh(cs,i))), i))
+            : !samp && mc ? LR.map((l,i) => pc(l, avgCurves(v(selCh(cs,i))), i)).filter(c => c.l)
             : cs.map((l,i) => {
                 let j = Math.floor(i/n);
                 return pc(LR[j]+sampnums[i%n], l, j);
@@ -1538,6 +1557,7 @@ function updatePhoneTable(trigger) {
                     exportContainer = document.querySelector("body");
 
                 channels.forEach(function (channel, i) {
+                    if (!channel) return;
                     let channelNum = i + 1,
                         text = channel.reduce((acc, c) => {
                             return acc.concat([Object.values(c).join("\t")]);
@@ -1702,12 +1722,14 @@ function updateKey(s) {
     s.selectAll(".keyCLabel").data(p=>p.channels).call(disp(c=>c));
     s.select("g").attr("mask",p=>cs(p)?"url(#chmask"+p.id+")":null);
     let l=-17-(keyLeft?8:0);
-    s.select("path").attr("d", p =>
-        notMultichannel(p) ? "M"+(15+keyExt)+" 0H"+l :
-        ["M15 -6H9C0 -6,0 0,-9 0H"+l,"M"+l+" 0H-9C0 0,0 6,9 6H15"]
-            .filter((_,i) => p.channels[i])
-            .reduce((a,b) => a+b.slice(6))
-    );
+    s.select("path").attr("d", p => {
+        if (notMultichannel(p)) {
+            return "M"+(15+keyExt)+" 0H"+l;
+        }
+        let segs = ["M15 -6H9C0 -6,0 0,-9 0H"+l,"M"+l+" 0H-9C0 0,0 6,9 6H15"]
+            .filter((_,i) => p.channels[i ? sampnums.length : 0]);
+        return segs.length ? segs.reduce((a,b) => a+b.slice(6)) : "M"+(15+keyExt)+" 0H"+l;
+    });
 }
 
 function addModel(t) {
@@ -1724,6 +1746,8 @@ function addModel(t) {
             let p = r.p;
             if (p.selectInProgress) return;
             p.selectInProgress = true;
+            p._variantFocusStartFile = p.fileName;
+            if (!p.vars) p.vars = {};
             p.vars[p.fileName] = p.rawChannels;
             d3.select(this)
                 .on("mousedown", function () {
@@ -1781,7 +1805,15 @@ function addModel(t) {
                 .call(setHover, h=>p=>null)
                 .transition().style("top",0+"em").remove()
                 .end().then(()=>n.text(()=>p.dispName));
-            changeVariant(p, updateVariant);
+            /* Avoid changeVariant when nothing changed: blur runs on every close (e.g. picking
+               another model) and would re-smooth + full updatePhoneTable for no reason. */
+            let startF = p._variantFocusStartFile;
+            delete p._variantFocusStartFile;
+            if (startF !== undefined && p.fileName !== startF) {
+                changeVariant(p, updateVariant);
+            } else {
+                updateKey(table.selectAll("tr").filter(row => row.p === p && (row.sub === null || row.sub === 0)).select(".keyLine"));
+            }
             table.selectAll("tr").classed("highlight", false); // Prevents some glitches
         });
     t.filter(r=>r.p.isTarget).append("span").text(" Target");
@@ -1791,14 +1823,24 @@ function updateVariant(p) {
     updateKey(table.selectAll("tr").filter(r => r.p === p && (r.sub === null || r.sub === 0)).select(".keyLine"));
     normalizePhone(p);
     updatePaths();
+    updatePhoneTable();
+    d3.selectAll("#phones .phone-item,.target")
+        .filter(q => q.id !== undefined)
+        .call(setPhoneTr);
+    if (extraEnabled && extraEQEnabled && typeof window.updateEQPhoneSelect === "function") {
+        window.updateEQPhoneSelect();
+    }
 }
 function changeVariant(p, update, trigger) {
+    if (!p.vars) p.vars = {};
     let fn = p.fileName,
         ch = p.vars[fn];
     function set(ch) {
-        p.rawChannels = ch; p.smooth = undefined;
+        p.rawChannels = ch;
+        p.smooth = undefined;
+        p.vars[p.fileName] = ch;
         smoothPhone(p);
-        setCurves(p);
+        /* setCurves already runs inside smoothPhone after rawChannels change */
         update(p, 0, 0, trigger);
     }
     if (ch) {
@@ -1815,7 +1857,7 @@ function showVariant(p, c, trigger) {
     }
     p.objs.push(c);
     c.active=true; c.copyOf=p;
-    ["brand","dispBrand","fileNames","vars"].map(k=>c[k]=p[k]);
+    ["brand","dispBrand","fileNames","vars","phone","fullName"].map(k=>c[k]=p[k]);
     changeVariant(c, showPhone, trigger);
 }
 
@@ -1873,12 +1915,16 @@ let norm_sel = ( default_normalization.toLowerCase() === "db" ) ? 0:1,
     norm_phon = default_norm_db;
 
 function normalizePhone(p) {
+    let vc = validChannels(p);
+    if (!vc.length) return;
     if (norm_sel) { // fr
         let i = fr_to_ind(norm_fr);
         let avg = l => 20*Math.log10(d3.mean(l, d=>Math.pow(10,d/20)));
-        p.norm = 60 - avg(validChannels(p).map(l=>l[i][1]));
+        p.norm = 60 - avg(vc.map(l=>l[i][1]));
     } else { // phon
-        p.norm = find_offset(getAvg(p), norm_phon);
+        let g = getAvg(p);
+        if (!g) return;
+        p.norm = find_offset(g, norm_phon);
     }
     if (p.eq) {
         p.eq.norm = p.norm; // copy parent's norm to child
@@ -3170,13 +3216,15 @@ function addExtra() {
             return null;
         }
         let eqPhone = phoneObj.eq;
-        let hasEqTrace = !!(eqPhone && eqPhone.rawChannels && eqPhone.rawChannels[0]);
+        let eqTraceCh = eqPhone && firstPresentChannel(eqPhone.rawChannels);
+        let hasEqTrace = !!eqTraceCh;
         let tracePhone = hasEqTrace ? eqPhone : phoneObj;
-        if (!tracePhone.rawChannels || !tracePhone.rawChannels[0]) {
+        let traceCh = firstPresentChannel(tracePhone.rawChannels);
+        if (!traceCh) {
             return null;
         }
         let fHz = Math.min(20000, Math.max(20, x.invert(m[0])));
-        let pts = baseline.fn(tracePhone.rawChannels[0]);
+        let pts = baseline.fn(traceCh);
         let db = eqInterpDbAtHz(pts, fHz);
         if (db === null || !Number.isFinite(db)) {
             return null;
@@ -3246,15 +3294,15 @@ function addExtra() {
             return null;
         }
         let eqPhone = phoneObj.eq;
-        let tracePhone = eqPhone && eqPhone.rawChannels && eqPhone.rawChannels[0]
-            ? eqPhone
-            : phoneObj;
-        if (!tracePhone.rawChannels || !tracePhone.rawChannels[0]) {
+        let tracePhone = firstPresentChannel(eqPhone && eqPhone.rawChannels) ? eqPhone : phoneObj;
+        let traceCh = firstPresentChannel(tracePhone.rawChannels);
+        if (!traceCh) {
             return null;
         }
-        let pts = baseline.fn(tracePhone.rawChannels[0]);
+        let pts = baseline.fn(traceCh);
         let yOff = y(getOffset(tracePhone)) - y(0);
         let strokeCol = getCurveColor(tracePhone.id, 0);
+        let phoneRaw0 = firstPresentChannel(phoneObj.rawChannels);
         let rows = [];
         for (let i = 0; i < eqBands; i++) {
             let disabled = !filterEnabledInput[i].checked;
@@ -3270,11 +3318,11 @@ function addExtra() {
                PK <-> shelf does not move the node; the drawn EQ curve still uses the real shelf. */
             let db;
             if ((typeTrim === "LSQ" || typeTrim === "HSQ")
-                    && phoneObj.rawChannels && phoneObj.rawChannels[0]
+                    && phoneRaw0
                     && typeof Equalizer !== "undefined" && Equalizer.apply) {
                 let filtPk = eqFiltersListForApply(i);
                 try {
-                    let frEq = Equalizer.apply(phoneObj.rawChannels[0], filtPk);
+                    let frEq = Equalizer.apply(phoneRaw0, filtPk);
                     let ptsPk = baseline.fn(frEq);
                     db = eqInterpDbAtHz(ptsPk, freq);
                 } catch (err) {
@@ -3672,7 +3720,7 @@ function addExtra() {
         reader.onload = (e) => {
             let settings = e.target.result;
             let filters = settings.split("\n").map(l => {
-                let r = l.match(/Filter\s*\d+:\s*(\S+)\s*(\S+)\s*Fc\s*(\S+)\s*Hz\s*Gain\s*(\S+)\s*dB(\s*Q\s*(\S+))?/);
+                let r = String(l == null ? "" : l).match(/Filter\s*\d+:\s*(\S+)\s*(\S+)\s*Fc\s*(\S+)\s*Hz\s*Gain\s*(\S+)\s*dB(\s*Q\s*(\S+))?/);
                 if (!r) { return undefined; }
                 let disabled = (r[1] !== "ON");
                 let type = r[2];
@@ -6440,7 +6488,7 @@ function userConfigAppendInits(initReq) {
 
         if (configJson && configNumOfPhones) {
             initReq.slice(0).forEach(function(item) {
-                if (item.endsWith(' Target')) {
+                if (item && typeof item.endsWith === "function" && item.endsWith(" Target")) {
                     initReq.splice(initReq.indexOf(item), 1);
                 }
             });
