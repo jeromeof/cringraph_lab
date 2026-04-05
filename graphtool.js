@@ -917,6 +917,17 @@ function hasImbalance(p) {
 }
 
 let activePhones = [];
+let phoneManageIdentityMap = new WeakMap(),
+    phoneManageIdentitySeq = 1;
+function phoneManageIdentity(p) {
+    if (p == null) return 0;
+    let v = phoneManageIdentityMap.get(p);
+    if (v == null) {
+        v = phoneManageIdentitySeq++;
+        phoneManageIdentityMap.set(p, v);
+    }
+    return v;
+}
 let baseline0 = { p:null, l:null, fn:l=>l },
     baseline = baseline0;
 
@@ -1115,8 +1126,12 @@ function buildMusicSpectrumPath(floatFreq) {
     d += " L" + pts[pts.length - 1][0] + "," + yBottomLocal + " Z";
     return d;
 }
-function hl(p, h) {
-    gpath.selectAll("path").filter(c=>c.p===p).classed("highlight",h);
+function hl(p, h, sub) {
+    gpath.selectAll("path").filter(c => {
+        if (c.p !== p) return false;
+        if (sub === undefined || sub === null) return true;
+        return c === p.activeCurves[sub];
+    }).classed("highlight", h);
 }
 let table = doc.select(".curves");
 
@@ -1339,7 +1354,7 @@ function setBaseline(b, no_transition) {
         .attr("d", drawLine)
         .on("end", () => updateEqFilterMarkers());
     table.selectAll("tr").select(".button-baseline")
-        .classed("selected", p=>p===baseline.p);
+        .classed("selected", d => d.p === baseline.p);
     
     // Analytics event
     if (analyticsEnabled && b.p) { pushPhoneTag("baseline_set", b.p); }
@@ -1408,7 +1423,7 @@ function setModeEmbed() {
 
 function updatePaths(trigger) {
     clearLabels();
-    let c = d3.merge(activePhones.map(p => p.activeCurves)),
+    let c = d3.merge(activePhones.map(p => p.activeCurves || [])),
         p = gpath.selectAll("path").data(c, d=>d.id);
     let t = p.join("path").attr("opacity", c=>c.p.hide?0:null)
         .classed("sample", c=>c.p.samp)
@@ -1424,108 +1439,176 @@ function updatePaths(trigger) {
     updateEqFilterMarkers();
 }
 let colorBar = p=>'url(\'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 8"><path d="M0 8v-8h1c0.05 1.5,-0.3 3,-0.16 5s0.1 2,0.15 3z" fill="'+getBgColor(p)+'"/></svg>\')';
-function updatePhoneTable(trigger) {
-    let c = table.selectAll("tr").data(activePhones, p=>p.fileName);
-    c.exit().remove();
 
-    let f = c.enter().append("tr").attr("data-filename", p=>p.fileName),
-        td = () => f.append("td");
-    f   .call(setHover, h => p => hl(p,h))
-        .style("color", p => getDivColor(p.id,true));
-
-    td().attr("class","remove").text("⊗")
-        .attr("title", "Remove graph")
-        .on("click", removePhone)
-        .style("background-image",colorBar)
-        .filter(p=>!p.isTarget).append("svg").call(addColorPicker);
-    td().attr("class","item-line item-target")
-        .call(s=>s.filter(p=>!p.isTarget).attr("class","item-line item-phone")
-                  .append("span").attr("class","brand").text(p=>p.dispBrand))
-        .call(addModel);
-    td().attr("class","curve-color").append("button")
-        .style("background-color",p=>getCurveColor(p.id,0))
-        .filter(p=>!p.isTarget).call(makeColorPicker);
-    td().attr("class","channels").append("svg").call(addKey)
-    td().attr("class","levels").append("input")
-        .attrs({type:"number",step:"any",value:0})
-        .property("value", p=>p.offset)
-        .on("change input",function(p){ setOffset(p, +this.value); });
-    if (exportableGraphs) {
-        td().attr("class","button button-export")
-            .attr("title", "Export graph")
-            .on("click", function(p) {
-            let phoneName = p.fullName,
-                channels = p.rawChannels,
-                exportContainer = document.querySelector('body');
-
-            channels.forEach(function(channel, i) {
-                let channelNum = i + 1,
-                    text = channel.reduce((acc, c) => {
-                        return acc.concat([Object.values(c).join('\t')]);
-                    }, []).join('\n'),
-                    blob = new Blob([text], { type: 'text/plain' }),
-                    url = URL.createObjectURL(blob),
-                    exportLink = document.createElement('a');
-
-                exportLink.download = phoneName + ' [' + channelNum + ']' + '.txt';
-                exportLink.href = url;
-                exportContainer.appendChild(exportLink);
-                exportLink.click();
-                exportLink.remove();
+function manageTableRows() {
+    let curvesAll = d3.merge(activePhones.map(p => p.activeCurves || [])),
+        phoneOrder = [],
+        seenP = new Set();
+    curvesAll.forEach(c => {
+        if (!c || !c.p || seenP.has(c.p)) return;
+        seenP.add(c.p);
+        phoneOrder.push(c.p);
+    });
+    let rows = [];
+    phoneOrder.forEach(p => {
+        let pid = phoneManageIdentity(p),
+            ac = p.activeCurves || [];
+        if (p.samp && ac.length > 1) {
+            ac.forEach((curve, i) => {
+                rows.push({
+                    p, sub: i,
+                    key: pid + "\t" + String(curve.id) + "\ts" + i
+                });
             });
-        });
+        } else {
+            let cid = ac[0] ? String(ac[0].id) : String(p.fileName || p.dispName || "");
+            rows.push({
+                p, sub: null,
+                key: pid + "\t" + cid + "\tm"
+            });
+        }
+    });
+    return rows;
+}
+
+function updatePhoneTable(trigger) {
+    let rows = manageTableRows(),
+        trJoin = table.selectAll("tr").data(rows, r => r.key);
+    trJoin.exit().remove();
+
+    function isManageMainRow(r) {
+        return r.sub === null || r.sub === 0;
     }
-    td().attr("class","button button-baseline")
+    function removeRowClicked() {
+        let r = d3.select(d3.event.currentTarget.closest("tr")).datum(),
+            ac = r.p.activeCurves || [];
+        if (r.p.samp && ac.length > 1 && typeof r.sub === "number" && r.sub > 0) {
+            removeSampleRow(r.p, r.sub);
+        } else {
+            removePhone(r.p);
+        }
+    }
+
+    let enter = trJoin.enter().append("tr")
+        .attr("data-filename", r => r.p.fileName)
+        .attr("data-phone-id", r => r.p.id)
+        .attr("data-manage-main", r => isManageMainRow(r) ? "1" : null);
+
+    let nRest = 7 + (exportableGraphs ? 1 : 0),
+        subOnly = enter.filter(r => !isManageMainRow(r));
+    subOnly.call(setHover, h => r => hl(r.p, h, r.sub))
+        .style("color", r => getDivColor(r.p.id, true));
+    subOnly.append("td").attr("class", "remove").text("⊗")
+        .attr("title", "Remove this sample")
+        .on("click", removeRowClicked)
+        .style("background-image", r => colorBar(r.p))
+        .filter(r => !r.p.isTarget).append("svg").call(addColorPicker);
+    subOnly.append("td").attr("class", "manage-sample-row-label").attr("colspan", nRest)
+        .append("span").attr("class", "manage-sample-label")
+        .text(r => (r.p.activeCurves[r.sub] && r.p.activeCurves[r.sub].id) || "");
+
+    let f = enter.filter(isManageMainRow),
+        td = () => f.append("td");
+    f.call(setHover, h => r => hl(r.p, h, r.sub))
+        .style("color", r => getDivColor(r.p.id, true));
+
+    td().attr("class", "remove").text("⊗")
+        .attr("title", "Remove graph")
+        .on("click", removeRowClicked)
+        .style("background-image", colorBar)
+        .filter(r => !r.p.isTarget).append("svg").call(addColorPicker);
+    td().attr("class", "item-line item-target")
+        .call(s => s.filter(r => !r.p.isTarget).attr("class", "item-line item-phone")
+            .append("span").attr("class", "brand").text(r => r.p.dispBrand))
+        .call(addModel);
+    td().attr("class", "curve-color").append("button")
+        .style("background-color", r => getCurveColor(r.p.id, 0))
+        .filter(r => !r.p.isTarget).call(makeColorPicker);
+    td().attr("class", "channels").append("svg").datum(r => r.p).call(addKey);
+    td().attr("class", "levels").append("input")
+        .attrs({ type: "number", step: "any", value: 0 })
+        .property("value", r => r.p.offset)
+        .on("change input", function (r) { setOffset(r.p, +this.value); });
+    if (exportableGraphs) {
+        td().attr("class", "button button-export")
+            .attr("title", "Export graph")
+            .on("click", function (r) {
+                let phoneName = r.p.fullName,
+                    channels = r.p.rawChannels,
+                    exportContainer = document.querySelector("body");
+
+                channels.forEach(function (channel, i) {
+                    let channelNum = i + 1,
+                        text = channel.reduce((acc, c) => {
+                            return acc.concat([Object.values(c).join("\t")]);
+                        }, []).join("\n"),
+                        blob = new Blob([text], { type: "text/plain" }),
+                        url = URL.createObjectURL(blob),
+                        exportLink = document.createElement("a");
+
+                    exportLink.download = phoneName + " [" + channelNum + "]" + ".txt";
+                    exportLink.href = url;
+                    exportContainer.appendChild(exportLink);
+                    exportLink.click();
+                    exportLink.remove();
+                });
+            });
+    }
+    td().attr("class", "button button-baseline")
         .attr("title", "Set as baseline")
         .html("<svg viewBox='-170 -120 340 240'><use xlink:href='#baseline-icon'></use></svg>")
-        .on("click", p => setBaseline(p===baseline.p ? baseline0
-                                                     : getBaseline(p)));
+        .on("click", r => setBaseline(r.p === baseline.p ? baseline0
+            : getBaseline(r.p)));
     function toggleHide(p) {
-        let h = p.hide;
-        let t = table.selectAll("tr").filter(q=>q===p);
-        t.select(".keyLine").on("click", h?null:toggleHide)
-            .selectAll("path,.imbalance").attr("opacity", h?null:0.5);
+        let h = p.hide,
+            t = table.selectAll("tr").filter(q => q.p === p && (q.sub === null || q.sub === 0));
+        t.select(".keyLine").on("click", h ? null : toggleHide)
+            .selectAll("path,.imbalance").attr("opacity", h ? null : 0.5);
         t.select(".hideIcon").classed("selected", !h);
-        gpath.selectAll("path").filter(c=>c.p===p)
-            .attr("opacity", h?null:0);
+        gpath.selectAll("path").filter(c => c.p === p)
+            .attr("opacity", h ? null : 0);
         p.hide = !h;
         if (labelsShown) {
             clearLabels();
             drawLabels();
         }
     }
-    td().attr("class","button hideIcon")
+    td().attr("class", "button hideIcon")
         .attr("title", "Hide graph")
         .html("<svg viewBox='-2.5 0 19 12'><use xlink:href='#hide-icon'></use></svg>")
-        .on("click", toggleHide);
-    td().attr("class","button button-pin")
+        .on("click", r => toggleHide(r.p));
+    td().attr("class", "button button-pin")
         .attr("title", "Pin graph")
-        .attr("data-pinned","false")
+        .attr("data-pinned", "false")
         .html("<svg viewBox='-135 -100 270 200'><use xlink:href='#pin-icon'></use></svg>")
-        .on("click",function(p){
-            if (cantCompare(activePhones.filter(p=>p.pin),1)) return;
+        .on("click", function (r) {
+            if (cantCompare(activePhones.filter(p => p.pin), 1)) return;
 
-            if ( p.pin ) {
-                p.pin = false;
-                this.setAttribute("data-pinned","false");
+            if (r.p.pin) {
+                r.p.pin = false;
+                this.setAttribute("data-pinned", "false");
             } else {
-                p.pin = true; nextPN = null;
-                this.setAttribute("data-pinned","true");
+                r.p.pin = true; nextPN = null;
+                this.setAttribute("data-pinned", "true");
             }
 
-            p.pin = true; nextPN = null;
+            r.p.pin = true; nextPN = null;
             d3.select(this)
-                .text(null).classed("button",false).on("click",null)
-                .insert("svg").attr("class","pinMark")
-                .attr("viewBox","0 0 280 145")
+                .text(null).classed("button", false).on("click", null)
+                .insert("svg").attr("class", "pinMark")
+                .attr("viewBox", "0 0 280 145")
                 .insert("path").attrs({
-                    fill:"none",
-                    "stroke-width":30,
-                    "stroke-linecap":"round",
-                    d:"M265 110V25q0 -10 -10 -10H105q-24 0 -48 20l-24 20q-24 20 -2 40l18 15q24 20 42 20h100"
+                    fill: "none",
+                    "stroke-width": 30,
+                    "stroke-linecap": "round",
+                    d: "M265 110V25q0 -10 -10 -10H105q-24 0 -48 20l-24 20q-24 20 -2 40l18 15q24 20 42 20h100"
                 });
             if (!userConfigApplicationActive) setUserConfig();
         });
+
+    enter.merge(trJoin).select(".manage-sample-label")
+        .text(r => !isManageMainRow(r) && r.p.activeCurves[r.sub]
+            ? r.p.activeCurves[r.sub].id : "");
 }
 
 function addKey(s) {
@@ -1628,8 +1711,8 @@ function updateKey(s) {
 }
 
 function addModel(t) {
-    let n = t.append("div").attr("class","phonename").text(p=>p.dispName);
-    t.filter(p=>p.fileNames)
+    let n = t.append("div").attr("class","phonename").text(r=>r.p.dispName);
+    t.filter(r=>r.p.fileNames)
         .append("div").attr("class","variants")
         .call(function (s) {
             s.append("svg").attr("viewBox","0 -2 10 11")
@@ -1637,7 +1720,8 @@ function addModel(t) {
                 .attr("d","M1 2L5 6L9 2L8 1L6 3Q5 4 4 3L2 1Z");
         })
         .attr("tabindex",0) // Make focusable
-        .on("focus", function (p) {
+        .on("focus", function (r) {
+            let p = r.p;
             if (p.selectInProgress) return;
             p.selectInProgress = true;
             p.vars[p.fileName] = p.rawChannels;
@@ -1666,8 +1750,8 @@ function addModel(t) {
             d.filter(v=>v.active)
                 .style("cursor","initial")
                 .style("color", getTextColor)
-                .call(setHover, h => p =>
-                    table.selectAll("tr").filter(q=>q===p)
+                .call(setHover, h => () =>
+                    table.selectAll("tr").filter(row => row.p === r.p)
                         .classed("highlight", h)
                 );
             let c = nVariantPopouts.selectAll().data(vars).join("span")
@@ -1675,12 +1759,18 @@ function addModel(t) {
                 .style("left",(w+5)+"px")
                 .style("display",v=>v.active?"none":null);
             [d,c].forEach(e=>e.transition().style("top",(_,i)=>i*1.3+"em"));
-            d.filter(v=>!v.active).on("mousedown", v => Object.assign(p,v));
+            /* Do not Object.assign(p,v): v can be a full on-graph variant (copyOf, id, …) and would
+               overwrite p.fileName etc., collapsing manage rows that key on fileName. */
+            d.filter(v=>!v.active).on("mousedown", v => {
+                p.fileName = v.fileName;
+                p.dispName = v.dispName;
+            });
             c.on("mousedown", function (v) {
                 showVariant(q, v);
             });
         })
-        .on("blur", function endSelect(p) {
+        .on("blur", function endSelect(r) {
+            let p = r.p;
             if (document.activeElement === this) return;
             p.selectInProgress = false;
             d3.select(this)
@@ -1690,15 +1780,15 @@ function addModel(t) {
             n.selectAll("div")
                 .call(setHover, h=>p=>null)
                 .transition().style("top",0+"em").remove()
-                .end().then(()=>n.text(p=>p.dispName));
+                .end().then(()=>n.text(()=>p.dispName));
             changeVariant(p, updateVariant);
             table.selectAll("tr").classed("highlight", false); // Prevents some glitches
         });
-    t.filter(p=>p.isTarget).append("span").text(" Target");
+    t.filter(r=>r.p.isTarget).append("span").text(" Target");
 }
 
 function updateVariant(p) {
-    updateKey(table.selectAll("tr").filter(q=>q===p).select(".keyLine"));
+    updateKey(table.selectAll("tr").filter(r => r.p === p && (r.sub === null || r.sub === 0)).select(".keyLine"));
     normalizePhone(p);
     updatePaths();
 }
@@ -1720,6 +1810,9 @@ function changeVariant(p, update, trigger) {
 function showVariant(p, c, trigger) {
     if (cantCompare(activePhones)) return;
     if (!p.objs) { p.objs = [p]; }
+    if (c !== p) {
+        delete c.objs;
+    }
     p.objs.push(c);
     c.active=true; c.copyOf=p;
     ["brand","dispBrand","fileNames","vars"].map(k=>c[k]=p[k]);
@@ -1728,7 +1821,7 @@ function showVariant(p, c, trigger) {
 
 function cpCircles(svg) {
     svg.selectAll("circle")
-        .data(p => [[3,3,2],[6.6,4,1]].map(([cx,cy,r])=>({cx,cy,r,fill:getBgColor(p)})))
+        .data(d => [[3,3,2],[6.6,4,1]].map(([cx,cy,r])=>({cx,cy,r,fill:getBgColor(d.p||d)})))
         .join("circle").attrs(d=>d);
 }
 function addColorPicker(svg) {
@@ -1738,7 +1831,8 @@ function addColorPicker(svg) {
     makeColorPicker(svg);
 }
 function makeColorPicker(elt) {
-    elt.on("click", function (p) {
+    elt.on("click", function (d) {
+        let p = d.p || d;
         p.id = getPhoneNumber();
         colorPhones();
         d3.event.stopPropagation();
@@ -1750,14 +1844,15 @@ function colorPhones() {
     let c = p=>p.active?getDivColor(p.id,true):null;
     doc.select("#phones").selectAll("div.phone-item")
         .style("background",c).style("border-color",c);
-    let t = table.selectAll("tr").filter(p=>!p.isTarget)
-        .style("color", c);
-    t.select("button").style("background-color",p=>getCurveColor(p.id,0));
-    t= t.call(s => s.select(".remove").style("background-image",colorBar)
-                    .select("svg").call(cpCircles))
-        .select("td.channels"); // Key line
+    let t = table.selectAll("tr").filter(r => !r.p.isTarget)
+        .style("color", r => c(r.p));
+    t.select("button").style("background-color", r => getCurveColor(r.p.id, 0));
+    t = t.call(s => s.select(".remove").style("background-image", r => colorBar(r.p))
+        .select("svg").call(cpCircles))
+        .filter(r => r.sub === null || r.sub === 0)
+        .select("td.channels");
     t.select("svg").remove();
-    t.append("svg").call(addKey);
+    t.append("svg").datum(r => r.p).call(addKey);
 }
 
 let f_values = (function() {
@@ -1874,13 +1969,14 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
         return;
     }
     smoothPhone(p);
-    if (p.id === undefined) { p.id = getPhoneNumber(); }
+    if (p.id == null) { p.id = getPhoneNumber(); }
     normalizePhone(p); p.offset=p.offset||0;
     if (exclusive) {
         activePhones = activePhones.filter(q => q.active = keep(q));
         if (baseline.p && !baseline.p.active) setBaseline(baseline0,1);
     }
-    if (activePhones.indexOf(p)===-1 && (suppressVariant || !p.objs)) {
+    let blockedFromCompareList = !suppressVariant && !p.copyOf && p.objs && p.objs.length;
+    if (activePhones.indexOf(p)===-1 && !blockedFromCompareList) {
         let avg = false;
         if (!p.isTarget) {
             let ap = activePhones.filter(p => !p.isTarget);
@@ -1902,7 +1998,7 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
         .call(setPhoneTr);
     //Displays variant pop-up when phone displayed
     if (!suppressVariant && p.fileNames && !p.copyOf && window.innerWidth > 1000) {
-        table.selectAll("tr").filter(q=>q===p).select(".variants").node().focus();
+        table.selectAll("tr").filter(r => r.p === p && (r.sub === null || r.sub === 0)).select(".variants").node().focus();
     } else {
         document.activeElement.blur();
     }
@@ -1940,6 +2036,34 @@ function removePhone(p) {
     d3.selectAll("#phones div,.target")
         .filter(q=>q===(p.copyOf||p))
         .call(setPhoneTr);
+    if (extraEnabled && extraEQEnabled) {
+        updateEQPhoneSelect();
+    }
+}
+
+function removeSampleRow(p, sub) {
+    if (sub === null || sub === undefined) {
+        removePhone(p);
+        return;
+    }
+    let curve = p.activeCurves[sub],
+        chIdx = curve ? p.channels.indexOf(curve.l) : -1;
+    if (chIdx >= 0) {
+        p.channels[chIdx] = null;
+    }
+    if (!validChannels(p).length) {
+        removePhone(p);
+        return;
+    }
+    setCurves(p, p.avg, undefined, p.ssamp);
+    updatePaths();
+    updatePhoneTable();
+    d3.selectAll("#phones div,.target")
+        .filter(q => q === (p.copyOf || p))
+        .call(setPhoneTr);
+    if (baseline.p && !baseline.p.active) {
+        setBaseline(baseline0);
+    }
     if (extraEnabled && extraEQEnabled) {
         updateEQPhoneSelect();
     }
@@ -2209,7 +2333,11 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
 let pathHoverTimeout;
 function pathHL(c, m, imm) {
     gpath.selectAll("path").classed("highlight", c ? d=>d===c   : false);
-    table.selectAll("tr")  .classed("highlight", c ? p=>p===c.p : false);
+    table.selectAll("tr").classed("highlight", c ? r => {
+        if (r.p !== c.p) return false;
+        if (r.sub === null || r.sub === undefined) return true;
+        return c === r.p.activeCurves[r.sub];
+    } : false);
     if (pathHoverTimeout) { clearTimeout(pathHoverTimeout); }
     if(!stickyLabels) {
         clearLabels();
@@ -2238,7 +2366,7 @@ let graphInteract = imm => function () {
     if (ev && typeof ev.clientX === "number" && typeof ev.clientY === "number") {
         lastGraphPlotPointerClient = { x: ev.clientX, y: ev.clientY };
     }
-    let cs = d3.merge(activePhones.map(p=>p.hide?[]:p.activeCurves));
+    let cs = d3.merge(activePhones.map(p=>p.hide?[]:(p.activeCurves||[])));
     let m = d3.mouse(this);
     if (!cs.length) {
         syncEqHoverPreview(null);
@@ -3026,7 +3154,7 @@ function addExtra() {
             return activePhones.filter(p => p.fullName === sel)[0] || null;
         }
         return activePhones.filter(p =>
-            !p.isTarget && !p.fullName.match(/ EQ$/))[0] || null;
+            !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/))[0] || null;
     };
     let computeEqNodePreviewAtMouse = (m) => {
         if (!m || m.length < 2) {
@@ -3443,7 +3571,7 @@ function addExtra() {
     window.updateEQPhoneSelect = () => {
         let oldValue = eqPhoneSelect.value;
         let optionValues = activePhones.filter(p =>
-            !p.isTarget && !p.fullName.match(/ EQ$/)).map(p => p.fullName);
+            !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/)).map(p => p.fullName);
         Array.from(eqPhoneSelect.children).slice(1).forEach(c => eqPhoneSelect.removeChild(c));
         optionValues.forEach(value => {
             let optionElem = document.createElement("option");
@@ -6270,20 +6398,23 @@ function userConfigApplyViewSettings(phoneInTable) {
             let phone = configJson.phones.find(item => item.fileName === phoneInTable);
 
             if (typeof phone !== "undefined") {
-                let row = document.querySelector("tr[data-filename='"+ phone.fileName +"']"),
-                    hideButton  = row.querySelector("td.hideIcon"),
-                    baselineButton  = row.querySelector("td.button-baseline"),
-                    pinButton = row.querySelector("td.button-pin");
+                let row = document.querySelector("tr[data-filename='"+ phone.fileName +"'][data-manage-main='1']"),
+                    hideButton = row && row.querySelector("td.hideIcon"),
+                    baselineButton = row && row.querySelector("td.button-baseline"),
+                    pinButton = row && row.querySelector("td.button-pin");
 
-                if (phone.isHidden && !hideButton.classList.contains("selected")) {
+                if (phone.isHidden && hideButton
+                        && !hideButton.classList.contains("selected")) {
                     hideButton.click();
                 }
 
-                if (phone.isBaseline && !baselineButton.classList.contains("selected")) {
+                if (phone.isBaseline && baselineButton
+                        && !baselineButton.classList.contains("selected")) {
                     baselineButton.click();
                 }
 
-                if (phone.isPinned && pinButton.getAttribute('data-pinned') !== "true") {
+                if (phone.isPinned && pinButton
+                        && pinButton.getAttribute("data-pinned") !== "true") {
                     pinButton.click();
                 }
             }
