@@ -871,23 +871,54 @@ let getO = i => LR.length>1 ? -1+i*2/(LR.length-1) : 0;
 const sampnums = typeof num_samples !== "undefined" ? d3.range(1,num_samples+1)
                                                     : [""];
 function loadFiles(p, callback) {
+    let gen = (p._lfGen = (p._lfGen||0) + 1);
     let fetchTxt = base => d3.text(DIR+base+".txt").catch(()=>null);
+    let parseFr = f => {
+        if (!f) return null;
+        try { return Equalizer.interp(f_values, tsvParse(f)); }
+        catch (e) { return null; }
+    };
     let f = p.isTarget ? [fetchTxt(p.fileName)]
           : d3.merge(LR.map(s =>
                 sampnums.map(n => fetchTxt(p.fileName+" "+s+n))));
-    Promise.all(f).then(function (frs) {
-        if (!frs.some(f=>f!==null)) {
-            return;
-        }
-        /* Keep null slots so indices stay LR × samples; filtering breaks setCurves(n = len/2). */
-        let ch = frs.map(f => {
-            if (!f) return null;
-            try {
-                return Equalizer.interp(f_values, tsvParse(f));
-            } catch (e) {
-                return null;
-            }
+    let nSamp = sampnums.length;
+
+    if (!p.isTarget && nSamp > 1) {
+        let s1 = d3.range(LR.length).map(i => i * nSamp);
+        let early = false;
+
+        Promise.all(s1.map(i => f[i])).then(function (res) {
+            if (gen !== p._lfGen) return;
+            if (!res.some(x => x !== null)) return;
+            early = true;
+            let ch = new Array(LR.length * nSamp).fill(null);
+            s1.forEach((idx, j) => { ch[idx] = parseFr(res[j]); });
+            callback(ch);
         });
+
+        Promise.all(f).then(function (frs) {
+            if (gen !== p._lfGen) return;
+            if (!frs.some(x => x !== null)) return;
+            let ch = frs.map(parseFr);
+            if (!early) { callback(ch); return; }
+            let hasNew = ch.some((c, i) =>
+                c !== null && (!p.rawChannels || p.rawChannels[i] === null));
+            if (!hasNew || !p.rawChannels) return;
+            p.rawChannels = ch;
+            p.smooth = undefined;
+            if (p.vars) p.vars[p.fileName] = ch;
+            smoothPhone(p);
+            normalizePhone(p);
+            updatePaths();
+            updatePhoneTable();
+        });
+        return;
+    }
+
+    Promise.all(f).then(function (frs) {
+        if (gen !== p._lfGen) return;
+        if (!frs.some(f=>f!==null)) return;
+        let ch = frs.map(parseFr);
         callback(ch);
     });
 }
@@ -2005,8 +2036,21 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
              : (q => q.copyOf===p || q.pin || q.isTarget!==p.isTarget);
     if (cantCompare(activePhones.filter(keep),0, p)) return;
     if (!p.rawChannels) {
+        let pid = p.id != null ? p.id : nextPhoneNumber();
+        let items = doc.select("#phones").selectAll(".phone-item");
+        let item = items.filter(q => q === p);
+        item.style("background", getDivColor(pid, true))
+            .style("border-color", getDivColor(pid, 1));
+        item.select(".phone-item-add").classed("loading", true);
+        if (exclusive) {
+            items.filter(q => q.active && q.copyOf !== p && !q.pin
+                           && q.isTarget === p.isTarget)
+                .style("background", null)
+                .style("border-color", null);
+        }
         loadFiles(p, function (ch) {
             if (p.rawChannels) return;
+            item.select(".phone-item-add").classed("loading", false);
             p.rawChannels = ch;
             showPhone(p, exclusive, suppressVariant, trigger);
             

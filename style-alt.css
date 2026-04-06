@@ -3067,6 +3067,15 @@ div.scroll > div.phone-item div.phone-item-add:before {
     -webkit-mask-position: center;
     
     pointer-events: none;
+    transition: transform 0.15s ease;
+}
+
+@keyframes phone-item-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(-360deg); }
+}
+div.scroll > div.phone-item div.phone-item-add.loading:before {
+    animation: phone-item-spin 0.7s linear infinite;
 }
 
 div.scroll div[style*="border"] div.phone-item-add {
@@ -3126,6 +3135,10 @@ div.scroll > div.phone-item[style*="border"] div.phone-item-add {
 div.scroll div[style*="border"] div.phone-item-add:before {
     display: none;
     pointer-events: none;
+}
+div.scroll div[style*="border"] div.phone-item-add.loading:before {
+    display: block;
+    background-color: var(--font-color-secondary);
 }
 
 div.scroll div[style*="border"] div.phone-item-add span.remove {
