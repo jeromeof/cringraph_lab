@@ -768,6 +768,7 @@ function smooth(y, c) {
 }
 
 function smoothPhone(p) {
+    if (!p.rawChannels) return;
     if (p.smooth !== smooth_level) {
         p.channels = p.rawChannels.map(
             c=>c?smooth(c.map(d=>d[1]),c).map((d,i)=>[c[i][0],d]):c
@@ -876,24 +877,23 @@ function loadFiles(p, callback) {
                 sampnums.map(n => fetchTxt(p.fileName+" "+s+n))));
     Promise.all(f).then(function (frs) {
         if (!frs.some(f=>f!==null)) {
-            alert("Headphone not found!");
-        } else {
-            /* Keep null slots so indices stay LR × samples; filtering breaks setCurves(n = len/2). */
-            let ch = frs.map(f => {
-                if (!f) return null;
-                try {
-                    return Equalizer.interp(f_values, tsvParse(f));
-                } catch (e) {
-                    return null;
-                }
-            });
-            callback(ch);
+            return;
         }
+        /* Keep null slots so indices stay LR × samples; filtering breaks setCurves(n = len/2). */
+        let ch = frs.map(f => {
+            if (!f) return null;
+            try {
+                return Equalizer.interp(f_values, tsvParse(f));
+            } catch (e) {
+                return null;
+            }
+        });
+        callback(ch);
     });
 }
-let validChannels = p => p.channels.filter(c=>c!==null);
+let validChannels = p => (p.channels || []).filter(c=>c!==null);
 let firstPresentChannel = chs => chs && chs.find(c => c != null);
-let numChannels = p => d3.sum(p.channels, c=>c!==null);
+let numChannels = p => p.channels ? d3.sum(p.channels, c=>c!==null) : 0;
 let notMultichannel = LR.length===1 ? p=>true : p=>p.isTarget;
 let hasChannelSel = p => !notMultichannel(p) && numChannels(p)>1;
 let keyExt = LR.length===1 ? 16 : 0;
@@ -917,7 +917,7 @@ function getAvg(p) {
     return v.length===1 ? v[0] : avgCurves(v);
 }
 function hasImbalance(p) {
-    if (!hasChannelSel(p)) return false;
+    if (!p.channels || !hasChannelSel(p)) return false;
     let nSide = sampnums.length;
     let as = p.channels[0], bs = LR.length > 1 ? p.channels[nSide] : p.channels[1];
     if (!as || !bs) return false;
@@ -1295,6 +1295,10 @@ function setPhoneTr(phtr) {
 let channelbox_x = c => c?-86:-36,
     channelbox_tr = c => "translate("+channelbox_x(c)+",0)";
 function setCurves(p, avg, lr, samp) {
+    if (!p.channels || !p.channels.length) {
+        p.activeCurves = p.activeCurves || [];
+        return;
+    }
     if (avg ===undefined) avg = p.avg;
     if (samp===undefined) samp = avg ? false : LR.length===1||p.ssamp||false;
     else { p.ssamp = samp; if (samp) avg = false; }
@@ -1719,11 +1723,11 @@ function updateKey(s) {
     s.select(".imbalance").call(disp(hasImbalance));
     s.select(".keySel").call(disp(p=>cs(p)));
     s.selectAll(".keyOnly").call(disp(pi=>cs(pi[0])));
-    s.selectAll(".keyCLabel").data(p=>p.channels).call(disp(c=>c));
+    s.selectAll(".keyCLabel").data(p => p.channels || []).call(disp(c=>c));
     s.select("g").attr("mask",p=>cs(p)?"url(#chmask"+p.id+")":null);
     let l=-17-(keyLeft?8:0);
     s.select("path").attr("d", p => {
-        if (notMultichannel(p)) {
+        if (notMultichannel(p) || !p.channels) {
             return "M"+(15+keyExt)+" 0H"+l;
         }
         let segs = ["M15 -6H9C0 -6,0 0,-9 0H"+l,"M"+l+" 0H-9C0 0,0 6,9 6H15"]
