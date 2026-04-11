@@ -3444,18 +3444,8 @@ function addExtra() {
             .attr("class", "eq-filter-marker")
             .attr("r", EQ_GRAPH_MARKER_R_BASE)
             .merge(mk)
-            .attr("cx", d => {
-                let st = eqGraphPointerState;
-                if (st && st.dragging && d.rowIndex === st.filterIndex && st._smoothCx != null)
-                    return st._smoothCx;
-                return d.cx;
-            })
-            .attr("cy", d => {
-                let st = eqGraphPointerState;
-                if (st && st.dragging && d.rowIndex === st.filterIndex && st._smoothCy != null)
-                    return st._smoothCy;
-                return d.cy;
-            })
+            .attr("cx", d => d.cx)
+            .attr("cy", d => d.cy)
             .attr("stroke", layout.strokeCol)
             .attr("stroke-width", EQ_GRAPH_MARKER_STROKE_W);
         let dragIx = eqGraphPointerState != null && eqGraphPointerState.filterIndex !== null
@@ -4939,17 +4929,9 @@ function addExtra() {
         st.liveFHz = freq;
         filterFreqInput[st.filterIndex].value = String(freq);
         filterGainInput[st.filterIndex].value = String(gain);
-        st._smoothCx = st.axisLock === "freq" ? mx : null;
-        st._smoothCy = st.axisLock === "gain" ? currentPlotY : null;
         scheduleApplyEqDuringGraphDrag();
         if (st.axisLock === "freq") {
             syncToneGeneratorToEqFrequencyHz(freq);
-        }
-        let dragMarker = gEqFilterMarkers.selectAll("circle.eq-filter-marker")
-            .filter(d => d && d.rowIndex === st.filterIndex);
-        if (!dragMarker.empty()) {
-            if (st._smoothCx != null) dragMarker.attr("cx", st._smoothCx);
-            if (st._smoothCy != null) dragMarker.attr("cy", st._smoothCy);
         }
     }
     function eqGraphDragEnd(e) {
