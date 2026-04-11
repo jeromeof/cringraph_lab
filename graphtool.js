@@ -1961,11 +1961,7 @@ function normalizePhone(p) {
         if (!g) return;
         p.norm = find_offset(g, norm_phon);
     }
-    if (p.eq) {
-        p.eq.norm = p.norm; // copy parent's norm to child
-    } else if (p.eqParent) {
-        p.norm = p.eqParent.norm; // set child's norm from parent
-    }
+    if (p.eq) normalizePhone(p.eq);
 }
 
 let norms = doc.select(".normalize").selectAll("div");
