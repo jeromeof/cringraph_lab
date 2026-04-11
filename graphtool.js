@@ -3904,9 +3904,6 @@ function addExtra() {
     let livePinkNoisePlaybackGain = 0.5;
     let liveToneGeneratorPlaybackGain = 0.2;
     let liveMusicPlaybackGain = 1;
-    /* How much of the pink-weighted bypass match to apply: 1 = full, 0 = off (unity). 0.85 → blend r toward 1:
-       effective = 1 + (r - 1) * blend. */
-    let liveMusicBypassPinkMatchBlend = 0.85;
     let lastEqPlaybackSource = "pink";
     // Pink noise (parametric EQ in audio path)
     let pinkNoisePlayButton = document.querySelector("div.extra-pink-noise .play");
@@ -4106,26 +4103,17 @@ function addExtra() {
         let a = getLiveMusicEqFrAnalysis(sampleRate);
         return a ? a.preDb : 0;
     };
-    /* Pink-weighted (1/f) power ratio of EQ+preamp vs flat on the FR grid (needs analysis object). */
-    let computeLiveMusicBypassPinkMatchLinearFromAnalysis = (a) => {
-        let { raw, frEq, preDb } = a;
-        let num = 0;
-        let den = 0;
-        for (let i = 0; i < raw.length; i++) {
-            let f = raw[i][0];
-            if (!(f > 0)) {
-                continue;
-            }
-            let w = 1 / f;
-            let deltaDb = frEq[i][1] - raw[i][1];
-            num += w * Math.pow(10, (deltaDb + preDb) / 10);
-            den += w;
+    /* Bypass level-match using the same normalization algorithm as the graph display.
+       Returns dB adjustment so that toggling EQ off sounds level-matched. */
+    let computeNormBypassAdjustDb = (rawCh, eqCh) => {
+        if (!rawCh || !eqCh) return 0;
+        if (norm_sel) {
+            let i = fr_to_ind(norm_fr);
+            if (i < rawCh.length && i < eqCh.length)
+                return eqCh[i][1] - rawCh[i][1];
+            return 0;
         }
-        if (!(den > 0) || !(num > 0)) {
-            return 1;
-        }
-        let ratio = Math.sqrt(num / den);
-        return Math.min(4, Math.max(0.04, ratio));
+        return find_offset(rawCh, norm_phon) - find_offset(eqCh, norm_phon);
     };
     const LIVE_EQ_PARAM_TAU_SEC = 0.016;
     let smoothAudioParamTo = (param, value, ctx) => {
@@ -4137,7 +4125,6 @@ function addExtra() {
             param.value = value;
         }
     };
-    /* Static bypass trim: pink 1/f match blended toward unity (liveMusicBypassPinkMatchBlend) when Apply EQ off. */
     let syncMusicOutputGain = (ctx) => {
         if (!musicMasterGain || !ctx) {
             return;
@@ -4145,11 +4132,11 @@ function addExtra() {
         let preDb = computeLiveMusicPreampDb(ctx.sampleRate);
         let lin = liveMusicPlaybackGain * Math.pow(10, preDb / 20);
         if (!isLivePlaybackEqEnabled()) {
-            let bypassAnalysis = getLiveMusicEqFrAnalysis(ctx.sampleRate);
-            if (bypassAnalysis) {
-                let r = computeLiveMusicBypassPinkMatchLinearFromAnalysis(bypassAnalysis);
-                let b = liveMusicBypassPinkMatchBlend;
-                lin *= 1 + (r - 1) * b;
+            let a = getLiveMusicEqFrAnalysis(ctx.sampleRate);
+            if (a) {
+                let adjDb = computeNormBypassAdjustDb(a.raw, a.frEq);
+                adjDb = Math.max(-30, Math.min(30, adjDb));
+                lin *= Math.pow(10, adjDb / 20);
             }
         }
         smoothAudioParamTo(musicMasterGain.gain, lin, ctx);
