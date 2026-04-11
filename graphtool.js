@@ -3444,8 +3444,18 @@ function addExtra() {
             .attr("class", "eq-filter-marker")
             .attr("r", EQ_GRAPH_MARKER_R_BASE)
             .merge(mk)
-            .attr("cx", d => d.cx)
-            .attr("cy", d => d.cy)
+            .attr("cx", d => {
+                let st = eqGraphPointerState;
+                if (st && st.dragging && d.rowIndex === st.filterIndex && st._smoothCx != null)
+                    return st._smoothCx;
+                return d.cx;
+            })
+            .attr("cy", d => {
+                let st = eqGraphPointerState;
+                if (st && st.dragging && d.rowIndex === st.filterIndex && st._smoothCy != null)
+                    return st._smoothCy;
+                return d.cy;
+            })
             .attr("stroke", layout.strokeCol)
             .attr("stroke-width", EQ_GRAPH_MARKER_STROKE_W);
         let dragIx = eqGraphPointerState != null && eqGraphPointerState.filterIndex !== null
@@ -4618,27 +4628,14 @@ function addExtra() {
         let dDb = y.invert(currentPlotY) - y.invert(refPlotY);
         return clampEqGraphGainToInputRange(roundEqGraphGainDb(anchorDb + dDb));
     };
-    /* applyEQ() uses rAF coalescing; graph drag uses scheduleApplyEqDuringGraphDrag to throttle
-       applyEQExec + live audio (~32ms). */
-    const EQ_GRAPH_DRAG_APPLY_MS = 32;
-    let eqGraphDragApplyLastRun = 0;
     let scheduleApplyEqDuringGraphDrag = () => {
-        let now = performance.now();
-        let flushDragEq = () => {
+        if (eqGraphApplyEqDragTimer != null) return;
+        eqGraphApplyEqDragTimer = requestAnimationFrame(() => {
             eqGraphApplyEqDragTimer = null;
-            eqGraphDragApplyLastRun = performance.now();
             cancelDeferredApplyEQ();
             applyEQExec();
             scheduleLiveEqSync();
-        };
-        if (now - eqGraphDragApplyLastRun >= EQ_GRAPH_DRAG_APPLY_MS) {
-            clearTimeout(eqGraphApplyEqDragTimer);
-            eqGraphApplyEqDragTimer = null;
-            flushDragEq();
-        } else if (!eqGraphApplyEqDragTimer) {
-            eqGraphApplyEqDragTimer = setTimeout(flushDragEq,
-                EQ_GRAPH_DRAG_APPLY_MS - (now - eqGraphDragApplyLastRun));
-        }
+        });
     };
     /** @returns {number} row index, or -1 if max bands */
     let addPeakingFilterFromHz = (hz, initialGain, options) => {
@@ -4748,7 +4745,7 @@ function addExtra() {
             } catch (err) { /* noop */ }
         }
         eqGraphRemoveDragListeners();
-        clearTimeout(eqGraphApplyEqDragTimer);
+        cancelAnimationFrame(eqGraphApplyEqDragTimer);
         eqGraphApplyEqDragTimer = null;
         eqGraphPointerState = null;
         eqGraphSkipNextClick = true;
@@ -4942,9 +4939,17 @@ function addExtra() {
         st.liveFHz = freq;
         filterFreqInput[st.filterIndex].value = String(freq);
         filterGainInput[st.filterIndex].value = String(gain);
+        st._smoothCx = st.axisLock === "freq" ? mx : null;
+        st._smoothCy = st.axisLock === "gain" ? currentPlotY : null;
         scheduleApplyEqDuringGraphDrag();
         if (st.axisLock === "freq") {
             syncToneGeneratorToEqFrequencyHz(freq);
+        }
+        let dragMarker = gEqFilterMarkers.selectAll("circle.eq-filter-marker")
+            .filter(d => d && d.rowIndex === st.filterIndex);
+        if (!dragMarker.empty()) {
+            if (st._smoothCx != null) dragMarker.attr("cx", st._smoothCx);
+            if (st._smoothCy != null) dragMarker.attr("cy", st._smoothCy);
         }
     }
     function eqGraphDragEnd(e) {
@@ -5022,9 +5027,8 @@ function addExtra() {
             }
         }
         let gainDragRefPlotY = originMy;
-        clearTimeout(eqGraphApplyEqDragTimer);
+        cancelAnimationFrame(eqGraphApplyEqDragTimer);
         eqGraphApplyEqDragTimer = null;
-        eqGraphDragApplyLastRun = 0;
         eqGraphPointerState = {
             startClientX: e.clientX,
             startClientY: startClientYVal,
