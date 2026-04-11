@@ -3506,14 +3506,16 @@ function addExtra() {
             }
         }
         applyEqGraphTraceStrokeEmphasis(tracePhoneEm, emphasizeTrace);
+        if (graphPlotHitRect && graphPlotHitRect.node()) {
+            graphPlotHitRect.node().style.cursor =
+                draggingGraph ? "grabbing"
+                : (near || emphasizeTrace) ? "grab" : "";
+        }
         if (near) {
             return;
         }
         if (!stCurve) {
             gEqHoverPreview.selectAll("*").remove();
-            if (graphPlotHitRect && graphPlotHitRect.node()) {
-                graphPlotHitRect.node().style.cursor = "";
-            }
             return;
         }
         gEqHoverPreview.selectAll("*").remove();
@@ -4730,6 +4732,7 @@ function addExtra() {
         }
         eqGraphExitPointerLockIfAny();
         if (st.captureEl) {
+            st.captureEl.style.cursor = "";
             try {
                 st.captureEl.releasePointerCapture(st.pointerId);
             } catch (err) { /* noop */ }
@@ -5038,6 +5041,10 @@ function addExtra() {
             svgScaleY: svgScaleY,
             pointerLockActive: false,
         };
+        svg.style.cursor = "grabbing";
+        if (graphPlotHitRect && graphPlotHitRect.node()) {
+            graphPlotHitRect.node().style.cursor = "grabbing";
+        }
         try {
             svg.setPointerCapture(e.pointerId);
         } catch (err) { /* noop */ }
