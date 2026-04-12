@@ -4845,71 +4845,72 @@ function addExtra() {
         let st = eqGraphPointerState;
         let svg = st.captureEl;
         let locked = document.pointerLockElement === svg;
-        if (!locked) {
-            lastGraphPlotPointerClient = { x: e.clientX, y: e.clientY };
-        }
-        let mx;
-        let mClient = null;
-        if (locked) {
-            st.pointerLockActive = true;
-            st.accumMovementX += e.movementX;
-            st.accumMovementY += e.movementY;
-            st.accumPlotY += e.movementY;
-            mx = st.originPlotMx + st.accumMovementX * st.svgScaleX;
-            mx = Math.min(pad.l + W, Math.max(pad.l, mx));
-            let plotX = st.originPlotMx + st.accumMovementX * st.svgScaleX;
-            let plotY = st.originPlotMy + st.accumPlotY * st.svgScaleY;
-            let ins = EQ_GRAPH_POINTER_LOCK_INSET;
-            if (plotX >= pad.l + ins && plotX <= pad.l + W - ins
-                    && plotY >= pad.t + ins && plotY <= pad.t + H - ins) {
-                eqGraphExitPointerLockIfAny();
-                st.pointerLockActive = false;
-            }
-        } else {
-            let refX = e.clientX - st.grabOffClientX;
-            let refY = e.clientY - st.grabOffClientY;
-            mClient = clientToGraphPlotXY(refX, refY);
-            if (!mClient) {
-                return;
-            }
-            mx = Math.min(pad.l + W, Math.max(pad.l, mClient[0]));
-            let rawDy = st.startClientY - refY;
-            st.accumMovementX = (mx - st.originPlotMx) / st.svgScaleX;
-            st.accumMovementY = -rawDy;
-            st.accumPlotY = (mClient[1] - st.originPlotMy) / st.svgScaleY;
-            /* Do not request pointer lock: on unlock the OS restores the cursor to the pre-lock
-               position, which desyncs it from the node after a drag. Pointer capture on the SVG
-               already keeps move/up events while the button is held. */
-        }
-        let currentPlotY = locked
-            ? st.originPlotMy + st.accumPlotY * st.svgScaleY
-            : mClient[1];
-        let gainT = eqGraphGainFromPlotY(
-            st.gainDragAnchorDb,
-            st.gainDragRefPlotY,
-            currentPlotY);
-        let freqT = Math.round(Math.min(20000, Math.max(20, x.invert(mx))));
-        let adx;
-        let ady;
-        if (locked) {
-            if (st.filterIndex === null) {
-                adx = st.accumMovementX;
-                ady = st.accumMovementY;
+        let coalesced = typeof e.getCoalescedEvents === "function" ? e.getCoalescedEvents() : null;
+        let eventList = (coalesced && coalesced.length) ? coalesced : [e];
+        for (let ei = 0; ei < eventList.length; ei++) {
+            let ev = eventList[ei];
+            let mx;
+            let mClient = null;
+            if (locked) {
+                st.pointerLockActive = true;
+                st.accumMovementX += ev.movementX;
+                st.accumMovementY += ev.movementY;
+                st.accumPlotY += ev.movementY;
+                mx = st.originPlotMx + st.accumMovementX * st.svgScaleX;
+                mx = Math.min(pad.l + W, Math.max(pad.l, mx));
+                let plotX = st.originPlotMx + st.accumMovementX * st.svgScaleX;
+                let plotY = st.originPlotMy + st.accumPlotY * st.svgScaleY;
+                let ins = EQ_GRAPH_POINTER_LOCK_INSET;
+                if (plotX >= pad.l + ins && plotX <= pad.l + W - ins
+                        && plotY >= pad.t + ins && plotY <= pad.t + H - ins) {
+                    eqGraphExitPointerLockIfAny();
+                    st.pointerLockActive = false;
+                }
             } else {
-                adx = st.accumMovementX;
-                ady = st.accumMovementY - st.baseAccumMovementY;
+                let refX = ev.clientX - st.grabOffClientX;
+                let refY = ev.clientY - st.grabOffClientY;
+                mClient = clientToGraphPlotXY(refX, refY);
+                if (!mClient) {
+                    continue;
+                }
+                mx = Math.min(pad.l + W, Math.max(pad.l, mClient[0]));
+                let rawDy = st.startClientY - refY;
+                st.accumMovementX = (mx - st.originPlotMx) / st.svgScaleX;
+                st.accumMovementY = -rawDy;
+                st.accumPlotY = (mClient[1] - st.originPlotMy) / st.svgScaleY;
+                /* Do not request pointer lock: on unlock the OS restores the cursor to the pre-lock
+                   position, which desyncs it from the node after a drag. Pointer capture on the SVG
+                   already keeps move/up events while the button is held. */
             }
-        } else {
-            adx = e.clientX - st.startClientX;
-            ady = e.clientY - st.downClientY;
-        }
-        if (st.filterIndex === null) {
-            let dist = locked
-                ? Math.hypot(st.accumMovementX, st.accumMovementY)
-                : Math.hypot(e.clientX - st.startClientX, e.clientY - st.startClientY);
-            if (dist < EQ_GRAPH_DRAG_THRESHOLD_PX) {
-                return;
+            let currentPlotY = locked
+                ? st.originPlotMy + st.accumPlotY * st.svgScaleY
+                : mClient[1];
+            let gainT = eqGraphGainFromPlotY(
+                st.gainDragAnchorDb,
+                st.gainDragRefPlotY,
+                currentPlotY);
+            let freqT = Math.round(Math.min(20000, Math.max(20, x.invert(mx))));
+            let adx;
+            let ady;
+            if (locked) {
+                if (st.filterIndex === null) {
+                    adx = st.accumMovementX;
+                    ady = st.accumMovementY;
+                } else {
+                    adx = st.accumMovementX;
+                    ady = st.accumMovementY - st.baseAccumMovementY;
+                }
+            } else {
+                adx = ev.clientX - st.startClientX;
+                ady = ev.clientY - st.downClientY;
             }
+            if (st.filterIndex === null) {
+                let dist = locked
+                    ? Math.hypot(st.accumMovementX, st.accumMovementY)
+                    : Math.hypot(ev.clientX - st.startClientX, ev.clientY - st.startClientY);
+                if (dist < EQ_GRAPH_DRAG_THRESHOLD_PX) {
+                    continue;
+                }
             if (st.axisLock === null) {
                 st.axisLock = Math.abs(adx) >= Math.abs(ady) ? "freq" : "gain";
                 if (st.axisLock === "freq") {
@@ -4926,59 +4927,63 @@ function addExtra() {
             let idx = addPeakingFilterFromHz(freq, gain, {
                 skipFocus: true,
             });
-            if (idx < 0) {
-                eqGraphSkipNextClick = true;
-                eqGraphPointerState = null;
-                eqGraphRemoveDragListeners();
-                eqGraphExitPointerLockIfAny();
-                if (eqGraphSkipClickClearTimer) {
-                    clearTimeout(eqGraphSkipClickClearTimer);
+                if (idx < 0) {
+                    eqGraphSkipNextClick = true;
+                    eqGraphPointerState = null;
+                    eqGraphRemoveDragListeners();
+                    eqGraphExitPointerLockIfAny();
+                    if (eqGraphSkipClickClearTimer) {
+                        clearTimeout(eqGraphSkipClickClearTimer);
+                    }
+                    eqGraphSkipClickClearTimer = setTimeout(() => {
+                        eqGraphSkipClickClearTimer = null;
+                        eqGraphSkipNextClick = false;
+                    }, 800);
+                    if (st.captureEl) {
+                        try {
+                            st.captureEl.releasePointerCapture(st.pointerId);
+                        } catch (err) { /* noop */ }
+                    }
+                    return;
                 }
-                eqGraphSkipClickClearTimer = setTimeout(() => {
-                    eqGraphSkipClickClearTimer = null;
-                    eqGraphSkipNextClick = false;
-                }, 800);
-                if (st.captureEl) {
-                    try {
-                        st.captureEl.releasePointerCapture(st.pointerId);
-                    } catch (err) { /* noop */ }
+                st.filterIndex = idx;
+                st.liveFHz = freq;
+                setEqFilterSelectedRow(idx, true);
+                scheduleApplyEqDuringGraphDrag();
+                if (st.axisLock === "freq") {
+                    syncToneGeneratorToEqFrequencyHz(freq);
                 }
                 return;
             }
-            st.filterIndex = idx;
+            let distExisting = locked
+                ? Math.hypot(st.accumMovementX,
+                    st.accumMovementY - st.baseAccumMovementY)
+                : Math.hypot(ev.clientX - st.startClientX,
+                    ev.clientY - st.downClientY);
+            if (distExisting < EQ_GRAPH_DRAG_THRESHOLD_PX) {
+                continue;
+            }
+            if (st.axisLock === null) {
+                st.axisLock = Math.abs(adx) >= Math.abs(ady) ? "freq" : "gain";
+                if (st.axisLock === "freq") {
+                    st.lockGainDb = roundEqGraphGainDb(st.gainDragAnchorDb);
+                } else {
+                    st.lockFreqHz = Math.round(Math.min(20000, Math.max(20, st.fHz)));
+                }
+            }
+            let freq = st.axisLock === "freq" ? freqT : st.lockFreqHz;
+            let gain = st.axisLock === "gain" ? gainT : st.lockGainDb;
+            st.dragging = true;
             st.liveFHz = freq;
-            setEqFilterSelectedRow(idx, true);
+            filterFreqInput[st.filterIndex].value = String(freq);
+            filterGainInput[st.filterIndex].value = String(gain);
             scheduleApplyEqDuringGraphDrag();
             if (st.axisLock === "freq") {
                 syncToneGeneratorToEqFrequencyHz(freq);
             }
-            return;
         }
-        let distExisting = locked
-            ? Math.hypot(st.accumMovementX,
-                st.accumMovementY - st.baseAccumMovementY)
-            : Math.hypot(e.clientX - st.startClientX,
-                e.clientY - st.downClientY);
-        if (distExisting < EQ_GRAPH_DRAG_THRESHOLD_PX) {
-            return;
-        }
-        if (st.axisLock === null) {
-            st.axisLock = Math.abs(adx) >= Math.abs(ady) ? "freq" : "gain";
-            if (st.axisLock === "freq") {
-                st.lockGainDb = roundEqGraphGainDb(st.gainDragAnchorDb);
-            } else {
-                st.lockFreqHz = Math.round(Math.min(20000, Math.max(20, st.fHz)));
-            }
-        }
-        let freq = st.axisLock === "freq" ? freqT : st.lockFreqHz;
-        let gain = st.axisLock === "gain" ? gainT : st.lockGainDb;
-        st.dragging = true;
-        st.liveFHz = freq;
-        filterFreqInput[st.filterIndex].value = String(freq);
-        filterGainInput[st.filterIndex].value = String(gain);
-        scheduleApplyEqDuringGraphDrag();
-        if (st.axisLock === "freq") {
-            syncToneGeneratorToEqFrequencyHz(freq);
+        if (!locked) {
+            lastGraphPlotPointerClient = { x: e.clientX, y: e.clientY };
         }
     }
     function eqGraphDragEnd(e) {
