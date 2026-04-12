@@ -3509,7 +3509,8 @@ function addExtra() {
         if (graphPlotHitRect && graphPlotHitRect.node()) {
             graphPlotHitRect.node().style.cursor =
                 draggingGraph ? "grabbing"
-                : (near || emphasizeTrace) ? "grab" : "";
+                : near ? "grab"
+                : emphasizeTrace ? "cell" : "";
         }
         if (near) {
             return;
@@ -6000,6 +6001,21 @@ function addExtra() {
             lastToneSpaceKeydownTime = 0;
             pinkNoisePlayButton.click();
         }
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key !== "\\") return;
+        if (!livePlaybackEqToggle) return;
+        e.preventDefault();
+        if (e.repeat) return;
+        livePlaybackEqToggle.checked = false;
+        livePlaybackEqToggle.dispatchEvent(new Event("change"));
+    });
+    document.addEventListener("keyup", (e) => {
+        if (e.key !== "\\") return;
+        if (!livePlaybackEqToggle) return;
+        livePlaybackEqToggle.checked = true;
+        livePlaybackEqToggle.dispatchEvent(new Event("change"));
     });
 
     // Wrap up preamp Calculation Function for plugin
