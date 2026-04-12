@@ -4636,7 +4636,7 @@ function addExtra() {
             initialGain = 0;
         }
         hz = Math.min(20000, Math.max(20, Math.round(hz)));
-        let defaultQ = 1;
+        let defaultQ = Math.round(Math.max(1, Math.pow(hz / 1000, 0.6)) * 10) / 10;
         let targetIdx = -1;
         for (let i = 0; i < eqBands; i++) {
             if (filterRowIsAllZeros(i)) {
