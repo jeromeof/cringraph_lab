@@ -1035,6 +1035,7 @@ let gEqHoverPreview = gr.append("g")
     .attr("pointer-events", "none")
     .attr("mask", "url(#graphFade)");
 let updateEqFilterMarkers = () => {};
+let updateEqTraceOpacity = () => {};
 /** @type {d3.Selection|null} */
 let graphPlotHitRect = null;
 /** Equalizer-tab graph: pointer gesture for add + vertical gain drag */
@@ -1491,6 +1492,7 @@ function updatePaths(trigger) {
     if (ifURL && !trigger) addPhonesToUrl();
     if (stickyLabels) drawLabels();
     updateEqFilterMarkers();
+    updateEqTraceOpacity();
 }
 let colorBar = p=>'url(\'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 8"><path d="M0 8v-8h1c0.05 1.5,-0.3 3,-0.16 5s0.1 2,0.15 3z" fill="'+getBgColor(p)+'"/></svg>\')';
 
@@ -4329,7 +4331,46 @@ function addExtra() {
     filtersContainer.addEventListener("change", scheduleLiveEqSync);
     if (livePlaybackEqToggle) {
         livePlaybackEqToggle.addEventListener("change", scheduleLiveEqSync);
+        livePlaybackEqToggle.addEventListener("change", () => updateEqTraceOpacity());
     }
+    let eqTraceOpacityPulseTimer = null;
+    let eqTraceLastState = null;
+    updateEqTraceOpacity = () => {
+        let audioPlaying = pinkNoisePlaying || !!toneGeneratorOsc
+            || (musicAudio && !musicAudio.paused);
+        let eqOn = isLivePlaybackEqEnabled();
+        let stateKey = (audioPlaying ? "p" : "s") + (eqOn ? "1" : "0");
+        let stateChanged = eqTraceLastState !== null && eqTraceLastState !== stateKey;
+        eqTraceLastState = stateKey;
+        let emphTargets = [];
+        gpath.selectAll("path").each(function (c) {
+            if (!c || !c.p || c.p.hide) return;
+            let el = d3.select(this);
+            let isEqTrace = !!c.p.eqParent;
+            let isParentTrace = !!c.p.eq;
+            if (isEqTrace) {
+                el.attr("opacity", audioPlaying && !eqOn ? 0.5 : null);
+                if (stateChanged && audioPlaying && eqOn) emphTargets.push(this);
+            } else if (isParentTrace) {
+                el.attr("opacity", audioPlaying && eqOn ? 0.5 : null);
+                if (stateChanged && audioPlaying && !eqOn) emphTargets.push(this);
+            }
+        });
+        if (emphTargets.length) {
+            let emph = EQ_GRAPH_TRACE_STROKE_NORMAL * EQ_GRAPH_TRACE_STROKE_EMPH_MULT;
+            emphTargets.forEach(n => d3.select(n).attr("stroke-width", emph));
+            if (eqTraceOpacityPulseTimer) clearTimeout(eqTraceOpacityPulseTimer);
+            eqTraceOpacityPulseTimer = setTimeout(() => {
+                eqTraceOpacityPulseTimer = null;
+                emphTargets.forEach(n => {
+                    let base = n.classList.contains("sample")
+                        ? EQ_GRAPH_TRACE_STROKE_SAMPLE
+                        : EQ_GRAPH_TRACE_STROKE_NORMAL;
+                    d3.select(n).attr("stroke-width", base);
+                });
+            }, 100);
+        }
+    };
     let configureLiveSpectrumAnalyser = (a) => {
         a.fftSize = 2048;
         a.smoothingTimeConstant = 0.82;
@@ -4375,6 +4416,7 @@ function addExtra() {
             pinkNoiseAnalyser = null;
         }
         musicSpectrumViz.syncSpectrumViz();
+        updateEqTraceOpacity();
     };
     let createPinkNoiseProcessor = (audioContext) => {
         let bufferSize = 4096;
@@ -4589,6 +4631,7 @@ function addExtra() {
             musicPlayButton.classList.remove("playback-active");
         }
         musicSpectrumViz.syncSpectrumViz();
+        updateEqTraceOpacity();
     };
     let toneGeneratorContext = null;
     let toneGeneratorOsc = null;
@@ -5281,6 +5324,7 @@ function addExtra() {
             void pinkNoiseContext.resume();
         }
         musicSpectrumViz.syncSpectrumViz();
+        updateEqTraceOpacity();
     });
     // Tone Generator
     toneGeneratorFromInput.addEventListener("input", scheduleLiveEqSync);
@@ -5372,6 +5416,7 @@ function addExtra() {
             toneGeneratorPlayButton.innerText = "▶";
             toneGeneratorPlayButton.classList.remove("playback-active");
             musicSpectrumViz.syncSpectrumViz();
+            updateEqTraceOpacity();
         } else {
             stopPinkNoisePlayback();
             pauseMusicForLiveSoundSwitch();
@@ -5401,6 +5446,7 @@ function addExtra() {
                 void toneGeneratorContext.resume();
             }
             musicSpectrumViz.syncSpectrumViz();
+            updateEqTraceOpacity();
         }
     });
     let removeMusicTrack = () => {
@@ -5586,6 +5632,7 @@ function addExtra() {
             musicPlayButton.classList.add("playback-active");
             lastEqPlaybackSource = "music";
             musicSpectrumViz.syncSpectrumViz();
+            updateEqTraceOpacity();
         });
     };
     let wireMusicLoadedFromBlob = (blob, segOpt, loadOpts) => {
@@ -5685,6 +5732,7 @@ function addExtra() {
                 musicPlayButton.innerText = "▶";
                 musicPlayButton.classList.remove("playback-active");
                 musicSpectrumViz.syncSpectrumViz();
+                updateEqTraceOpacity();
             }
         });
         let finishTrimStart = () => {
