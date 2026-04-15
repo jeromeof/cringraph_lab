@@ -3582,6 +3582,45 @@ function addExtra() {
         let next = dir > 0 ? f * ratio : f / ratio;
         return Math.round(Math.min(20000, Math.max(20, next)));
     };
+    /* Match EQ_GRAPH_WHEEL_Q_* (wheel on graph); duplicated here so filter keydown runs before
+       those consts are initialized in this function. */
+    const EQ_FILTER_KEYBOARD_Q_STEP = 0.1;
+    const EQ_FILTER_KEYBOARD_Q_STEP_FINE = 0.01;
+    const EQ_FILTER_KEYBOARD_Q_FINE_MAX = 0.3;
+    let eqFreqKeyboardGridStep = (hz) => {
+        let f = Math.round(Math.min(20000, Math.max(20, hz)));
+        if (f < 100) {
+            return 1;
+        }
+        if (f < 1000) {
+            return 10;
+        }
+        if (f < 10000) {
+            return 100;
+        }
+        return 100;
+    };
+    let eqFreqKeyboardArrowDelta = (hz, shift) => {
+        let base = eqFreqKeyboardGridStep(hz);
+        return shift ? base * 10 : base;
+    };
+    let eqFreqKeyboardRoundNearest = (hz) => {
+        let f = Math.min(20000, Math.max(20, hz));
+        let step = eqFreqKeyboardGridStep(f);
+        let r = Math.round(f / step) * step;
+        return Math.round(Math.min(20000, Math.max(20, r)));
+    };
+    let eqQKeyboardRoundNearest = (q) => {
+        let v = Math.min(10, Math.max(0.1, q));
+        if (v <= EQ_FILTER_KEYBOARD_Q_FINE_MAX) {
+            return Math.round(v * 100) / 100;
+        }
+        return Math.round(v * 10) / 10;
+    };
+    let eqGainKeyboardRoundNearest = (db) => {
+        let v = Math.min(40, Math.max(-40, db));
+        return Math.round(v * 10) / 10;
+    };
     if (filtersContainer) {
         filtersContainer.addEventListener("wheel", (e) => {
             if (e.ctrlKey || e.metaKey) {
@@ -3642,27 +3681,113 @@ function addExtra() {
             applyEQ();
         }, { capture: true, passive: false });
         filtersContainer.addEventListener("keydown", (e) => {
-            if (e.code !== "ArrowUp" && e.code !== "ArrowDown") {
-                return;
-            }
             if (e.ctrlKey || e.metaKey || e.altKey) {
                 return;
             }
             let t = e.target;
-            if (!t || t.tagName !== "INPUT" || t.getAttribute("name") !== "freq") {
+            if (!t || t.tagName !== "INPUT" || !filtersContainer.contains(t)) {
                 return;
             }
-            if (!filtersContainer.contains(t)) {
+            let nm = t.getAttribute("name");
+            if (nm !== "freq" && nm !== "q" && nm !== "gain") {
                 return;
             }
-            e.preventDefault();
-            let dir = e.code === "ArrowUp" ? 1 : -1;
-            let v = parseFloat(t.value);
-            if (!Number.isFinite(v)) {
-                v = 0;
+            let rowIx = -1;
+            let rowEl = t.closest && t.closest("div.filter");
+            if (rowEl && filtersContainer.contains(rowEl)) {
+                let rows = filtersContainer.querySelectorAll("div.filter");
+                rowIx = Array.prototype.indexOf.call(rows, rowEl);
             }
-            t.value = String(eqParametricFreqLogStep(v, dir, e.shiftKey));
-            applyEQ();
+            if (e.code === "KeyR") {
+                e.preventDefault();
+                if (nm === "freq") {
+                    let v = parseFloat(t.value);
+                    if (!Number.isFinite(v)) {
+                        v = 20;
+                    }
+                    t.value = String(eqFreqKeyboardRoundNearest(v));
+                } else if (nm === "q") {
+                    let v = parseFloat(t.value);
+                    if (!Number.isFinite(v)) {
+                        v = 1;
+                    }
+                    let r = eqQKeyboardRoundNearest(v);
+                    t.value = r <= EQ_FILTER_KEYBOARD_Q_FINE_MAX
+                        ? r.toFixed(2) : String(r);
+                    if (rowIx >= 0) {
+                        eqGraphWheelQFloat[rowIx] = parseFloat(t.value);
+                    }
+                } else {
+                    t.value = String(eqGainKeyboardRoundNearest(parseFloat(t.value) || 0));
+                }
+                applyEQ();
+                scheduleLiveEqSync();
+                return;
+            }
+            if (e.code !== "ArrowUp" && e.code !== "ArrowDown") {
+                return;
+            }
+            if (nm === "freq") {
+                e.preventDefault();
+                let v = parseFloat(t.value);
+                if (!Number.isFinite(v)) {
+                    v = 20;
+                }
+                v = Math.min(20000, Math.max(20, v));
+                let dir = e.code === "ArrowUp" ? 1 : -1;
+                let delta = eqFreqKeyboardArrowDelta(v, e.shiftKey);
+                t.value = String(Math.round(Math.min(20000, Math.max(20, v + dir * delta))));
+                applyEQ();
+                scheduleLiveEqSync();
+                return;
+            }
+            if (nm === "q") {
+                e.preventDefault();
+                let v = parseFloat(t.value);
+                if (!Number.isFinite(v)) {
+                    v = 1;
+                }
+                v = Math.min(10, Math.max(0.1, v));
+                let dir = e.code === "ArrowUp" ? 1 : -1;
+                let step = e.shiftKey ? 1
+                    : (v <= EQ_FILTER_KEYBOARD_Q_FINE_MAX
+                        ? EQ_FILTER_KEYBOARD_Q_STEP_FINE
+                        : EQ_FILTER_KEYBOARD_Q_STEP);
+                let next = v + dir * step;
+                next = Math.min(10, Math.max(0.1, next));
+                if (!e.shiftKey && v <= EQ_FILTER_KEYBOARD_Q_FINE_MAX
+                        && step === EQ_FILTER_KEYBOARD_Q_STEP_FINE
+                        && next > EQ_FILTER_KEYBOARD_Q_FINE_MAX + 1e-9) {
+                    next = EQ_FILTER_KEYBOARD_Q_FINE_MAX + EQ_FILTER_KEYBOARD_Q_STEP;
+                }
+                if (!e.shiftKey && next <= EQ_FILTER_KEYBOARD_Q_FINE_MAX + 1e-9) {
+                    next = Math.round(next * 100) / 100;
+                    t.value = next.toFixed(2);
+                } else {
+                    next = Math.round(next * 10) / 10;
+                    t.value = String(next);
+                }
+                if (rowIx >= 0) {
+                    eqGraphWheelQFloat[rowIx] = parseFloat(t.value);
+                }
+                applyEQ();
+                scheduleLiveEqSync();
+                return;
+            }
+            if (nm === "gain") {
+                e.preventDefault();
+                let v = parseFloat(t.value);
+                if (!Number.isFinite(v)) {
+                    v = 0;
+                }
+                v = Math.min(40, Math.max(-40, v));
+                let dir = e.code === "ArrowUp" ? 1 : -1;
+                let step = e.shiftKey ? 1 : 0.1;
+                let next = Math.round((v + dir * step) * 10) / 10;
+                t.value = String(Math.min(40, Math.max(-40, next)));
+                applyEQ();
+                scheduleLiveEqSync();
+            }
         }, true);
     }
     window.updateEQPhoneSelect = () => {
@@ -5104,6 +5229,7 @@ function addExtra() {
     /* Wheel Q: normalize to ~pixel scale, then sublinear steps. Above Q_FINE_MAX use 0.1; at that
        value and below use 0.01 for smoother low-Q tweaks. Sensitivity tapers toward Qmin; a float per
        band accumulates until rounding (manual Q edits resync via |float − input|). */
+    /* Keep in sync with EQ_FILTER_KEYBOARD_Q_* (parametric row arrow keys in filtersContainer). */
     const EQ_GRAPH_WHEEL_Q_STEP = 0.1;
     const EQ_GRAPH_WHEEL_Q_STEP_FINE = 0.01;
     const EQ_GRAPH_WHEEL_Q_FINE_MAX = 0.3;
