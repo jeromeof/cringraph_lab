@@ -2999,6 +2999,43 @@ function blurFocus() {
 }
 blurFocus();
 
+/* Over number inputs: cancel native wheel value stepping only; apply the same delta to the extra panel scroll. */
+(() => {
+    let extraPanel = document.querySelector("div.select > div.extra-panel");
+    if (!extraPanel) {
+        return;
+    }
+    extraPanel.addEventListener("wheel", (e) => {
+        if (e.ctrlKey || e.metaKey) {
+            return;
+        }
+        let t = e.target;
+        if (!t || t.nodeType !== 1 || t.tagName !== "INPUT") {
+            return;
+        }
+        if (t.getAttribute("type") !== "number") {
+            return;
+        }
+        if (!extraPanel.contains(t)) {
+            return;
+        }
+        let dy = e.deltaY;
+        if (e.deltaMode === 1) {
+            dy *= 16;
+        } else if (e.deltaMode === 2) {
+            dy *= extraPanel.clientHeight || 0;
+        }
+        if (Math.abs(e.deltaX) > Math.abs(dy)) {
+            return;
+        }
+        if (!dy) {
+            return;
+        }
+        e.preventDefault();
+        extraPanel.scrollTop += dy;
+    }, { capture: true, passive: false });
+})();
+
 // Add extra feature
 function addExtra() {
     let extraButton = document.querySelector("div.select > div.selector-tabs > button.extra");
@@ -3929,7 +3966,7 @@ function addExtra() {
         }
         updateEqFilterMarkers();
     };
-    /* Coalesce to one apply per animation frame so the trace follows typing / wheel without
+    /* Coalesce to one apply per animation frame so the trace follows typing without
        the old 100ms debounce pause, while bounding work during rapid input. */
     let applyEQ = () => {
         if (applyEQRafId !== null) {
@@ -3939,19 +3976,6 @@ function addExtra() {
             applyEQRafId = null;
             applyEQExec();
         });
-    };
-    /* ~Equal motion on the log-frequency graph: multiply/divide by a ratio instead of +1 Hz. */
-    let eqParametricFreqLogStep = (hz, dir, fine) => {
-        let [fLo, fHi] = getEqConstraintFreqLoHi();
-        let f = hz;
-        if (!Number.isFinite(f) || f < fLo) {
-            f = fLo;
-        }
-        f = Math.min(fHi, Math.max(fLo, f));
-        /* ~½ semitone / ~⅛ semitone with Shift (halved vs original for slower scroll). */
-        let ratio = fine ? Math.pow(2, 1 / 96) : Math.pow(2, 1 / 24);
-        let next = dir > 0 ? f * ratio : f / ratio;
-        return Math.round(Math.min(fHi, Math.max(fLo, next)));
     };
     /* Match EQ_GRAPH_WHEEL_Q_* (wheel on graph); duplicated here so filter keydown runs before
        those consts are initialized in this function. */
@@ -3997,64 +4021,6 @@ function addExtra() {
         return Math.round(v * 10) / 10;
     };
     if (filtersContainer) {
-        filtersContainer.addEventListener("wheel", (e) => {
-            if (e.ctrlKey || e.metaKey) {
-                return;
-            }
-            let ae = document.activeElement;
-            if (!ae || ae.tagName !== "INPUT") {
-                return;
-            }
-            let nm = ae.getAttribute("name");
-            if (nm !== "freq" && nm !== "gain" && nm !== "q") {
-                return;
-            }
-            if (!filtersContainer.contains(ae)) {
-                return;
-            }
-            let path = typeof e.composedPath === "function" ? e.composedPath() : [];
-            if (path.indexOf(ae) === -1) {
-                return;
-            }
-            let dy = e.deltaY;
-            if (!dy) {
-                return;
-            }
-            if (Math.abs(e.deltaX) > Math.abs(dy)) {
-                return;
-            }
-            e.preventDefault();
-            let dir = dy > 0 ? -1 : 1;
-            let v = parseFloat(ae.value);
-            if (!Number.isFinite(v)) {
-                v = 0;
-            }
-            if (nm === "freq") {
-                ae.value = String(eqParametricFreqLogStep(v, dir, e.shiftKey));
-                applyEQ();
-                return;
-            }
-            let min = parseFloat(ae.getAttribute("min"));
-            let max = parseFloat(ae.getAttribute("max"));
-            let step = parseFloat(ae.getAttribute("step"));
-            if (!Number.isFinite(step) || step <= 0) {
-                step = 0.1;
-            }
-            step *= 0.5;
-            if (e.shiftKey) {
-                step *= 0.1;
-            }
-            let next = v + dir * step;
-            if (Number.isFinite(min)) {
-                next = Math.max(min, next);
-            }
-            if (Number.isFinite(max)) {
-                next = Math.min(max, next);
-            }
-            next = Math.round(next / step) * step;
-            ae.value = String(parseFloat(next.toFixed(4)));
-            applyEQ();
-        }, { capture: true, passive: false });
         filtersContainer.addEventListener("keydown", (e) => {
             if (e.ctrlKey || e.metaKey || e.altKey) {
                 return;
