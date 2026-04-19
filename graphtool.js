@@ -227,9 +227,12 @@ doc.html(`
                 </div>
               </div>
               </div>
-              <div class="select-eq-phone">
+              <div class="select-eq-phone select-eq-phone-model-target">
                 <select name="phone">
                     <option value="" selected>Choose EQ model</option>
+                </select>
+                <select name="eq-target" aria-label="AutoEQ target curve" title="Trace AutoEQ matches the selected model against">
+                    <option value="" selected>Choose EQ target</option>
                 </select>
               </div>
               <div class="filters-header">
@@ -3153,6 +3156,7 @@ function addExtra() {
     });
     // EQ Function
     let eqPhoneSelect = document.querySelector("div.extra-eq select[name='phone']");
+    let eqPhoneTargetSelect = document.querySelector("div.extra-eq select[name='eq-target']");
     let filtersContainer = document.querySelector("div.extra-eq > div.filters");
     let fileFiltersImport = document.querySelector("#file-filters-import");
     let filterEnabledInput, filterTypeSelect,
@@ -4549,6 +4553,54 @@ function addExtra() {
             }
         }, true);
     }
+    let updateEQPhoneTargetSelect = () => {
+        if (!eqPhoneTargetSelect || !eqPhoneSelect) {
+            return;
+        }
+        let phoneSelected = eqPhoneSelect.value;
+        let targs = activePhones.filter((p) => p.isTarget && p.fullName && !p.fullName.match(/ EQ$/));
+        let others = activePhones.filter((p) => !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/)
+            && (!phoneSelected || p.fullName !== phoneSelected));
+        let byName = (a, b) => String(a.fullName).localeCompare(String(b.fullName));
+        targs.sort(byName);
+        others.sort(byName);
+        let opts = [];
+        let seen = new Set();
+        targs.concat(others).forEach((p) => {
+            if (!seen.has(p.fullName)) {
+                seen.add(p.fullName);
+                opts.push(p);
+            }
+        });
+        let oldVal = eqPhoneTargetSelect.value;
+        Array.from(eqPhoneTargetSelect.children).slice(1).forEach((c) => eqPhoneTargetSelect.removeChild(c));
+        opts.forEach((p) => {
+            let o = document.createElement("option");
+            o.value = p.fullName;
+            let lab = (p.dispName != null && String(p.dispName).trim() !== "") ? String(p.dispName) : p.fullName;
+            o.textContent = "Target: " + lab;
+            eqPhoneTargetSelect.appendChild(o);
+        });
+        if (oldVal && Array.from(eqPhoneTargetSelect.options).some((op) => op.value === oldVal)) {
+            eqPhoneTargetSelect.value = oldVal;
+        } else {
+            eqPhoneTargetSelect.value = "";
+        }
+        if (!eqPhoneTargetSelect.value && opts.length > 0) {
+            let phoneSel = eqPhoneSelect.value;
+            let phoneObjForTarget = phoneSel
+                ? activePhones.filter((p) => p.fullName === phoneSel)[0]
+                : null;
+            if (!phoneObjForTarget) {
+                phoneObjForTarget = activePhones.filter((p) => !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/))[0] || null;
+            }
+            let implicitT = activePhones.filter((p) => p.isTarget)[0]
+                || (phoneObjForTarget && activePhones.filter((p) => p !== phoneObjForTarget && !p.isTarget)[0]);
+            if (implicitT && opts.some((p) => p.fullName === implicitT.fullName)) {
+                eqPhoneTargetSelect.value = implicitT.fullName;
+            }
+        }
+    };
     window.updateEQPhoneSelect = () => {
         let oldValue = eqPhoneSelect.value;
         let optionValues = activePhones.filter(p =>
@@ -4561,12 +4613,23 @@ function addExtra() {
             eqPhoneSelect.appendChild(optionElem);
         });
         eqPhoneSelect.value = (optionValues.indexOf(oldValue) >= 0) ? oldValue : "";
+        let autoFilledModel = false;
+        if (!eqPhoneSelect.value && optionValues.length > 0) {
+            eqPhoneSelect.value = optionValues[0];
+            autoFilledModel = true;
+        }
+        updateEQPhoneTargetSelect();
         updateEqFilterMarkers();
+        if (autoFilledModel) {
+            applyEQ();
+            scheduleLiveEqSync();
+        }
     };
     updateFilterElements();
     updateEqFilterMarkers();
     eqPhoneSelect.addEventListener("input", () => {
         setEqFilterSelectedRow(null);
+        updateEQPhoneTargetSelect();
         applyEQ();
         scheduleLiveEqSync();
     });
@@ -5794,10 +5857,16 @@ function addExtra() {
         }
         let phoneObj = phoneSelected && activePhones.filter(
             p => p.fullName == phoneSelected)[0];
-        let targetObj = (activePhones.filter(p => p.isTarget)[0] ||
-            activePhones.filter(p => p !== phoneObj && !p.isTarget)[0]);
+        let targetSel = eqPhoneTargetSelect && eqPhoneTargetSelect.value;
+        let targetObj = (targetSel && activePhones.filter((p) => p.fullName === targetSel)[0])
+            || (activePhones.filter(p => p.isTarget)[0]
+                || activePhones.filter(p => p !== phoneObj && !p.isTarget)[0]);
         if (!phoneObj || !targetObj) {
-            alert("Please select model and target, if there are no target and multiple models are displayed then the second one will be selected as target.");
+            alert("Please select an EQ model and a target trace (or add a target / second model on the graph).");
+            return;
+        }
+        if (phoneObj === targetObj || (phoneObj.fullName && targetObj.fullName && phoneObj.fullName === targetObj.fullName)) {
+            alert("AutoEQ target must be a different trace than the EQ model.");
             return;
         }
         let autoEQOverlay = document.querySelector(".extra-eq-overlay");

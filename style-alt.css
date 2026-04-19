@@ -1183,6 +1183,7 @@ div.extra-panel select {
 }
 
 div.extra-panel select[name="phone"],
+div.extra-panel select[name="eq-target"],
 div.extra-panel .eq-constraint-preset-stack > select {
   background-position:
     calc(100% - 14px) calc(1em + 3px),
@@ -1277,6 +1278,12 @@ div.extra-panel .extra-eq-reset-icon {
     width: 15px;
     height: 15px;
     display: block;
+}
+
+div.extra-panel > div.extra-eq > div.select-eq-phone-model-target {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 div.extra-panel > div.extra-eq > div.select-eq-phone,
@@ -1663,6 +1670,7 @@ div.extra-panel > div.extra-eq .eq-constraint-range-cell {
 }
 
 div.extra-panel > div.extra-eq > div.select-eq-phone > select,
+div.extra-panel > div.extra-eq > div.select-eq-phone-model-target > select,
 div.extra-panel > div.extra-eq .eq-constraint-preset-stack > select {
     box-sizing: border-box;
     width: 100%;
