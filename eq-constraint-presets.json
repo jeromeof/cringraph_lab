@@ -23,7 +23,7 @@
       "allowLsq": true,
       "allowHsq": true,
       "freqMin": "20",
-      "freqMax": "7500",
+      "freqMax": "6000",
       "gainMin": "0",
       "gainMax": "0",
       "qMin": "0.1",
