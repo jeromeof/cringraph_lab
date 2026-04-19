@@ -917,7 +917,8 @@ div.extra-panel button {
     order: 1;
     
     flex: auto 1 1;
-    padding: 11px 8px;
+    /* 10 + 14 + 10 + 2px borders = 36px; 14px line clears descenders vs 12px at 1em */
+    padding: 10px 8px;
     margin: 0;
     
     background-color: var(--background-color) !important;
@@ -928,7 +929,7 @@ div.extra-panel button {
     font-family: var(--font-primary);
     font-weight: 400;
     font-size: 12px;
-    line-height: 1em;
+    line-height: 14px;
     text-transform: capitalize;
     
     white-space: nowrap;
@@ -947,19 +948,30 @@ div.extra-panel button.sort-filters {
     border-color: var(--background-color-contrast) !important;
 }
 
-/* Import|AutoEQ and Export|Wavelet: equal half-width rows */
+div.extra-panel > div.extra-eq > div.filters-button > button.add-filter,
+div.extra-panel > div.extra-eq > div.filters-button > button.remove-filter {
+    border-color: var(--background-color-contrast) !important;
+}
+
+/* Import: one full-width row; Export + Wavelet: each full width on its own row */
 div.extra-eq div.filters-button.extra-eq-filter-actions > button {
     flex: 1 1 0;
     min-width: 0;
 }
 
-div.extra-panel button.export-filters {
-    position: relative;
+div.extra-panel > div.extra-eq > div.filters-button.extra-eq-filter-actions > button.export-filters,
+div.extra-panel > div.extra-eq > div.filters-button.extra-eq-filter-actions > button.export-graphic-filters.extra-eq-secondary-btn {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
 }
 
-/* De-emphasized EQ actions (AutoEQ, Wavelet export) */
-div.extra-panel > div.extra-eq button.extra-eq-secondary-btn {
-    border-color: var(--background-color-contrast) !important;
+div.extra-panel > div.extra-eq > div.filters-button.extra-eq-filter-actions > button.export-graphic-filters.extra-eq-secondary-btn {
+    border-color: var(--background-color) !important;
+}
+
+div.extra-panel button.export-filters {
+    position: relative;
 }
 
 button.export-filters:after {
@@ -1156,7 +1168,7 @@ div.extra-panel select {
     color: var(--font-color-primary);
     font-family: var(--font-family-secondary);
     font-size: 11px;
-    line-height: 1em;
+    line-height: 14px;
     
     cursor: pointer;
     outline: none;
@@ -1174,8 +1186,8 @@ div.extra-panel select {
     linear-gradient(45deg, transparent 50%, var(--background-color-contrast-more) 50%),
     linear-gradient(135deg, var(--background-color-contrast-more) 50%, transparent 50%);
   background-position:
-    calc(100% - 5px) calc(1em + 2px),
-    calc(100% - 0px) calc(1em + 2px);
+    calc(100% - 5px) 50%,
+    calc(100% - 0px) 50%;
   background-size:
     5px 5px,
     5px 5px;
@@ -1186,8 +1198,15 @@ div.extra-panel select[name="phone"],
 div.extra-panel select[name="eq-target"],
 div.extra-panel .eq-constraint-preset-stack > select {
   background-position:
-    calc(100% - 14px) calc(1em + 3px),
-    calc(100% - 9px) calc(1em + 3px);
+    calc(100% - 14px) 50%,
+    calc(100% - 9px) 50%;
+}
+
+/* EQ only: 36px total with bordered shell (10 + 14 + 10 + 2); 14px line avoids tight 1em clipping */
+div.extra-panel > div.extra-eq select {
+    font-size: 12px;
+    line-height: 14px;
+    padding: 10px 0;
 }
 
 div.extra-panel .extra-eq-head {
@@ -1284,6 +1303,57 @@ div.extra-panel > div.extra-eq > div.select-eq-phone-model-target {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    min-width: 0;
+    width: 100%;
+}
+
+/* Target + Auto EQ: 3:1 flex split (same rhythm as four filter columns); flex centers label vs native select metrics */
+div.extra-panel > div.extra-eq > div.select-eq-phone-model-target > div.select-eq-phone-target-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 4px;
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
+}
+
+/* div.extra-panel button sets margin-bottom: 4px for wrapped chip rows; that margin skews flex
+   line sizing so the Target select centers against a taller margin box than the button border. */
+div.extra-panel > div.extra-eq > div.select-eq-phone-model-target > div.select-eq-phone-target-row > button {
+    margin: 0 !important;
+}
+
+div.extra-panel > div.extra-eq > div.select-eq-phone-model-target > div.select-eq-phone-target-row > .select-eq-target-select-wrap {
+    flex: 3 1 0;
+    min-width: 0;
+    max-width: 100%;
+    display: flex;
+    align-items: center;
+}
+
+div.extra-panel > div.extra-eq > div.select-eq-phone-model-target > div.select-eq-phone-target-row > .select-eq-target-select-wrap > select {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+div.extra-panel > div.extra-eq > div.select-eq-phone-model-target > div.select-eq-phone-target-row > button.autoeq.extra-eq-secondary-btn {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: none;
+    flex: 1 1 0 !important;
+    order: 0 !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 4px;
+    font-size: 12px;
+    line-height: 14px;
+    white-space: normal;
+    border: 1px solid var(--background-color-contrast-more) !important;
 }
 
 div.extra-panel > div.extra-eq > div.select-eq-phone,
@@ -1671,9 +1741,11 @@ div.extra-panel > div.extra-eq .eq-constraint-range-cell {
 
 div.extra-panel > div.extra-eq > div.select-eq-phone > select,
 div.extra-panel > div.extra-eq > div.select-eq-phone-model-target > select,
+div.extra-panel > div.extra-eq > div.select-eq-phone-model-target .select-eq-target-select-wrap > select,
 div.extra-panel > div.extra-eq .eq-constraint-preset-stack > select {
     box-sizing: border-box;
     width: 100%;
+    line-height: 14px;
     padding: 10px 22px 10px 10px;
     border: 1px solid var(--background-color-contrast-more);
     border-radius: 6px;

@@ -15,6 +15,21 @@
       "qMax": "10"
     },
     {
+      "id": "auto-eq",
+      "kind": "system",
+      "label": "Auto EQ",
+      "maxBands": 0,
+      "allowPk": true,
+      "allowLsq": true,
+      "allowHsq": true,
+      "freqMin": "20",
+      "freqMax": "7500",
+      "gainMin": "0",
+      "gainMax": "0",
+      "qMin": "0.1",
+      "qMax": "10"
+    },
+    {
       "id": "fiio-eh11",
       "label": "Fiio EH11",
       "maxBands": 10,

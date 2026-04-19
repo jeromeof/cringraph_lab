@@ -229,11 +229,16 @@ doc.html(`
               </div>
               <div class="select-eq-phone select-eq-phone-model-target">
                 <select name="phone">
-                    <option value="" selected>Choose EQ model</option>
+                    <option value="" selected>Add a model to the graph</option>
                 </select>
-                <select name="eq-target" aria-label="AutoEQ target curve" title="Trace AutoEQ matches the selected model against">
-                    <option value="" selected>Choose EQ target</option>
-                </select>
+                <div class="select-eq-phone-target-row">
+                  <div class="select-eq-target-select-wrap">
+                    <select name="eq-target" aria-label="AutoEQ target curve" title="Trace AutoEQ matches the selected model against">
+                        <option value="" selected>Target: Add a target to the graph</option>
+                    </select>
+                  </div>
+                  <button type="button" class="autoeq extra-eq-secondary-btn">Auto EQ</button>
+                </div>
               </div>
               <div class="filters-header">
                 <span>Type</span>
@@ -263,7 +268,6 @@ doc.html(`
               </div>
               <div class="filters-button extra-eq-filter-actions">
                 <button class="import-filters">Import</button>
-                <button class="autoeq extra-eq-secondary-btn">AutoEQ</button>
               </div>
               <div class="filters-button extra-eq-filter-actions">
                 <button class="export-filters">Export</button>
@@ -3409,6 +3413,10 @@ function addExtra() {
         out.sort((a, b) => a - b);
         return out;
     };
+    let isEqConstraintGraphicModeActive = () => {
+        let bands = Equalizer.config.EqGraphicBandFreqHz;
+        return Array.isArray(bands) && bands.length >= 2;
+    };
     let applyEqConstraintFreqRowUiMode = () => {
         let row = document.querySelector("div.extra-eq .eq-constraint-freq-row");
         let par = document.querySelector("div.extra-eq .eq-constraint-freq-parametric-cells");
@@ -4439,6 +4447,7 @@ function addExtra() {
             let firstPhone = eqPhoneSelect.querySelectorAll("option")[1];
             if (firstPhone) {
                 phoneSelected = eqPhoneSelect.value = firstPhone.value;
+                eqPhoneSelect.dataset.eqLastModel = phoneSelected || "";
             }
         }
         let phoneObj = phoneSelected && activePhones.filter(
@@ -4673,6 +4682,13 @@ function addExtra() {
                 eqPhoneTargetSelect.value = implicitT.fullName;
             }
         }
+        let tgPlaceholder = eqPhoneTargetSelect.querySelector("option[value='']");
+        if (tgPlaceholder) {
+            tgPlaceholder.textContent = opts.length === 0
+                ? "Target: Add a target to the graph"
+                : "Choose EQ target";
+            tgPlaceholder.hidden = !!eqPhoneTargetSelect.value;
+        }
     };
     window.updateEQPhoneSelect = () => {
         let oldValue = eqPhoneSelect.value;
@@ -4697,15 +4713,39 @@ function addExtra() {
             applyEQ();
             scheduleLiveEqSync();
         }
+        let phPlaceholder = eqPhoneSelect.querySelector("option[value='']");
+        if (phPlaceholder) {
+            phPlaceholder.textContent = optionValues.length === 0
+                ? "Add a model to the graph"
+                : "Choose EQ model";
+            phPlaceholder.hidden = !!eqPhoneSelect.value;
+        }
+        eqPhoneSelect.dataset.eqLastModel = eqPhoneSelect.value || "";
     };
     updateFilterElements();
     updateEqFilterMarkers();
     eqPhoneSelect.addEventListener("input", () => {
+        let prev = eqPhoneSelect.dataset.eqLastModel || "";
+        let next = eqPhoneSelect.value;
+        if (prev && next && prev !== next) {
+            let prevPhone = activePhones.filter((p) => p.fullName === prev)[0];
+            if (prevPhone && prevPhone.eq) {
+                let eqP = prevPhone.eq;
+                prevPhone.eq = null;
+                eqP.eqParent = null;
+                removePhone(eqP);
+            }
+            eqFiltersUserHasEdited = false;
+            filtersToElem([{ disabled: false, type: "PK", freq: 0, q: 0, gain: 0 }]);
+            eqFiltersUserHasEdited = false;
+        }
+        eqPhoneSelect.dataset.eqLastModel = next;
         setEqFilterSelectedRow(null);
         updateEQPhoneTargetSelect();
         applyEQ();
         scheduleLiveEqSync();
     });
+    eqPhoneSelect.dataset.eqLastModel = eqPhoneSelect.value || "";
     if (eqPhoneTargetSelect) {
         eqPhoneTargetSelect.addEventListener("input", () => {
             applyParametricEqGraphTraceFocus();
@@ -4982,6 +5022,8 @@ function addExtra() {
         return out.length >= 2 ? out : null;
     };
     let EQ_CONSTRAINT_PRESET_VALUE_CUSTOM = "__custom__";
+    /** Built-in preset id for Auto EQ tool constraints (under System; not restored from localStorage on revisit). */
+    let EQ_CONSTRAINT_PRESET_AUTO_EQ_ID = "auto-eq";
     let EQ_CONSTRAINT_PRESET_STORAGE_KEY = "eq-constraint-preset-last";
     let EQ_CONSTRAINT_PRESET_LAST_NON_CUSTOM_STORAGE_KEY = "eq-constraint-preset-last-non-custom";
     let EQ_USER_PRESETS_STORAGE_KEY = "eq-constraint-user-presets-v1";
@@ -5513,6 +5555,21 @@ function addExtra() {
             }
             saved = fb;
         }
+        /* Auto EQ preset is applied when running the tool from Default; do not re-apply on reload. */
+        if (String(saved).toLowerCase() === EQ_CONSTRAINT_PRESET_AUTO_EQ_ID) {
+            try {
+                localStorage.removeItem(EQ_CONSTRAINT_PRESET_STORAGE_KEY);
+                let fbNc = localStorage.getItem(EQ_CONSTRAINT_PRESET_LAST_NON_CUSTOM_STORAGE_KEY);
+                if (fbNc != null && String(fbNc).toLowerCase() === EQ_CONSTRAINT_PRESET_AUTO_EQ_ID) {
+                    let fallback = eqConstraintDefaultOptionValueForUi != null
+                        ? String(eqConstraintDefaultOptionValueForUi)
+                        : "default";
+                    localStorage.setItem(EQ_CONSTRAINT_PRESET_LAST_NON_CUSTOM_STORAGE_KEY, fallback);
+                }
+            } catch (err) {
+            }
+            return false;
+        }
         if (isEqConstraintUserPresetValue(saved)) {
             let u = findUserEqConstraintPresetById(saved);
             if (!u) {
@@ -5726,6 +5783,7 @@ function addExtra() {
                     return;
                 }
                 let defaultPresetObj = null;
+                let systemPresetObjs = [];
                 let devicesOrderedItems = [];
                 let devicePresetOrdinal = 0;
                 let dividerOrdinal = 0;
@@ -5762,14 +5820,18 @@ function addExtra() {
                         }
                         return;
                     }
+                    if (idLc === EQ_CONSTRAINT_PRESET_AUTO_EQ_ID || kind === "system") {
+                        systemPresetObjs.push(entry);
+                        return;
+                    }
                     devicesOrderedItems.push({ itemKind: "preset", entry });
                 });
                 let devicePresetObjs = devicesOrderedItems
                     .filter((x) => x.itemKind === "preset")
                     .map((x) => x.entry);
                 eqConstraintPresetsList = defaultPresetObj
-                    ? [defaultPresetObj].concat(devicePresetObjs)
-                    : devicePresetObjs.slice();
+                    ? [defaultPresetObj].concat(systemPresetObjs).concat(devicePresetObjs)
+                    : systemPresetObjs.concat(devicePresetObjs);
                 hit.innerHTML = "";
                 display.innerHTML = "";
                 let sysHit = document.createElement("optgroup");
@@ -5789,6 +5851,16 @@ function addExtra() {
                     let defLab = defaultPresetObj.label || "Default";
                     eqConstraintPresetDomAddPair(sysHit, sysDisp, defaultOptionValue, defLab, true);
                 }
+                systemPresetObjs.forEach((entry) => {
+                    let val = entry.id != null && String(entry.id).trim() !== ""
+                        ? String(entry.id).trim()
+                        : "";
+                    if (!val) {
+                        return;
+                    }
+                    let lab = entry.label || val;
+                    eqConstraintPresetDomAddPair(sysHit, sysDisp, val, lab, true);
+                });
                 eqConstraintDefaultPresetForUi = defaultPresetObj;
                 eqConstraintDefaultOptionValueForUi = defaultOptionValue;
                 let devHit = document.createElement("optgroup");
@@ -5921,6 +5993,34 @@ function addExtra() {
     syncEqMaxBandsFieldFromConfig();
     document.querySelector("div.extra-eq button.autoeq").addEventListener("click", () => {
         // Generate filters automatically
+        if (isEqConstraintGraphicModeActive()) {
+            alert("Auto EQ is not yet available for graphic EQ.");
+            return;
+        }
+        let presetHit = document.getElementById("eq-constraint-preset-input");
+        let presetDisplay = document.getElementById("eq-constraint-preset-display");
+        let presetRow = document.getElementById("eq-constraint-preset-row");
+        if (presetHit && presetDisplay && presetRow && !presetRow.hidden
+                && eqConstraintDefaultOptionValueForUi != null) {
+            let defV = String(eqConstraintDefaultOptionValueForUi);
+            let stable = String(presetHit.dataset.eqPresetLastStable || "");
+            let v = String(presetHit.value || "");
+            let onDefault = (v === defV || stable === defV);
+            if (onDefault) {
+                let autoP = findEqConstraintPresetByOptionValue(EQ_CONSTRAINT_PRESET_AUTO_EQ_ID);
+                if (autoP) {
+                    runEqConstraintPresetProgrammatic(() => {
+                        applyEqConstraintPreset(autoP);
+                        presetHit.value = EQ_CONSTRAINT_PRESET_AUTO_EQ_ID;
+                        presetDisplay.selectedIndex = presetHit.selectedIndex;
+                        presetHit.dataset.eqPresetLastStable = EQ_CONSTRAINT_PRESET_AUTO_EQ_ID;
+                    });
+                    syncEqConstraintCustomPresetOptgroup();
+                    updateCustomActionDeleteDisabled(presetHit, presetDisplay);
+                    persistEqConstraintPresetSelectionToStorage();
+                }
+            }
+        }
         commitEqMaxBandsFromInput({ writeBackDom: true });
         syncEqConstraintDomToEqualizerConfig();
         if (!Equalizer.config.EqAllowedTypes.PK) {
