@@ -197,10 +197,15 @@ doc.html(`
                       <span class="eq-constraint-range-min-slot eq-constraint-ranges-head-cell">Min</span>
                       <span class="eq-constraint-range-max-slot eq-constraint-ranges-head-cell">Max</span>
                     </div>
-                    <div class="eq-constraint-range-row">
+                    <div class="eq-constraint-range-row eq-constraint-freq-row">
                       <span class="eq-constraint-range-label-slot eq-constraint-range-name">Frequency</span>
-                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-freq-min" inputmode="decimal" type="number" min="0" max="20000" step="1" value="0" aria-label="Minimum EQ frequency (0 = no limit)" onclick="this.focus();this.select()"></input></span>
-                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-hz"><input name="eq-constraint-freq-max" inputmode="decimal" type="number" min="0" max="20000" step="1" value="0" aria-label="Maximum EQ frequency (0 = no limit)" onclick="this.focus();this.select()"></input></span>
+                      <div class="eq-constraint-freq-parametric-cells">
+                        <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-freq-min" inputmode="decimal" type="text" value="0" aria-label="Minimum EQ frequency (0 = no limit); for graphic bands when max is unlimited use comma then space between Hz (e.g. 32, 64, 125)" title="0 = no limit. With max also 0, use comma + space between Hz (e.g. 32, 64, 125) for graphic EQ — not 2,000 (thousands)." onclick="this.focus();this.select()"></input></span>
+                        <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-hz"><input name="eq-constraint-freq-max" inputmode="decimal" type="text" value="0" aria-label="Maximum EQ frequency (0 = no limit); for graphic bands when min is unlimited use comma then space between Hz (e.g. 32, 64, 125)" title="0 = no limit. With min also 0, use comma + space between Hz (e.g. 32, 64, 125) for graphic EQ." onclick="this.focus();this.select()"></input></span>
+                      </div>
+                      <div class="eq-constraint-freq-graphic-full" hidden>
+                        <input name="eq-constraint-freq-graphic-list" type="text" class="eq-constraint-freq-graphic-list-input" inputmode="text" value="" autocomplete="off" spellcheck="false" aria-label="Graphic EQ band frequencies in Hz; use a comma then space between values (e.g. 32, 64, 125)" title="Hz with comma + space between bands (e.g. 32, 64, 125, 250). Clear to return to min/max limits." onclick="this.focus();this.select()"></input>
+                      </div>
                     </div>
                     <div class="eq-constraint-range-row">
                       <span class="eq-constraint-range-label-slot eq-constraint-range-name">Gain</span>
@@ -3147,7 +3152,23 @@ function addExtra() {
     let filterEnabledInput, filterTypeSelect,
         filterFreqInput, filterQInput, filterGainInput;
     let eqBands = extraEQBands;
+    /* Until the user edits filter rows or drags graph nodes, graphic EQ may auto-sync rows from constraints. */
+    let eqFiltersUserHasEdited = false;
     let eqFilterSelectedRow = null;
+    if (filtersContainer) {
+        filtersContainer.addEventListener("input", (e) => {
+            let t = e.target;
+            if (t && t.closest && filtersContainer.contains(t) && t.closest("div.filter")) {
+                eqFiltersUserHasEdited = true;
+            }
+        }, true);
+        filtersContainer.addEventListener("change", (e) => {
+            let t = e.target;
+            if (t && t.closest && filtersContainer.contains(t) && t.closest("div.filter")) {
+                eqFiltersUserHasEdited = true;
+            }
+        }, true);
+    }
     let updateEqFilterRowSelectionStyles = () => {
         if (!filtersContainer) {
             return;
@@ -3265,6 +3286,140 @@ function addExtra() {
         document.querySelector("div.select").setAttribute("data-selected", selectedList);
         setEqFilterSelectedRow(null);
         syncEqHoverPreview(null);
+    };
+    let parseEqConstraintGraphicFreqList = (raw) => {
+        if (raw == null || typeof raw !== "string") {
+            return [];
+        }
+        let s = raw.trim();
+        if (s === "") {
+            return [];
+        }
+        /* Trailing comma(s) while typing the next band (e.g. "32, 64,") would otherwise yield one token. */
+        while (/(?:,|，)\s*$/.test(s)) {
+            s = s.replace(/(?:,|，)\s*$/, "").trim();
+        }
+        if (s === "") {
+            return [];
+        }
+        /* Comma must be followed by whitespace so "2,000" is not read as two bands. */
+        let parts = s.split(/(?:,|，)\s+/);
+        let out = [];
+        let seen = new Set();
+        for (let p of parts) {
+            let t = p.trim();
+            if (t === "") {
+                continue;
+            }
+            if (/[,，]/.test(t)) {
+                continue;
+            }
+            let v = Math.round(parseFloat(t));
+            if (!Number.isFinite(v) || v < 20 || v > 20000) {
+                continue;
+            }
+            if (!seen.has(v)) {
+                seen.add(v);
+                out.push(v);
+            }
+        }
+        out.sort((a, b) => a - b);
+        return out;
+    };
+    let applyEqConstraintFreqRowUiMode = () => {
+        let row = document.querySelector("div.extra-eq .eq-constraint-freq-row");
+        let par = document.querySelector("div.extra-eq .eq-constraint-freq-parametric-cells");
+        let gf = document.querySelector("div.extra-eq .eq-constraint-freq-graphic-full");
+        let gIn = document.querySelector("div.extra-eq input[name='eq-constraint-freq-graphic-list']");
+        if (!row || !par || !gf || !gIn) {
+            return;
+        }
+        let bands = Equalizer.config.EqGraphicBandFreqHz;
+        let graphic = Array.isArray(bands) && bands.length >= 2;
+        row.classList.toggle("eq-constraint-freq-row-graphic", graphic);
+        par.hidden = graphic;
+        gf.hidden = !graphic;
+        if (graphic) {
+            gIn.value = bands.join(", ");
+        }
+        applyEqGraphicModeAuxUiAndBands();
+    };
+    let clearEqConstraintGraphicFreqMode = () => {
+        Equalizer.config.EqGraphicBandFreqHz = null;
+        let g = document.querySelector("div.extra-eq input[name='eq-constraint-freq-graphic-list']");
+        if (g) {
+            g.value = "";
+        }
+        applyEqConstraintFreqRowUiMode();
+    };
+    let tryEnterEqConstraintGraphicFreqModeFromTyping = () => {
+        let row = document.querySelector("div.extra-eq .eq-constraint-freq-row");
+        let minEl = document.querySelector("div.extra-eq input[name='eq-constraint-freq-min']");
+        let maxEl = document.querySelector("div.extra-eq input[name='eq-constraint-freq-max']");
+        if (!row || !minEl || !maxEl || row.classList.contains("eq-constraint-freq-row-graphic")) {
+            return false;
+        }
+        /* List lives in one field; that field is not "" / "0", so require only the *other* side unlimited. */
+        let uVal = (s) => {
+            let t = (s || "").trim();
+            return t === "" || t === "0";
+        };
+        let minRaw = (minEl.value || "").trim();
+        let maxRaw = (maxEl.value || "").trim();
+        let hasGraphicCommaSpace = (s) => /(?:,|，)\s/.test(s);
+        let minHasSep = hasGraphicCommaSpace(minRaw);
+        let maxHasSep = hasGraphicCommaSpace(maxRaw);
+        let rawPrefer = "";
+        if (minHasSep) {
+            if (!uVal(maxEl.value)) {
+                return false;
+            }
+            rawPrefer = minEl.value;
+        } else if (maxHasSep) {
+            if (!uVal(minEl.value)) {
+                return false;
+            }
+            rawPrefer = maxEl.value;
+        } else {
+            return false;
+        }
+        if (!rawPrefer) {
+            return false;
+        }
+        let list = parseEqConstraintGraphicFreqList(rawPrefer);
+        if (list.length < 2) {
+            return false;
+        }
+        Equalizer.config.EqGraphicBandFreqHz = list.slice();
+        Equalizer.config.AutoEQRange = [list[0], list[list.length - 1]];
+        minEl.value = "0";
+        maxEl.value = "0";
+        applyEqConstraintFreqRowUiMode();
+        requestAnimationFrame(() => {
+            let gInAfter = document.querySelector("div.extra-eq input[name='eq-constraint-freq-graphic-list']");
+            if (gInAfter) {
+                gInAfter.focus();
+                let n = gInAfter.value.length;
+                gInAfter.setSelectionRange(n, n);
+            }
+        });
+        return true;
+    };
+    let snapEqFilterFreqToGraphicBands = (hz) => {
+        let bands = Equalizer.config.EqGraphicBandFreqHz;
+        if (!bands || bands.length < 2 || !hz || hz <= 0) {
+            return hz;
+        }
+        let best = bands[0];
+        let bestScore = Infinity;
+        for (let b of bands) {
+            let s = Math.abs(Math.log(hz / b));
+            if (s < bestScore) {
+                bestScore = s;
+                best = b;
+            }
+        }
+        return best;
     };
     let getEqConstraintFreqLoHi = () => {
         let lo = Equalizer.config.AutoEQRange[0];
@@ -3432,10 +3587,23 @@ function addExtra() {
             let g = parseFloat(gi.value) || 0;
             let emptyish = f === 0 && q === 0 && g === 0;
             if (!emptyish) {
-                if (f !== 0 && (f < fLo || f > fHi)) {
-                    fi.classList.add(vClass);
+                let bands = Equalizer.config.EqGraphicBandFreqHz;
+                let graphicFreq = Array.isArray(bands) && bands.length >= 2;
+                if (f !== 0) {
+                    if (graphicFreq) {
+                        let onBand = bands.some((b) => Math.abs(b - f) < 0.51);
+                        if (!onBand) {
+                            fi.classList.add(vClass);
+                        }
+                    } else if (f < fLo || f > fHi) {
+                        fi.classList.add(vClass);
+                    }
                 }
-                if (q !== 0 && (q < qLo || q > qHi)) {
+                let qStrictRange = graphicFreq && eqFiltersUserHasEdited;
+                let qBad = qStrictRange
+                    ? (q < qLo || q > qHi)
+                    : (q !== 0 && (q < qLo || q > qHi));
+                if (qBad) {
                     qi.classList.add(vClass);
                 }
                 if ((g !== 0 || f !== 0 || q !== 0) && (g < gLo || g > gHi)) {
@@ -3513,6 +3681,9 @@ function addExtra() {
         return raw.map((f) => {
             let type = allowed[f.type] ? f.type : firstAllowedEqFilterType();
             let freq = f.freq ? Math.min(fHi, Math.max(fLo, f.freq)) : 0;
+            if (freq) {
+                freq = snapEqFilterFreqToGraphicBands(freq);
+            }
             let q = f.q ? (() => {
                 let qc = Math.min(qHi, Math.max(qLo, f.q));
                 return qc <= EQ_CONSTRAINT_Q_FINE_MAX + 1e-9
@@ -3543,19 +3714,102 @@ function addExtra() {
             filterQInput[i].value = f.q;
             filterGainInput[i].value = f.gain;
         });
+        eqFiltersUserHasEdited = true;
         applyEqConstraintAttributesToFilterInputs();
         refreshEqFilterConstraintViolationStyles();
         refreshEqFilterInactiveStateForMaxBands();
+    };
+    /* Graphic auto-rows: Q max "0"/blank = unlimited (config hi 10); use nominal Q 1 unless min Q forces higher. */
+    let eqGraphicModeTemplateQHz = () => {
+        let qMaxEl = document.querySelector("div.extra-eq input[name='eq-constraint-q-max']");
+        let maxRaw = qMaxEl ? String(qMaxEl.value || "").trim() : "";
+        let [qLo, qHi] = getEqConstraintQLoHi();
+        if (maxRaw === "" || maxRaw === "0") {
+            return Math.min(qHi, Math.max(qLo, 1));
+        }
+        return qHi;
+    };
+    let eqGraphicModeApplyAutoTemplateFromBands = (bands) => {
+        if (!bands || bands.length < 2 || !filterFreqInput || !filterFreqInput.length) {
+            return;
+        }
+        if (eqFiltersUserHasEdited) {
+            return;
+        }
+        let cap = Math.min(bands.length, extraEQBandsMax);
+        let qUse = eqGraphicModeTemplateQHz();
+        let qStr = qUse <= 0.3 + 1e-9
+            ? String(Math.round(qUse * 100) / 100)
+            : String(Math.round(qUse * 10) / 10);
+        let typ = firstAllowedEqFilterType();
+        if (eqBands < cap) {
+            eqBands = cap;
+            updateFilterElements();
+        }
+        for (let i = 0; i < cap; i++) {
+            filterEnabledInput[i].checked = true;
+            filterTypeSelect[i].value = typ;
+            filterFreqInput[i].value = String(bands[i]);
+            filterQInput[i].value = qStr;
+            filterGainInput[i].value = "0";
+        }
+        for (let i = cap; i < eqBands; i++) {
+            filterEnabledInput[i].checked = true;
+            filterTypeSelect[i].value = typ;
+            filterFreqInput[i].value = "0";
+            filterQInput[i].value = "0";
+            filterGainInput[i].value = "0";
+        }
+    };
+    let applyEqGraphicModeAuxUiAndBands = () => {
+        let bands = Equalizer.config.EqGraphicBandFreqHz;
+        let graphic = Array.isArray(bands) && bands.length >= 2;
+        let maxBandsEl = document.querySelector("div.extra-eq input[name='eq-constraint-max-bands']");
+        let qMinEl = document.querySelector("div.extra-eq input[name='eq-constraint-q-min']");
+        if (!maxBandsEl || !qMinEl) {
+            return;
+        }
+        if (graphic) {
+            let cap = Math.min(bands.length, extraEQBandsMax);
+            Equalizer.config.EqMaxBands = cap;
+            maxBandsEl.value = String(cap);
+            maxBandsEl.setAttribute("data-eq-graphic-max-lock", "1");
+            maxBandsEl.disabled = true;
+            qMinEl.disabled = true;
+            eqGraphicModeApplyAutoTemplateFromBands(bands);
+            refreshEqFilterInactiveStateForMaxBands();
+            applyEqConstraintAttributesToFilterInputs();
+            cancelDeferredApplyEQ();
+            applyEQExec();
+            scheduleLiveEqSync();
+        } else {
+            maxBandsEl.disabled = false;
+            qMinEl.disabled = false;
+            let hadGraphicMaxLock = maxBandsEl.hasAttribute("data-eq-graphic-max-lock");
+            if (hadGraphicMaxLock) {
+                maxBandsEl.removeAttribute("data-eq-graphic-max-lock");
+                Equalizer.config.EqMaxBands = 0;
+                syncEqMaxBandsFieldFromConfig();
+            }
+            refreshEqFilterInactiveStateForMaxBands();
+            if (hadGraphicMaxLock) {
+                cancelDeferredApplyEQ();
+                applyEQExec();
+                scheduleLiveEqSync();
+            }
+        }
     };
     let refreshEqConstraintDomValidityClasses = () => {
         let vClass = "eq-constraint-input-violation";
         let freqMinEl = document.querySelector("div.extra-eq input[name='eq-constraint-freq-min']");
         let freqMaxEl = document.querySelector("div.extra-eq input[name='eq-constraint-freq-max']");
+        let freqGraphicInp = document.querySelector("div.extra-eq input[name='eq-constraint-freq-graphic-list']");
+        let freqRow = document.querySelector("div.extra-eq .eq-constraint-freq-row");
         let qMinEl = document.querySelector("div.extra-eq input[name='eq-constraint-q-min']");
         let qMaxEl = document.querySelector("div.extra-eq input[name='eq-constraint-q-max']");
         let gainMinEl = document.querySelector("div.extra-eq input[name='eq-constraint-gain-min']");
         let gainMaxEl = document.querySelector("div.extra-eq input[name='eq-constraint-gain-max']");
-        [freqMinEl, freqMaxEl, qMinEl, qMaxEl, gainMinEl, gainMaxEl].forEach((el) => {
+        [freqMinEl, freqMaxEl, freqGraphicInp, qMinEl, qMaxEl, gainMinEl, gainMaxEl].forEach((el) => {
             if (el) {
                 el.classList.remove(vClass);
             }
@@ -3591,7 +3845,17 @@ function addExtra() {
                 maxEl.classList.add(vClass);
             }
         };
-        markPair(freqMinEl, freqMaxEl, 20, 20000, true);
+        if (freqRow && freqRow.classList.contains("eq-constraint-freq-row-graphic") && freqGraphicInp) {
+            let rawG = (freqGraphicInp.value || "").trim();
+            if (rawG !== "") {
+                let listG = parseEqConstraintGraphicFreqList(rawG);
+                if (listG.length < 2) {
+                    freqGraphicInp.classList.add(vClass);
+                }
+            }
+        } else {
+            markPair(freqMinEl, freqMaxEl, 20, 20000, true);
+        }
         markPair(qMinEl, qMaxEl, 0.1, 10, false);
         markPair(gainMinEl, gainMaxEl, -40, 40, false);
     };
@@ -3612,32 +3876,48 @@ function addExtra() {
         let prevA = Equalizer.config.AutoEQRange ? Equalizer.config.AutoEQRange.slice() : [20, 20000];
         let prevQ = Equalizer.config.OptimizeQRange ? Equalizer.config.OptimizeQRange.slice() : [0.1, 10];
         let prevG = Equalizer.config.OptimizeGainRange ? Equalizer.config.OptimizeGainRange.slice() : [-40, 40];
-        let fMinRaw = (freqMinEl.value || "").trim();
-        let fMaxRaw = (freqMaxEl.value || "").trim();
-        let fMinInc = eqConstraintNumericInputIncomplete(freqMinEl.value);
-        let fMaxInc = eqConstraintNumericInputIncomplete(freqMaxEl.value);
-        let fMin;
-        let fMax;
-        if (fMinInc) {
-            fMin = prevA[0];
-        } else if (fMinRaw === "" || fMinRaw === "0") {
-            fMin = 20;
-        } else {
-            let p = parseInt(fMinRaw, 10);
-            fMin = Number.isFinite(p) ? Math.min(20000, Math.max(20, p)) : prevA[0];
+        let freqRow = document.querySelector("div.extra-eq .eq-constraint-freq-row");
+        let gListInp = document.querySelector("div.extra-eq input[name='eq-constraint-freq-graphic-list']");
+        if (freqRow && freqRow.classList.contains("eq-constraint-freq-row-graphic") && gListInp) {
+            let rawG = (gListInp.value || "").trim();
+            let listG = parseEqConstraintGraphicFreqList(rawG);
+            if (rawG === "" || listG.length < 2) {
+                clearEqConstraintGraphicFreqMode();
+            } else {
+                Equalizer.config.EqGraphicBandFreqHz = listG;
+                Equalizer.config.AutoEQRange = [listG[0], listG[listG.length - 1]];
+            }
         }
-        if (fMaxInc) {
-            fMax = prevA[1];
-        } else if (fMaxRaw === "" || fMaxRaw === "0") {
-            fMax = 20000;
-        } else {
-            let p = parseInt(fMaxRaw, 10);
-            fMax = Number.isFinite(p) ? Math.min(20000, Math.max(20, p)) : prevA[1];
-        }
-        if (fMin > fMax) {
-            let t = fMin;
-            fMin = fMax;
-            fMax = t;
+        if (!Equalizer.config.EqGraphicBandFreqHz || Equalizer.config.EqGraphicBandFreqHz.length < 2) {
+            Equalizer.config.EqGraphicBandFreqHz = null;
+            let fMinRaw = (freqMinEl.value || "").trim();
+            let fMaxRaw = (freqMaxEl.value || "").trim();
+            let fMinInc = eqConstraintNumericInputIncomplete(freqMinEl.value);
+            let fMaxInc = eqConstraintNumericInputIncomplete(freqMaxEl.value);
+            let fMin;
+            let fMax;
+            if (fMinInc) {
+                fMin = prevA[0];
+            } else if (fMinRaw === "" || fMinRaw === "0") {
+                fMin = 20;
+            } else {
+                let p = parseInt(fMinRaw, 10);
+                fMin = Number.isFinite(p) ? Math.min(20000, Math.max(20, p)) : prevA[0];
+            }
+            if (fMaxInc) {
+                fMax = prevA[1];
+            } else if (fMaxRaw === "" || fMaxRaw === "0") {
+                fMax = 20000;
+            } else {
+                let p = parseInt(fMaxRaw, 10);
+                fMax = Number.isFinite(p) ? Math.min(20000, Math.max(20, p)) : prevA[1];
+            }
+            if (fMin > fMax) {
+                let t = fMin;
+                fMin = fMax;
+                fMax = t;
+            }
+            Equalizer.config.AutoEQRange = [fMin, fMax];
         }
         let qMinRaw = (qMinEl.value || "").trim();
         let qMaxRaw = (qMaxEl.value || "").trim();
@@ -3700,10 +3980,10 @@ function addExtra() {
             allowPk = true;
             pkEl.checked = true;
         }
-        Equalizer.config.AutoEQRange = [fMin, fMax];
         Equalizer.config.OptimizeQRange = [qMin, qMax];
         Equalizer.config.OptimizeGainRange = [gMin, gMax];
         Equalizer.config.EqAllowedTypes = { PK: allowPk, LSQ: allowLsq, HSQ: allowHsq };
+        applyEqGraphicModeAuxUiAndBands();
         applyEqConstraintAttributesToFilterInputs();
         refreshEqConstraintDomValidityClasses();
         refreshEqFilterConstraintViolationStyles();
@@ -3712,7 +3992,7 @@ function addExtra() {
     let commitEqMaxBandsFromInput = (opts) => {
         opts = opts || {};
         let maxBandsEl = document.querySelector("div.extra-eq input[name='eq-constraint-max-bands']");
-        if (!maxBandsEl) {
+        if (!maxBandsEl || maxBandsEl.disabled) {
             return;
         }
         let parsed = parseInt(maxBandsEl.value, 10);
@@ -4285,6 +4565,7 @@ function addExtra() {
         scheduleLiveEqSync();
     });
     let resetParametricEqBandsAndConstraintsToDefaults = () => {
+        eqFiltersUserHasEdited = false;
         for (let i = 0; i < eqBands; i++) {
             filterFreqInput[i].value = "0";
             filterGainInput[i].value = "0";
@@ -4292,6 +4573,12 @@ function addExtra() {
         }
         let cRoot = document.querySelector("div.extra-eq .extra-eq-constraints-inner");
         if (cRoot) {
+            Equalizer.config.EqGraphicBandFreqHz = null;
+            let gList = cRoot.querySelector("input[name='eq-constraint-freq-graphic-list']");
+            if (gList) {
+                gList.value = "";
+            }
+            applyEqConstraintFreqRowUiMode();
             let mb = cRoot.querySelector("input[name='eq-constraint-max-bands']");
             if (mb) {
                 mb.value = "0";
@@ -4330,12 +4617,14 @@ function addExtra() {
         if (eqBands >= extraEQBandsMax) {
             return;
         }
+        eqFiltersUserHasEdited = true;
         eqBands = Math.min(eqBands + 1, extraEQBandsMax);
         updateFilterElements();
         scheduleLiveEqSync();
     });
     // Remove last filter
     document.querySelector("div.extra-eq button.remove-filter").addEventListener("click", () => {
+        eqFiltersUserHasEdited = true;
         eqBands = Math.max(eqBands - 1, 1);
         updateFilterElements();
         applyEQ(); // May removed effective filter
@@ -4526,6 +4815,13 @@ function addExtra() {
                     }
                     commitEqMaxBandsFromInput({ writeBackDom: true });
                 });
+            } else if (inp.name === "eq-constraint-freq-min" || inp.name === "eq-constraint-freq-max") {
+                let onFreqConstraintInput = () => {
+                    tryEnterEqConstraintGraphicFreqModeFromTyping();
+                    onConstraintChange();
+                };
+                inp.addEventListener("input", onFreqConstraintInput);
+                inp.addEventListener("change", onFreqConstraintInput);
             } else {
                 inp.addEventListener("input", onConstraintChange);
                 inp.addEventListener("change", onConstraintChange);
@@ -4533,6 +4829,7 @@ function addExtra() {
         });
     };
     wireEqConstraintsPanel();
+    applyEqConstraintFreqRowUiMode();
     (() => {
         let eqConstraintsCard = document.querySelector("div.extra-eq .extra-eq-constraints");
         let eqConstraintsGear = document.querySelector("div.extra-eq button.extra-eq-constraints-gear");
@@ -5360,6 +5657,7 @@ function addExtra() {
     /** @returns {number} row index, or -1 if max bands */
     let addPeakingFilterFromHz = (hz, initialGain, options) => {
         options = options || {};
+        eqFiltersUserHasEdited = true;
         if (initialGain === undefined) {
             initialGain = 0;
         }
@@ -5667,6 +5965,7 @@ function addExtra() {
             let gain = st.axisLock === "gain" ? gainT : st.lockGainDb;
             st.dragging = true;
             st.liveFHz = freq;
+            eqFiltersUserHasEdited = true;
             filterFreqInput[st.filterIndex].value = String(freq);
             filterGainInput[st.filterIndex].value = String(gain);
             scheduleApplyEqDuringGraphDrag();
@@ -6688,6 +6987,10 @@ function addExtra() {
             return;
         }
         let t = e.target;
+        if (t && t.nodeType === 1 && typeof t.matches === "function"
+                && t.matches("input[name='eq-constraint-freq-min'], input[name='eq-constraint-freq-max'], input[name='eq-constraint-freq-graphic-list']")) {
+            return;
+        }
         if (t.closest && t.closest("div.extra-panel button") && !t.closest("button.play")) {
             if (t.closest && t.closest("button.music-add-remove") && musicFileLoaded) {
                 e.preventDefault();

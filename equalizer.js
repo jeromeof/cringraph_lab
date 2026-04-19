@@ -15,6 +15,8 @@ Equalizer = (function() {
         // https://github.com/jaakkopasanen/AutoEq/issues/240
         // https://github.com/jaakkopasanen/AutoEq/issues/411
         AutoEQRange: [20, 20000],
+        // null = use AutoEQRange min/max; else sorted Hz list for fixed-band (graphic) headphone EQ UI
+        EqGraphicBandFreqHz: null,
         // 0 = no cap (graphtool); >0 caps active bands / AutoEQ
         EqMaxBands: 0,
         // Which filter types are allowed in UI / strip (AutoEQ currently emits PK only)

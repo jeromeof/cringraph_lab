@@ -1500,8 +1500,58 @@ div.extra-panel > div.extra-eq .eq-constraint-range-row > .eq-constraint-range-m
     justify-content: flex-end;
 }
 
+/* Frequency row: min/max pair OR one wide graphic-band list */
+div.extra-panel > div.extra-eq .eq-constraint-freq-row .eq-constraint-freq-parametric-cells {
+    grid-column: 2 / -1;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 4px;
+    align-items: center;
+    min-width: 0;
+    width: 100%;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-freq-row .eq-constraint-freq-parametric-cells > span {
+    min-width: 0;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-freq-row .eq-constraint-freq-graphic-full {
+    grid-column: 2 / -1;
+    box-sizing: border-box;
+    display: none;
+    min-width: 0;
+    width: 100%;
+    /* Span cols 2-3 like parametric pair: same combined width as Min+Max on Gain/Q (row column-gap included). */
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-freq-row.eq-constraint-freq-row-graphic .eq-constraint-freq-parametric-cells {
+    display: none;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-freq-row.eq-constraint-freq-row-graphic .eq-constraint-freq-graphic-full {
+    display: block;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-freq-graphic-list-input {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 6px 10px;
+    background-color: var(--background-color-inputs);
+    border: 1px solid var(--background-color-contrast);
+    border-radius: 6px;
+    color: var(--font-color-inputs);
+    font-family: var(--font-secondary);
+    font-size: 11px;
+    line-height: 12px;
+    outline: none;
+    text-align: left;
+}
+
 div.extra-panel > div.extra-eq .eq-constraint-range-row > .eq-constraint-range-min-slot > input,
-div.extra-panel > div.extra-eq .eq-constraint-range-row > .eq-constraint-range-max-slot > input {
+div.extra-panel > div.extra-eq .eq-constraint-range-row > .eq-constraint-range-max-slot > input,
+div.extra-panel > div.extra-eq .eq-constraint-freq-row .eq-constraint-range-min-slot > input,
+div.extra-panel > div.extra-eq .eq-constraint-freq-row .eq-constraint-range-max-slot > input {
     width: 100%;
     max-width: 100%;
 }
@@ -1516,6 +1566,12 @@ div.extra-panel > div.extra-eq .eq-constraint-range-row-header > .eq-constraint-
 div.extra-panel > div.extra-eq .eq-constraint-top-control-cell .eq-constraint-max-bands-input {
     width: 100%;
     text-align: right;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-max-bands-input:disabled,
+div.extra-panel > div.extra-eq input[name="eq-constraint-q-min"]:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 div.extra-panel > div.extra-eq .eq-constraint-range-row-header {
@@ -1619,7 +1675,9 @@ div.extra-panel > div.extra-eq .eq-constraint-range-cell > input[name="eq-constr
 
 /* Constraint / filter values outside allowed ranges (1px stroke + matching text; no DOM rewrite) */
 div.extra-panel > div.extra-eq .eq-constraint-range-cell > input.eq-constraint-input-violation,
-div.extra-panel > div.extra-eq .eq-constraint-range-cell > input.eq-constraint-input-violation:focus {
+div.extra-panel > div.extra-eq .eq-constraint-range-cell > input.eq-constraint-input-violation:focus,
+div.extra-panel > div.extra-eq .eq-constraint-freq-graphic-list-input.eq-constraint-input-violation,
+div.extra-panel > div.extra-eq .eq-constraint-freq-graphic-list-input.eq-constraint-input-violation:focus {
     outline: 1px solid var(--eq-invalid-fg);
     outline-offset: 1px;
     color: var(--eq-invalid-fg);
