@@ -1316,6 +1316,7 @@ div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear {
     box-sizing: border-box;
     flex: 0 0 auto;
     order: 0;
+    position: relative;
     width: auto;
     min-width: 0;
     /* Match reset control height so flex align-items: center lines up with label + icon */
@@ -1350,6 +1351,33 @@ div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear-char {
     font-size: 22px;
     /* U+2699 often sits low in the em box; nudge up to match Reset label + circular icon */
     transform: translateY(-2px);
+}
+
+div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear-preset-badge {
+    position: absolute;
+    top: -4px;
+    right: -2px;
+    box-sizing: border-box;
+    min-width: 11px;
+    height: 11px;
+    padding: 0 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-primary);
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0;
+    border-radius: 2px;
+    background-color: var(--accent-color, accent-color);
+    color: var(--font-color-secondary);
+    pointer-events: none;
+    box-shadow: 0 0 0 1px var(--background-color-graph, rgba(255, 255, 255, 0.35));
+}
+
+div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear-preset-badge[hidden] {
+    display: none !important;
 }
 
 div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear:hover {
@@ -1408,6 +1436,15 @@ div.extra-panel > div.extra-eq .eq-constraint-preset-stack > select.eq-constrain
     margin: 0;
     opacity: 0;
     cursor: pointer;
+}
+
+div.extra-panel > div.extra-eq select.eq-constraint-preset-hit option.eq-constraint-preset-action-option {
+    font-size: 0.92em;
+    color: rgba(0, 0, 0, 0.55);
+}
+
+body.dark-mode div.extra-panel > div.extra-eq select.eq-constraint-preset-hit option.eq-constraint-preset-action-option {
+    color: rgba(255, 255, 255, 0.5);
 }
 
 div.extra-panel > div.extra-eq .eq-constraint-top-stack {
