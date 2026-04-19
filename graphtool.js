@@ -146,8 +146,8 @@ doc.html(`
               <div class="live-sound-band">
                 <span class="live-sound-band-label live-sound-source-title">Range</span>
                 <div class="live-sound-range-pair">
-                  <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20" aria-label="Minimum frequency"></input></span>
-                  <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000" aria-label="Maximum frequency"></input></span>
+                  <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20" aria-label="Minimum frequency" onclick="this.focus();this.select()"></input></span>
+                  <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000" aria-label="Maximum frequency" onclick="this.focus();this.select()"></input></span>
                 </div>
               </div>
               <div class="live-sound-sources">
@@ -263,7 +263,7 @@ doc.html(`
                         </label>
                       </div>
                       <div class="eq-constraint-top-control-cell eq-constraint-top-control-cell-max-filters">
-                        <input name="eq-constraint-max-bands" class="eq-constraint-max-bands-input" inputmode="numeric" type="number" min="0" max="20" step="1" value="0" aria-label="Maximum active filters (0 = no cap; extra rows stay visible but inactive)"></input>
+                        <input name="eq-constraint-max-bands" class="eq-constraint-max-bands-input" inputmode="numeric" type="number" min="0" max="20" step="1" value="0" aria-label="Maximum active filters (0 = no cap; extra rows stay visible but inactive)" onclick="this.focus();this.select()"></input>
                       </div>
                     </div>
                   </div>
@@ -275,18 +275,18 @@ doc.html(`
                     </div>
                     <div class="eq-constraint-range-row">
                       <span class="eq-constraint-range-label-slot eq-constraint-range-name">Frequency</span>
-                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-freq-min" inputmode="decimal" type="number" min="0" max="20000" step="1" value="0" aria-label="Minimum EQ frequency (0 = no limit)"></input></span>
-                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-hz"><input name="eq-constraint-freq-max" inputmode="decimal" type="number" min="0" max="20000" step="1" value="0" aria-label="Maximum EQ frequency (0 = no limit)"></input></span>
+                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-freq-min" inputmode="decimal" type="number" min="0" max="20000" step="1" value="0" aria-label="Minimum EQ frequency (0 = no limit)" onclick="this.focus();this.select()"></input></span>
+                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-hz"><input name="eq-constraint-freq-max" inputmode="decimal" type="number" min="0" max="20000" step="1" value="0" aria-label="Maximum EQ frequency (0 = no limit)" onclick="this.focus();this.select()"></input></span>
                     </div>
                     <div class="eq-constraint-range-row">
                       <span class="eq-constraint-range-label-slot eq-constraint-range-name">Gain</span>
-                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-gain-min" inputmode="decimal" type="number" min="-40" max="40" step="0.1" value="0" aria-label="Minimum gain dB (0 = no limit)"></input></span>
-                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-db"><input name="eq-constraint-gain-max" inputmode="decimal" type="number" min="-40" max="40" step="0.1" value="0" aria-label="Maximum gain dB (0 = no limit)"></input></span>
+                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-gain-min" inputmode="decimal" type="number" min="-40" max="40" step="0.1" value="0" aria-label="Minimum gain dB (0 = no limit)" onclick="this.focus();this.select()"></input></span>
+                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-db"><input name="eq-constraint-gain-max" inputmode="decimal" type="number" min="-40" max="40" step="0.1" value="0" aria-label="Maximum gain dB (0 = no limit)" onclick="this.focus();this.select()"></input></span>
                     </div>
                     <div class="eq-constraint-range-row">
                       <span class="eq-constraint-range-label-slot eq-constraint-range-name">Q</span>
-                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-q-min" inputmode="decimal" type="number" min="0" max="10" step="0.1" value="0" aria-label="Minimum Q (0 = no limit)"></input></span>
-                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell"><input name="eq-constraint-q-max" inputmode="decimal" type="number" min="0" max="10" step="0.1" value="0" aria-label="Maximum Q (0 = no limit)"></input></span>
+                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-q-min" inputmode="decimal" type="number" min="0" max="10" step="0.1" value="0" aria-label="Minimum Q (0 = no limit)" onclick="this.focus();this.select()"></input></span>
+                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell"><input name="eq-constraint-q-max" inputmode="decimal" type="number" min="0" max="10" step="0.1" value="0" aria-label="Maximum Q (0 = no limit)" onclick="this.focus();this.select()"></input></span>
                     </div>
                   </div>
                 </div>
@@ -3159,8 +3159,6 @@ function addExtra() {
             }
             if (i === eqFilterSelectedRow) {
                 el.classList.add("eq-filter-row-selected");
-            } else {
-                el.classList.add("eq-filter-row-dimmed");
             }
         });
     };
@@ -3311,6 +3309,21 @@ function addExtra() {
         }
         return [lo, hi];
     };
+    /* Mid-edit numeric strings (e.g. "0." before "1") — don’t rewrite the field or snap config from them. */
+    let eqConstraintNumericInputIncomplete = (raw) => {
+        if (raw == null) {
+            return false;
+        }
+        let s = String(raw);
+        if (/[eE]$/.test(s)) {
+            return true;
+        }
+        if (/\.$/.test(s)) {
+            return true;
+        }
+        let t = s.trim();
+        return t === "-" || t === "+" || t === "-." || t === ".";
+    };
     let getEffectiveEqMaxBands = () => {
         let n = Math.floor(Number(Equalizer.config.EqMaxBands));
         if (!Number.isFinite(n) || n <= 0) {
@@ -3376,14 +3389,11 @@ function addExtra() {
                         || (v === "HSQ" && allowed.HSQ);
                     opt.disabled = !ok;
                 });
-                if (!allowed[si.value]) {
-                    si.value = firstAllowedEqFilterType();
-                }
             }
         }
     };
     const EQ_CONSTRAINT_Q_FINE_MAX = 0.3;
-    let enforceEqConstraintsOnFilterInputs = () => {
+    let refreshEqFilterConstraintViolationStyles = () => {
         if (!filterFreqInput || !filterFreqInput.length) {
             return;
         }
@@ -3392,31 +3402,38 @@ function addExtra() {
         let [gLo, gHi] = getEqConstraintGainLoHi();
         let allowed = Equalizer.config.EqAllowedTypes || { PK: true, LSQ: true, HSQ: true };
         let maxA = getEffectiveEqMaxBands();
+        let vClass = "eq-filter-value-constraint-violation";
         for (let i = 0; i < eqBands; i++) {
+            let fi = filterFreqInput[i];
+            let qi = filterQInput[i];
+            let gi = filterGainInput[i];
+            let si = filterTypeSelect[i];
+            [fi, qi, gi, si].forEach((el) => {
+                if (el) {
+                    el.classList.remove(vClass);
+                }
+            });
             if (i >= maxA) {
                 continue;
             }
-            let f = parseInt(filterFreqInput[i].value, 10) || 0;
-            let q = parseFloat(filterQInput[i].value) || 0;
-            let g = parseFloat(filterGainInput[i].value) || 0;
+            let f = parseInt(fi.value, 10) || 0;
+            let q = parseFloat(qi.value) || 0;
+            let g = parseFloat(gi.value) || 0;
             let emptyish = f === 0 && q === 0 && g === 0;
             if (!emptyish) {
-                if (f !== 0) {
-                    filterFreqInput[i].value = String(Math.min(fHi, Math.max(fLo, f)));
+                if (f !== 0 && (f < fLo || f > fHi)) {
+                    fi.classList.add(vClass);
                 }
-                if (q !== 0) {
-                    let qc = Math.min(qHi, Math.max(qLo, q));
-                    filterQInput[i].value = (qc <= EQ_CONSTRAINT_Q_FINE_MAX + 1e-9
-                        ? qc.toFixed(2) : String(Math.round(qc * 10) / 10));
+                if (q !== 0 && (q < qLo || q > qHi)) {
+                    qi.classList.add(vClass);
                 }
-                if (g !== 0 || f !== 0 || q !== 0) {
-                    let gc = Math.min(gHi, Math.max(gLo, g));
-                    filterGainInput[i].value = String(Math.round(gc * 10) / 10);
+                if ((g !== 0 || f !== 0 || q !== 0) && (g < gLo || g > gHi)) {
+                    gi.classList.add(vClass);
                 }
             }
-            let sel = filterTypeSelect[i].value;
+            let sel = si.value;
             if (!allowed[sel]) {
-                filterTypeSelect[i].value = firstAllowedEqFilterType();
+                si.classList.add(vClass);
             }
         }
     };
@@ -3452,6 +3469,7 @@ function addExtra() {
         }
         updateEqFilterRowSelectionStyles();
         applyEqConstraintAttributesToFilterInputs();
+        refreshEqFilterConstraintViolationStyles();
         refreshEqFilterInactiveStateForMaxBands();
     };
     let elemToFilters = (includeAll) => {
@@ -3474,6 +3492,28 @@ function addExtra() {
         }
         return filters;
     };
+    /* Clamp to Equalizer.config ranges for audio / export only; never mutates DOM. */
+    let elemToFiltersClampedForEqualizerApply = (includeAll) => {
+        let raw = elemToFilters(includeAll);
+        let [fLo, fHi] = getEqConstraintFreqLoHi();
+        let [qLo, qHi] = getEqConstraintQLoHi();
+        let [gLo, gHi] = getEqConstraintGainLoHi();
+        let allowed = Equalizer.config.EqAllowedTypes || { PK: true, LSQ: true, HSQ: true };
+        return raw.map((f) => {
+            let type = allowed[f.type] ? f.type : firstAllowedEqFilterType();
+            let freq = f.freq ? Math.min(fHi, Math.max(fLo, f.freq)) : 0;
+            let q = f.q ? (() => {
+                let qc = Math.min(qHi, Math.max(qLo, f.q));
+                return qc <= EQ_CONSTRAINT_Q_FINE_MAX + 1e-9
+                    ? Math.round(qc * 100) / 100
+                    : Math.round(qc * 10) / 10;
+            })() : 0;
+            let gain = (f.gain !== 0 || f.freq || f.q)
+                ? Math.round(Math.min(gHi, Math.max(gLo, f.gain)) * 10) / 10
+                : 0;
+            return { ...f, type, freq, q, gain };
+        });
+    };
     let filtersToElem = (filters) => {
         // Set filters to ui
         let filtersCopy = filters.map(f => f);
@@ -3493,11 +3533,58 @@ function addExtra() {
             filterGainInput[i].value = f.gain;
         });
         applyEqConstraintAttributesToFilterInputs();
+        refreshEqFilterConstraintViolationStyles();
         refreshEqFilterInactiveStateForMaxBands();
     };
-    let syncEqConstraintDomToEqualizerConfig = (opts) => {
-        opts = opts || {};
-        let writeBack = opts.writeBackDom === true;
+    let refreshEqConstraintDomValidityClasses = () => {
+        let vClass = "eq-constraint-input-violation";
+        let freqMinEl = document.querySelector("div.extra-eq input[name='eq-constraint-freq-min']");
+        let freqMaxEl = document.querySelector("div.extra-eq input[name='eq-constraint-freq-max']");
+        let qMinEl = document.querySelector("div.extra-eq input[name='eq-constraint-q-min']");
+        let qMaxEl = document.querySelector("div.extra-eq input[name='eq-constraint-q-max']");
+        let gainMinEl = document.querySelector("div.extra-eq input[name='eq-constraint-gain-min']");
+        let gainMaxEl = document.querySelector("div.extra-eq input[name='eq-constraint-gain-max']");
+        [freqMinEl, freqMaxEl, qMinEl, qMaxEl, gainMinEl, gainMaxEl].forEach((el) => {
+            if (el) {
+                el.classList.remove(vClass);
+            }
+        });
+        if (!freqMinEl || !freqMaxEl || !qMinEl || !qMaxEl || !gainMinEl || !gainMaxEl) {
+            return;
+        }
+        let markPair = (minEl, maxEl, loAbs, hiAbs, intMode) => {
+            let minRaw = (minEl.value || "").trim();
+            let maxRaw = (maxEl.value || "").trim();
+            let minInc = eqConstraintNumericInputIncomplete(minEl.value);
+            let maxInc = eqConstraintNumericInputIncomplete(maxEl.value);
+            let minUnl = minRaw === "" || minRaw === "0";
+            let maxUnl = maxRaw === "" || maxRaw === "0";
+            let parseLim = (raw, asInt) => {
+                if (raw === "" || raw === "0") {
+                    return null;
+                }
+                let v = asInt ? parseInt(raw, 10) : parseFloat(raw);
+                return Number.isFinite(v) ? v : null;
+            };
+            let nMin = minInc ? null : parseLim(minRaw, intMode);
+            let nMax = maxInc ? null : parseLim(maxRaw, intMode);
+            if (!minInc && !minUnl && nMin !== null && (nMin < loAbs || nMin > hiAbs)) {
+                minEl.classList.add(vClass);
+            }
+            if (!maxInc && !maxUnl && nMax !== null && (nMax < loAbs || nMax > hiAbs)) {
+                maxEl.classList.add(vClass);
+            }
+            if (!minInc && !maxInc && !minUnl && !maxUnl && nMin !== null && nMax !== null
+                    && nMin > nMax) {
+                minEl.classList.add(vClass);
+                maxEl.classList.add(vClass);
+            }
+        };
+        markPair(freqMinEl, freqMaxEl, 20, 20000, true);
+        markPair(qMinEl, qMaxEl, 0.1, 10, false);
+        markPair(gainMinEl, gainMaxEl, -40, 40, false);
+    };
+    let syncEqConstraintDomToEqualizerConfig = () => {
         let freqMinEl = document.querySelector("div.extra-eq input[name='eq-constraint-freq-min']");
         let freqMaxEl = document.querySelector("div.extra-eq input[name='eq-constraint-freq-max']");
         let qMinEl = document.querySelector("div.extra-eq input[name='eq-constraint-q-min']");
@@ -3511,53 +3598,89 @@ function addExtra() {
                 || !pkEl || !lsqEl || !hsqEl) {
             return;
         }
+        let prevA = Equalizer.config.AutoEQRange ? Equalizer.config.AutoEQRange.slice() : [20, 20000];
+        let prevQ = Equalizer.config.OptimizeQRange ? Equalizer.config.OptimizeQRange.slice() : [0.1, 10];
+        let prevG = Equalizer.config.OptimizeGainRange ? Equalizer.config.OptimizeGainRange.slice() : [-40, 40];
         let fMinRaw = (freqMinEl.value || "").trim();
-        let fMinParsed = parseInt(fMinRaw, 10);
-        let fMinU = fMinRaw === "" || !Number.isFinite(fMinParsed) || fMinParsed === 0;
-        let fMin = fMinU ? 20 : Math.min(20000, Math.max(20, fMinParsed));
         let fMaxRaw = (freqMaxEl.value || "").trim();
-        let fMaxParsed = parseInt(fMaxRaw, 10);
-        let fMaxU = fMaxRaw === "" || !Number.isFinite(fMaxParsed) || fMaxParsed === 0;
-        let fMax = fMaxU ? 20000 : Math.min(20000, Math.max(20, fMaxParsed));
+        let fMinInc = eqConstraintNumericInputIncomplete(freqMinEl.value);
+        let fMaxInc = eqConstraintNumericInputIncomplete(freqMaxEl.value);
+        let fMin;
+        let fMax;
+        if (fMinInc) {
+            fMin = prevA[0];
+        } else if (fMinRaw === "" || fMinRaw === "0") {
+            fMin = 20;
+        } else {
+            let p = parseInt(fMinRaw, 10);
+            fMin = Number.isFinite(p) ? Math.min(20000, Math.max(20, p)) : prevA[0];
+        }
+        if (fMaxInc) {
+            fMax = prevA[1];
+        } else if (fMaxRaw === "" || fMaxRaw === "0") {
+            fMax = 20000;
+        } else {
+            let p = parseInt(fMaxRaw, 10);
+            fMax = Number.isFinite(p) ? Math.min(20000, Math.max(20, p)) : prevA[1];
+        }
         if (fMin > fMax) {
             let t = fMin;
             fMin = fMax;
             fMax = t;
-            let tu = fMinU;
-            fMinU = fMaxU;
-            fMaxU = tu;
         }
         let qMinRaw = (qMinEl.value || "").trim();
-        let qMinParsed = parseFloat(qMinRaw);
-        let qMinU = qMinRaw === "" || !Number.isFinite(qMinParsed) || qMinParsed === 0;
-        let qMin = qMinU ? 0.1 : Math.min(10, Math.max(0.1, qMinParsed));
         let qMaxRaw = (qMaxEl.value || "").trim();
-        let qMaxParsed = parseFloat(qMaxRaw);
-        let qMaxU = qMaxRaw === "" || !Number.isFinite(qMaxParsed) || qMaxParsed === 0;
-        let qMax = qMaxU ? 10 : Math.min(10, Math.max(0.1, qMaxParsed));
+        let qMinInc = eqConstraintNumericInputIncomplete(qMinEl.value);
+        let qMaxInc = eqConstraintNumericInputIncomplete(qMaxEl.value);
+        let qMin;
+        let qMax;
+        if (qMinInc) {
+            qMin = prevQ[0];
+        } else if (qMinRaw === "" || qMinRaw === "0") {
+            qMin = 0.1;
+        } else {
+            let p = parseFloat(qMinRaw);
+            qMin = Number.isFinite(p) ? Math.min(10, Math.max(0.1, p)) : prevQ[0];
+        }
+        if (qMaxInc) {
+            qMax = prevQ[1];
+        } else if (qMaxRaw === "" || qMaxRaw === "0") {
+            qMax = 10;
+        } else {
+            let p = parseFloat(qMaxRaw);
+            qMax = Number.isFinite(p) ? Math.min(10, Math.max(0.1, p)) : prevQ[1];
+        }
         if (qMin > qMax) {
             let t = qMin;
             qMin = qMax;
             qMax = t;
-            let tu = qMinU;
-            qMinU = qMaxU;
-            qMaxU = tu;
         }
         let gMinRaw = (gainMinEl.value || "").trim();
-        let gMinParsed = parseFloat(gMinRaw);
-        let gMinU = gMinRaw === "" || !Number.isFinite(gMinParsed) || gMinParsed === 0;
-        let gMin = gMinU ? -40 : Math.min(40, Math.max(-40, gMinParsed));
         let gMaxRaw = (gainMaxEl.value || "").trim();
-        let gMaxParsed = parseFloat(gMaxRaw);
-        let gMaxU = gMaxRaw === "" || !Number.isFinite(gMaxParsed) || gMaxParsed === 0;
-        let gMax = gMaxU ? 40 : Math.min(40, Math.max(-40, gMaxParsed));
+        let gMinInc = eqConstraintNumericInputIncomplete(gainMinEl.value);
+        let gMaxInc = eqConstraintNumericInputIncomplete(gainMaxEl.value);
+        let gMin;
+        let gMax;
+        if (gMinInc) {
+            gMin = prevG[0];
+        } else if (gMinRaw === "" || gMinRaw === "0") {
+            gMin = -40;
+        } else {
+            let p = parseFloat(gMinRaw);
+            gMin = Number.isFinite(p) ? Math.min(40, Math.max(-40, p)) : prevG[0];
+        }
+        if (gMaxInc) {
+            gMax = prevG[1];
+        } else if (gMaxRaw === "" || gMaxRaw === "0") {
+            gMax = 40;
+        } else {
+            let p = parseFloat(gMaxRaw);
+            gMax = Number.isFinite(p) ? Math.min(40, Math.max(-40, p)) : prevG[1];
+        }
         if (gMin > gMax) {
             let t = gMin;
             gMin = gMax;
             gMax = t;
-            let tu = gMinU;
-            gMinU = gMaxU;
-            gMaxU = tu;
         }
         let allowPk = pkEl.checked;
         let allowLsq = lsqEl.checked;
@@ -3570,15 +3693,9 @@ function addExtra() {
         Equalizer.config.OptimizeQRange = [qMin, qMax];
         Equalizer.config.OptimizeGainRange = [gMin, gMax];
         Equalizer.config.EqAllowedTypes = { PK: allowPk, LSQ: allowLsq, HSQ: allowHsq };
-        if (writeBack) {
-            freqMinEl.value = fMinU ? "0" : String(fMin);
-            freqMaxEl.value = fMaxU ? "0" : String(fMax);
-            qMinEl.value = qMinU ? "0" : String(qMin);
-            qMaxEl.value = qMaxU ? "0" : String(qMax);
-            gainMinEl.value = gMinU ? "0" : String(gMin);
-            gainMaxEl.value = gMaxU ? "0" : String(gMax);
-        }
         applyEqConstraintAttributesToFilterInputs();
+        refreshEqConstraintDomValidityClasses();
+        refreshEqFilterConstraintViolationStyles();
         refreshEqFilterInactiveStateForMaxBands();
     };
     let commitEqMaxBandsFromInput = (opts) => {
@@ -3939,11 +4056,11 @@ function addExtra() {
     };
     let applyEQExec = (execOpt) => {
         execOpt = execOpt || {};
-        enforceEqConstraintsOnFilterInputs();
+        refreshEqFilterConstraintViolationStyles();
         // Create and show phone with eq applied
         let activeElem = document.activeElement;
         let phoneSelected = eqPhoneSelect.value;
-        let filters = elemToFilters();
+        let filters = elemToFiltersClampedForEqualizerApply();
         if (filters.length && !phoneSelected) {
             let firstPhone = eqPhoneSelect.querySelectorAll("option")[1];
             if (firstPhone) {
@@ -4188,7 +4305,7 @@ function addExtra() {
         if (hsqEl) {
             hsqEl.checked = true;
         }
-        syncEqConstraintDomToEqualizerConfig({ writeBackDom: true });
+        syncEqConstraintDomToEqualizerConfig();
         commitEqMaxBandsFromInput({ writeBackDom: true });
     };
     document.querySelector("div.extra-eq button.extra-eq-reset-btn").addEventListener("click", () => {
@@ -4311,7 +4428,7 @@ function addExtra() {
         let phoneSelected = eqPhoneSelect.value;
         let phoneObj = phoneSelected && activePhones.filter(
             p => p.fullName == phoneSelected && p.eq)[0];
-        let filters = elemToFilters(true);
+        let filters = elemToFiltersClampedForEqualizerApply(true);
         if (!phoneObj || !filters.length) {
             alert("Please select model and add atleast one filter before export.");
             return;
@@ -4346,7 +4463,7 @@ function addExtra() {
         let phoneSelected = eqPhoneSelect.value;
         let phoneObj = phoneSelected && activePhones.filter(
             p => p.fullName == phoneSelected && p.eq)[0] || { fullName: "Unnamed" };
-        let filters = elemToFilters();
+        let filters = elemToFiltersClampedForEqualizerApply();
         if (!filters.length) {
             alert("Please add atleast one filter before export.");
             return;
@@ -4368,7 +4485,7 @@ function addExtra() {
             return;
         }
         let onConstraintChange = () => {
-            syncEqConstraintDomToEqualizerConfig({ writeBackDom: true });
+            syncEqConstraintDomToEqualizerConfig();
             cancelDeferredApplyEQ();
             applyEQExec();
             scheduleLiveEqSync();
@@ -4417,12 +4534,12 @@ function addExtra() {
             });
         }
     })();
-    syncEqConstraintDomToEqualizerConfig({ writeBackDom: true });
+    syncEqConstraintDomToEqualizerConfig();
     syncEqMaxBandsFieldFromConfig();
     document.querySelector("div.extra-eq button.autoeq").addEventListener("click", () => {
         // Generate filters automatically
         commitEqMaxBandsFromInput({ writeBackDom: true });
-        syncEqConstraintDomToEqualizerConfig({ writeBackDom: true });
+        syncEqConstraintDomToEqualizerConfig();
         if (!Equalizer.config.EqAllowedTypes.PK) {
             alert("AutoEQ uses peaking (PK) bands. Enable Peak under Constraints.");
             return;
@@ -4446,7 +4563,7 @@ function addExtra() {
         autoEQOverlay.style.display = "block";
         setTimeout(() => {
             commitEqMaxBandsFromInput({ writeBackDom: true });
-            syncEqConstraintDomToEqualizerConfig({ writeBackDom: true });
+            syncEqConstraintDomToEqualizerConfig();
             let phoneCHs = (phoneObj.rawChannels.filter(c => c)
                 .map(ch => ch.map(([f, v]) => [f, v + phoneObj.norm])));
             let phoneCH = (phoneCHs.length > 1) ? avgCurves(phoneCHs) : phoneCHs[0];

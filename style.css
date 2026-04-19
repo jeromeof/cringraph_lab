@@ -337,27 +337,16 @@ svg#fr-graph g.eq-filter-markers circle.eq-filter-marker {
     transition: opacity 0.15s ease;
 }
 
-/* EQ panel (classic layout): selected vs dimmed filter rows */
+/* EQ panel (classic layout): selected band highlights type/checkbox column only */
 div.extra-eq div.filters > div.filter {
     border-radius: 6px;
     transition: opacity 0.15s ease, filter 0.15s ease;
 }
 
-div.extra-eq div.filters > div.filter.eq-filter-row-selected {
-    opacity: 1;
-    filter: none;
-}
-
-div.extra-eq div.filters > div.filter.eq-filter-row-dimmed {
-    opacity: 0.42;
-    filter: saturate(0.65);
-}
-
-div.extra-eq div.filters > div.filter > span > input[name="freq"]:focus:hover,
-div.extra-eq div.filters > div.filter > span > input[name="gain"]:focus:hover,
-div.extra-eq div.filters > div.filter > span > input[name="q"]:focus:hover {
-    outline: 2px solid var(--background-color-contrast-more, #5a5348);
-    outline-offset: 1px;
+div.extra-eq div.filters > div.filter.eq-filter-row-selected > span:first-child {
+    background-color: var(--background-color-contrast, #d8d4c8);
+    border-radius: 6px;
+    transition: background-color 0.15s ease;
 }
 
 /* Hover fill is set in JS to match stroke (trace color). */

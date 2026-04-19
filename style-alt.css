@@ -1077,6 +1077,8 @@ div.extra-panel {
     /* Inset so thumb–edge gaps match top/bottom (thumb is vertically centered in the track) */
     --eq-switch-gap: calc((var(--eq-switch-track-h) - 2 * var(--eq-switch-border) - var(--eq-switch-thumb)) / 2);
     --eq-switch-travel: calc(var(--eq-switch-track-w) - 2 * var(--eq-switch-border) - 2 * var(--eq-switch-gap) - var(--eq-switch-thumb));
+    /* Out-of-range constraint / filter field emphasis */
+    --eq-invalid-fg: #c53030;
 }
 
 div.extra-panel > div {
@@ -1610,13 +1612,21 @@ div.extra-panel > div.extra-eq .eq-constraint-range-cell > input[name="eq-constr
     padding-right: 2.75em;
 }
 
-div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="freq"]:focus:hover,
-div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="gain"]:focus:hover,
-div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="q"]:focus:hover,
-div.extra-panel > div.extra-eq .eq-constraint-range-cell > input:focus:hover,
-div.extra-panel > div.extra-eq .eq-constraint-max-bands-input:focus:hover {
-    outline: 2px solid var(--background-color-contrast-more);
+/* Constraint / filter values outside allowed ranges (1px stroke + matching text; no DOM rewrite) */
+div.extra-panel > div.extra-eq .eq-constraint-range-cell > input.eq-constraint-input-violation,
+div.extra-panel > div.extra-eq .eq-constraint-range-cell > input.eq-constraint-input-violation:focus {
+    outline: 1px solid var(--eq-invalid-fg);
     outline-offset: 1px;
+    color: var(--eq-invalid-fg);
+}
+
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > input.eq-filter-value-constraint-violation,
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > input.eq-filter-value-constraint-violation:focus,
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > select.eq-filter-value-constraint-violation,
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > select.eq-filter-value-constraint-violation:focus {
+    outline: 1px solid var(--eq-invalid-fg);
+    outline-offset: 1px;
+    color: var(--eq-invalid-fg);
 }
 
 div.extra-panel > div.extra-eq > div.filters > div.filter > span:has(input[name="freq"]),
@@ -1713,15 +1723,11 @@ div.filter {
     transition: opacity 0.15s ease, filter 0.15s ease;
 }
 
-div.extra-eq div.filters > div.filter.eq-filter-row-selected {
-    opacity: 1;
-    filter: none;
-}
-
-div.extra-eq div.filters > div.filter.eq-filter-row-dimmed {
-    opacity: 0.42;
-    filter: saturate(0.65);
-    pointer-events: auto;
+/* Selected band: tint the type/checkbox column only (no dimming of other rows) */
+div.extra-panel > div.extra-eq > div.filters > div.filter.eq-filter-row-selected > span:first-child {
+    background-color: var(--background-color-contrast);
+    border-radius: 6px;
+    transition: background-color 0.15s ease;
 }
 
 div.extra-eq-overlay {
