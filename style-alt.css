@@ -1166,6 +1166,7 @@ div.extra-panel select {
     box-sizing: border-box;
     -webkit-appearance: none;
     -moz-appearance: none;
+    appearance: none;
 }
 
 div.extra-panel select {
@@ -1181,7 +1182,8 @@ div.extra-panel select {
   background-repeat: no-repeat;
 }
 
-div.extra-panel select[name="phone"] {
+div.extra-panel select[name="phone"],
+div.extra-panel .eq-constraint-preset-stack > select {
   background-position:
     calc(100% - 14px) calc(1em + 3px),
     calc(100% - 9px) calc(1em + 3px);
@@ -1224,7 +1226,6 @@ div.extra-panel .extra-eq-reset-row {
     display: inline-flex;
     flex-direction: row;
     align-items: center;
-    gap: 2px;
     margin: 0;
     padding: 0;
     font-family: var(--font-primary);
@@ -1237,37 +1238,30 @@ div.extra-panel .extra-eq-reset-row {
     -webkit-user-select: none;
 }
 
-div.extra-panel .extra-eq-reset-row label.live-sound-eq-toggle-text {
-    cursor: pointer;
+div.extra-panel .extra-eq-reset-row .extra-eq-reset-label {
     margin: 0;
-}
-
-div.extra-panel .extra-eq-reset-row label.live-sound-eq-toggle-text:hover {
-    color: var(--accent-color);
 }
 
 div.extra-panel .extra-eq-reset-btn {
     box-sizing: border-box;
     flex-shrink: 0;
-    width: 18px;
-    height: 18px;
-    padding: 0;
     margin: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    padding: 0;
     border: none;
-    border-radius: 50%;
+    border-radius: 4px;
     background: transparent;
-    color: var(--background-color-contrast-more);
+    color: inherit;
+    font: inherit;
     cursor: pointer;
     transition: color 200ms ease;
     -webkit-appearance: none;
     appearance: none;
-}
-
-div.extra-panel .extra-eq-reset-btn:hover {
-    color: var(--accent-color);
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 18px;
 }
 
 div.extra-panel .extra-eq-reset-btn:focus {
@@ -1287,6 +1281,7 @@ div.extra-panel .extra-eq-reset-icon {
 
 div.extra-panel > div.extra-eq > div.select-eq-phone,
 div.extra-panel > div.extra-eq > div.filters,
+div.extra-panel > div.extra-eq .eq-constraint-preset-row,
 div.extra-panel div.settings-row {
     margin: 0 0 0.5em 0;
 }
@@ -1381,7 +1376,39 @@ div.extra-panel > div.extra-eq .extra-eq-constraints-inner {
     background-color: var(--background-color-graph);
 }
 
-/* Constraints top: heading row + control row; type toggles use same 54×24 switch as Apply EQ */
+/* Constraint preset row: width only; bottom margin matches Choose EQ model via .select-eq-phone group */
+div.extra-panel > div.extra-eq .eq-constraint-preset-row {
+    width: 100%;
+    min-width: 0;
+}
+
+/* Stacked selects: visible copy (Constraints: …) + invisible hit target; same shell as Choose EQ model */
+div.extra-panel > div.extra-eq .eq-constraint-preset-stack {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-preset-stack > select.eq-constraint-preset-display {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+    text-align: left;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-preset-stack > select.eq-constraint-preset-hit {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 2;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
 div.extra-panel > div.extra-eq .eq-constraint-top-stack {
     display: flex;
     flex-direction: column;
@@ -1597,11 +1624,11 @@ div.extra-panel > div.extra-eq .eq-constraint-range-cell {
     min-width: 0;
 }
 
-div.extra-panel > div.extra-eq > div.select-eq-phone > select {
+div.extra-panel > div.extra-eq > div.select-eq-phone > select,
+div.extra-panel > div.extra-eq .eq-constraint-preset-stack > select {
     box-sizing: border-box;
     width: 100%;
-    padding: 10px;
-    
+    padding: 10px 22px 10px 10px;
     border: 1px solid var(--background-color-contrast-more);
     border-radius: 6px;
 }

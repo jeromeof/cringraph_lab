@@ -135,8 +135,8 @@ doc.html(`
                 <h5 class="extra-eq-panel-title">Parametric Equalizer</h5>
                 <div class="extra-eq-head-trailing">
                   <div class="extra-eq-reset-row">
-                    <label class="live-sound-eq-toggle-text" for="extra-eq-reset-btn">Reset</label>
                     <button type="button" id="extra-eq-reset-btn" class="extra-eq-reset-btn" aria-label="Reset all EQ bands and parametric EQ settings to defaults">
+                      <span class="extra-eq-reset-label">Reset</span>
                       <svg class="extra-eq-reset-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
                         <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0l6-6M3 9h12a6 6 0 0 1 6 6v0a6 6 0 0 1-6 6H9"/>
                       </svg>
@@ -148,6 +148,12 @@ doc.html(`
               <div class="extra-eq-constraints">
                 <div id="extra-eq-constraints-body" class="extra-eq-constraints-body" aria-hidden="true">
                 <div class="extra-eq-constraints-inner">
+                  <div id="eq-constraint-preset-row" class="eq-constraint-preset-row" hidden>
+                    <div class="select-eq-phone eq-constraint-preset-stack">
+                      <select id="eq-constraint-preset-display" class="eq-constraint-preset-display" tabindex="-1" aria-hidden="true"></select>
+                      <select id="eq-constraint-preset-input" class="eq-constraint-preset-hit" name="eq-constraint-preset" aria-label="Constraint presets" title="Apply a constraint configuration from eq-constraint-presets.json"></select>
+                    </div>
+                  </div>
                   <div class="eq-constraint-top-stack" role="group" aria-label="Filter count and allowed types">
                     <div class="eq-constraint-top-headings">
                       <span class="eq-constraint-col-heading" id="eq-constraint-heading-pk">Peak</span>
@@ -4778,6 +4784,434 @@ function addExtra() {
         exportElem.click();
     });
     // AutoEQ (uses EQ constraints panel for range, Q/gain limits, max bands, and PK/LSQ/HSQ flags)
+    let eqConstraintPresetsList = [];
+    let normalizePresetGraphicBandsFromPreset = (arr) => {
+        if (!Array.isArray(arr)) {
+            return null;
+        }
+        let seen = new Set();
+        let out = [];
+        for (let x of arr) {
+            let v = Math.round(Number(x));
+            if (!Number.isFinite(v) || v < 20 || v > 20000) {
+                continue;
+            }
+            if (!seen.has(v)) {
+                seen.add(v);
+                out.push(v);
+            }
+        }
+        out.sort((a, b) => a - b);
+        return out.length >= 2 ? out : null;
+    };
+    let EQ_CONSTRAINT_PRESET_VALUE_CUSTOM = "__custom__";
+    let EQ_CONSTRAINT_PRESET_DIVIDER_PREFIX = "__divider__";
+    let isEqConstraintPresetDividerValue = (v) => {
+        return v != null && String(v).indexOf(EQ_CONSTRAINT_PRESET_DIVIDER_PREFIX) === 0;
+    };
+    let isEqConstraintPresetJsonEntry = (p) => {
+        if (!p || typeof p !== "object") {
+            return false;
+        }
+        let k = String(p.kind || "").toLowerCase();
+        if (k === "heading" || k === "section" || k === "divider") {
+            return false;
+        }
+        return true;
+    };
+    let findEqConstraintPresetByOptionValue = (v) => {
+        if (v === "" || v == null || v === EQ_CONSTRAINT_PRESET_VALUE_CUSTOM
+                || isEqConstraintPresetDividerValue(v)) {
+            return null;
+        }
+        let s = String(v);
+        let byId = eqConstraintPresetsList.filter((p) => p && p.id != null && String(p.id) === s)[0];
+        if (byId) {
+            return byId;
+        }
+        let ix = parseInt(s, 10);
+        if (Number.isFinite(ix) && ix >= 0 && ix < eqConstraintPresetsList.length) {
+            return eqConstraintPresetsList[ix];
+        }
+        return null;
+    };
+    let zeroEqFilterBandRowInputsIfNotUserEdited = () => {
+        if (eqFiltersUserHasEdited || !filterFreqInput || !filterFreqInput.length) {
+            return;
+        }
+        for (let i = 0; i < eqBands; i++) {
+            filterEnabledInput[i].checked = true;
+            filterTypeSelect[i].value = "PK";
+            filterFreqInput[i].value = "0";
+            filterGainInput[i].value = "0";
+            filterQInput[i].value = "0";
+        }
+        applyEqConstraintAttributesToFilterInputs();
+        refreshEqFilterConstraintViolationStyles();
+    };
+    let applyEqConstraintPreset = (preset) => {
+        if (!preset || typeof preset !== "object") {
+            return;
+        }
+        zeroEqFilterBandRowInputsIfNotUserEdited();
+        let cRoot = document.querySelector("div.extra-eq .extra-eq-constraints-inner");
+        if (!cRoot) {
+            return;
+        }
+        let pkEl = cRoot.querySelector("input.eq-constraint-type-pk");
+        let lsqEl = cRoot.querySelector("input.eq-constraint-type-lsq");
+        let hsqEl = cRoot.querySelector("input.eq-constraint-type-hsq");
+        let mb = cRoot.querySelector("input[name='eq-constraint-max-bands']");
+        let fMin = cRoot.querySelector("input[name='eq-constraint-freq-min']");
+        let fMax = cRoot.querySelector("input[name='eq-constraint-freq-max']");
+        let gList = cRoot.querySelector("input[name='eq-constraint-freq-graphic-list']");
+        let gMin = cRoot.querySelector("input[name='eq-constraint-gain-min']");
+        let gMax = cRoot.querySelector("input[name='eq-constraint-gain-max']");
+        let qMinEl = cRoot.querySelector("input[name='eq-constraint-q-min']");
+        let qMaxEl = cRoot.querySelector("input[name='eq-constraint-q-max']");
+        if (!pkEl || !lsqEl || !hsqEl || !mb || !fMin || !fMax || !gMin || !gMax || !qMinEl || !qMaxEl) {
+            return;
+        }
+        let strOrNum = (val, def) => {
+            if (val === undefined || val === null) {
+                return def;
+            }
+            return String(val);
+        };
+        pkEl.checked = preset.allowPk !== false;
+        lsqEl.checked = preset.allowLsq !== false;
+        hsqEl.checked = preset.allowHsq !== false;
+        if (!pkEl.checked && !lsqEl.checked && !hsqEl.checked) {
+            pkEl.checked = true;
+        }
+        let bands = normalizePresetGraphicBandsFromPreset(preset.graphicBandHz);
+        if ((!bands || bands.length < 2) && typeof preset.freqGraphicList === "string" && preset.freqGraphicList.trim()) {
+            let parsed = parseEqConstraintGraphicFreqList(preset.freqGraphicList);
+            bands = parsed.length >= 2 ? parsed : null;
+        }
+        if (bands && bands.length >= 2) {
+            Equalizer.config.EqGraphicBandFreqHz = bands.slice();
+            Equalizer.config.AutoEQRange = [bands[0], bands[bands.length - 1]];
+            fMin.value = "0";
+            fMax.value = "0";
+            if (gList) {
+                gList.value = bands.join(", ");
+            }
+            applyEqConstraintFreqRowUiMode();
+            mb.value = String(Math.min(bands.length, extraEQBandsMax));
+        } else {
+            clearEqConstraintGraphicFreqMode();
+            fMin.value = strOrNum(preset.freqMin, "0");
+            fMax.value = strOrNum(preset.freqMax, "0");
+            let maxB = Math.floor(Number(preset.maxBands));
+            if (!Number.isFinite(maxB) || maxB < 0) {
+                maxB = 0;
+            }
+            mb.value = maxB <= 0 ? "0" : String(Math.min(maxB, extraEQBandsMax));
+        }
+        gMin.value = strOrNum(preset.gainMin, "0");
+        gMax.value = strOrNum(preset.gainMax, "0");
+        qMinEl.value = strOrNum(preset.qMin, "0");
+        qMaxEl.value = strOrNum(preset.qMax, "0");
+        syncEqConstraintDomToEqualizerConfig();
+        let mbDoc = document.querySelector("div.extra-eq input[name='eq-constraint-max-bands']");
+        if (mbDoc && !mbDoc.disabled) {
+            commitEqMaxBandsFromInput({ writeBackDom: true });
+        }
+    };
+    let eqConstraintPresetDisplayPrefix = "Constraints: ";
+    let eqConstraintPresetNoneLabel = "None";
+    let eqConstraintPresetCustomLabel = "Custom";
+    let eqConstraintPresetProgrammaticSyncDepth = 0;
+    let runEqConstraintPresetProgrammatic = (fn) => {
+        eqConstraintPresetProgrammaticSyncDepth++;
+        try {
+            fn();
+        } finally {
+            eqConstraintPresetProgrammaticSyncDepth--;
+        }
+    };
+    let EQ_CONSTRAINT_PRESET_GROUP_SYSTEM = "System";
+    let EQ_CONSTRAINT_PRESET_GROUP_USER = "User";
+    let EQ_CONSTRAINT_PRESET_GROUP_DEVICES = "Devices";
+    let ensureEqConstraintCustomPresetOptions = () => {
+        let hit = document.getElementById("eq-constraint-preset-input");
+        let display = document.getElementById("eq-constraint-preset-display");
+        let row = document.getElementById("eq-constraint-preset-row");
+        if (!hit || !display || row.hidden) {
+            return;
+        }
+        if (hit.querySelector(`option[value='${EQ_CONSTRAINT_PRESET_VALUE_CUSTOM}']`)) {
+            return;
+        }
+        let devHit = hit.querySelector("optgroup[data-eq-preset-devices='1']");
+        let devDisp = display.querySelector("optgroup[data-eq-preset-devices='1']");
+        if (!devHit || !devDisp) {
+            return;
+        }
+        let userHit = document.createElement("optgroup");
+        userHit.label = EQ_CONSTRAINT_PRESET_GROUP_USER;
+        userHit.setAttribute("data-eq-preset-user", "1");
+        let userDisp = document.createElement("optgroup");
+        userDisp.label = EQ_CONSTRAINT_PRESET_GROUP_USER;
+        userDisp.setAttribute("data-eq-preset-user", "1");
+        let oHit = document.createElement("option");
+        oHit.value = EQ_CONSTRAINT_PRESET_VALUE_CUSTOM;
+        oHit.textContent = eqConstraintPresetCustomLabel;
+        userHit.appendChild(oHit);
+        let oDisp = document.createElement("option");
+        oDisp.value = EQ_CONSTRAINT_PRESET_VALUE_CUSTOM;
+        oDisp.textContent = eqConstraintPresetDisplayPrefix + eqConstraintPresetCustomLabel;
+        userDisp.appendChild(oDisp);
+        hit.insertBefore(userHit, devHit);
+        display.insertBefore(userDisp, devDisp);
+    };
+    let notifyEqConstraintUserEditedPresetDropdown = () => {
+        if (eqConstraintPresetProgrammaticSyncDepth > 0) {
+            return;
+        }
+        let hit = document.getElementById("eq-constraint-preset-input");
+        let display = document.getElementById("eq-constraint-preset-display");
+        let row = document.getElementById("eq-constraint-preset-row");
+        if (!hit || !display || row.hidden) {
+            return;
+        }
+        ensureEqConstraintCustomPresetOptions();
+        let opt = hit.querySelector(`option[value='${EQ_CONSTRAINT_PRESET_VALUE_CUSTOM}']`);
+        if (!opt) {
+            return;
+        }
+        hit.value = EQ_CONSTRAINT_PRESET_VALUE_CUSTOM;
+        display.selectedIndex = hit.selectedIndex;
+    };
+    let clearEqConstraintPresetSelection = () => {
+        eqFiltersUserHasEdited = false;
+        let cRoot = document.querySelector("div.extra-eq .extra-eq-constraints-inner");
+        if (!cRoot) {
+            return;
+        }
+        let pkEl = cRoot.querySelector("input.eq-constraint-type-pk");
+        let lsqEl = cRoot.querySelector("input.eq-constraint-type-lsq");
+        let hsqEl = cRoot.querySelector("input.eq-constraint-type-hsq");
+        let mb = cRoot.querySelector("input[name='eq-constraint-max-bands']");
+        let fMin = cRoot.querySelector("input[name='eq-constraint-freq-min']");
+        let fMax = cRoot.querySelector("input[name='eq-constraint-freq-max']");
+        let gMin = cRoot.querySelector("input[name='eq-constraint-gain-min']");
+        let gMax = cRoot.querySelector("input[name='eq-constraint-gain-max']");
+        let qMinEl = cRoot.querySelector("input[name='eq-constraint-q-min']");
+        let qMaxEl = cRoot.querySelector("input[name='eq-constraint-q-max']");
+        if (!pkEl || !lsqEl || !hsqEl || !mb || !fMin || !fMax || !gMin || !gMax || !qMinEl || !qMaxEl) {
+            return;
+        }
+        pkEl.checked = true;
+        lsqEl.checked = true;
+        hsqEl.checked = true;
+        clearEqConstraintGraphicFreqMode();
+        fMin.value = "0";
+        fMax.value = "0";
+        mb.value = "0";
+        gMin.value = "0";
+        gMax.value = "0";
+        qMinEl.value = "0";
+        qMaxEl.value = "0";
+        syncEqConstraintDomToEqualizerConfig();
+        let mbDoc = document.querySelector("div.extra-eq input[name='eq-constraint-max-bands']");
+        if (mbDoc && !mbDoc.disabled) {
+            commitEqMaxBandsFromInput({ writeBackDom: true });
+        }
+    };
+    let syncEqConstraintPresetSelectPair = () => {
+        let hit = document.getElementById("eq-constraint-preset-input");
+        let display = document.getElementById("eq-constraint-preset-display");
+        if (!hit || !display) {
+            return;
+        }
+        display.selectedIndex = hit.selectedIndex;
+    };
+    let wireEqConstraintPresetSelectStack = () => {
+        let hit = document.getElementById("eq-constraint-preset-input");
+        if (!hit || hit.dataset.eqPresetStackWired) {
+            return;
+        }
+        hit.dataset.eqPresetStackWired = "1";
+        hit.addEventListener("change", () => {
+            syncEqConstraintPresetSelectPair();
+            let v = hit.value;
+            if (v === "") {
+                runEqConstraintPresetProgrammatic(() => {
+                    clearEqConstraintPresetSelection();
+                });
+                return;
+            }
+            if (v === EQ_CONSTRAINT_PRESET_VALUE_CUSTOM) {
+                return;
+            }
+            if (isEqConstraintPresetDividerValue(v)) {
+                return;
+            }
+            let p = findEqConstraintPresetByOptionValue(v);
+            if (p) {
+                runEqConstraintPresetProgrammatic(() => {
+                    applyEqConstraintPreset(p);
+                });
+            }
+        });
+    };
+    let loadEqConstraintPresets = () => {
+        let row = document.getElementById("eq-constraint-preset-row");
+        let hit = document.getElementById("eq-constraint-preset-input");
+        let display = document.getElementById("eq-constraint-preset-display");
+        if (!row || !hit || !display) {
+            return;
+        }
+        let url = new URL("eq-constraint-presets.json", window.location.href).href;
+        fetch(url, { cache: "no-store" })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+                if (!data || !Array.isArray(data.presets) || data.presets.length === 0) {
+                    return;
+                }
+                let addPresetPair = (hitParent, dispParent, value, shortLabel) => {
+                    let oHit = document.createElement("option");
+                    oHit.value = value;
+                    oHit.textContent = shortLabel;
+                    hitParent.appendChild(oHit);
+                    let oDisp = document.createElement("option");
+                    oDisp.value = value;
+                    oDisp.textContent = eqConstraintPresetDisplayPrefix + shortLabel;
+                    dispParent.appendChild(oDisp);
+                };
+                let addDividerPair = (hitParent, dispParent, value, lineText, ariaLab) => {
+                    let oHit = document.createElement("option");
+                    oHit.value = value;
+                    oHit.disabled = true;
+                    oHit.setAttribute("aria-disabled", "true");
+                    oHit.textContent = lineText;
+                    if (ariaLab) {
+                        oHit.setAttribute("aria-label", ariaLab);
+                    }
+                    hitParent.appendChild(oHit);
+                    let oDisp = document.createElement("option");
+                    oDisp.value = value;
+                    oDisp.disabled = true;
+                    oDisp.setAttribute("aria-disabled", "true");
+                    oDisp.textContent = lineText;
+                    if (ariaLab) {
+                        oDisp.setAttribute("aria-label", ariaLab);
+                    }
+                    dispParent.appendChild(oDisp);
+                };
+                let defaultPresetObj = null;
+                let devicesOrderedItems = [];
+                let devicePresetOrdinal = 0;
+                let dividerOrdinal = 0;
+                data.presets.forEach((entry) => {
+                    if (!entry || typeof entry !== "object") {
+                        return;
+                    }
+                    let kind = String(entry.kind || "").toLowerCase();
+                    if (kind === "heading" || kind === "section") {
+                        return;
+                    }
+                    if (kind === "divider") {
+                        let line = entry.text != null && String(entry.text) !== ""
+                            ? String(entry.text)
+                            : "────────";
+                        let ariaLab = entry.label != null && String(entry.label).trim() !== ""
+                            ? String(entry.label).trim()
+                            : null;
+                        devicesOrderedItems.push({
+                            itemKind: "divider",
+                            line,
+                            ariaLab,
+                            ordinal: dividerOrdinal++
+                        });
+                        return;
+                    }
+                    if (!isEqConstraintPresetJsonEntry(entry)) {
+                        return;
+                    }
+                    let idLc = entry.id != null ? String(entry.id).trim().toLowerCase() : "";
+                    if (idLc === "default" || entry.label === "Default") {
+                        if (!defaultPresetObj) {
+                            defaultPresetObj = entry;
+                        }
+                        return;
+                    }
+                    devicesOrderedItems.push({ itemKind: "preset", entry });
+                });
+                let devicePresetObjs = devicesOrderedItems
+                    .filter((x) => x.itemKind === "preset")
+                    .map((x) => x.entry);
+                eqConstraintPresetsList = defaultPresetObj
+                    ? [defaultPresetObj].concat(devicePresetObjs)
+                    : devicePresetObjs.slice();
+                hit.innerHTML = "";
+                display.innerHTML = "";
+                let sysHit = document.createElement("optgroup");
+                sysHit.label = EQ_CONSTRAINT_PRESET_GROUP_SYSTEM;
+                sysHit.setAttribute("data-eq-preset-system", "1");
+                let sysDisp = document.createElement("optgroup");
+                sysDisp.label = EQ_CONSTRAINT_PRESET_GROUP_SYSTEM;
+                sysDisp.setAttribute("data-eq-preset-system", "1");
+                hit.appendChild(sysHit);
+                display.appendChild(sysDisp);
+                addPresetPair(sysHit, sysDisp, "", eqConstraintPresetNoneLabel);
+                let defaultOptionValue = null;
+                if (defaultPresetObj) {
+                    defaultOptionValue = defaultPresetObj.id != null && String(defaultPresetObj.id) !== ""
+                        ? String(defaultPresetObj.id)
+                        : "default";
+                    let defLab = defaultPresetObj.label || "Default";
+                    addPresetPair(sysHit, sysDisp, defaultOptionValue, defLab);
+                }
+                let devHit = document.createElement("optgroup");
+                devHit.label = EQ_CONSTRAINT_PRESET_GROUP_DEVICES;
+                devHit.setAttribute("data-eq-preset-devices", "1");
+                let devDisp = document.createElement("optgroup");
+                devDisp.label = EQ_CONSTRAINT_PRESET_GROUP_DEVICES;
+                devDisp.setAttribute("data-eq-preset-devices", "1");
+                hit.appendChild(devHit);
+                display.appendChild(devDisp);
+                devicesOrderedItems.forEach((item) => {
+                    if (item.itemKind === "divider") {
+                        let v = EQ_CONSTRAINT_PRESET_DIVIDER_PREFIX + item.ordinal;
+                        addDividerPair(devHit, devDisp, v, item.line, item.ariaLab);
+                        return;
+                    }
+                    if (item.itemKind !== "preset" || !item.entry) {
+                        return;
+                    }
+                    let entry = item.entry;
+                    let val = entry.id != null && String(entry.id) !== ""
+                        ? String(entry.id)
+                        : String(devicePresetOrdinal);
+                    let lab = entry.label || ("Preset " + (devicePresetOrdinal + 1));
+                    addPresetPair(devHit, devDisp, val, lab);
+                    devicePresetOrdinal++;
+                });
+                row.hidden = false;
+                wireEqConstraintPresetSelectStack();
+                let defPreset = defaultPresetObj;
+                if (defPreset) {
+                    runEqConstraintPresetProgrammatic(() => {
+                        applyEqConstraintPreset(defPreset);
+                        if (defaultOptionValue != null) {
+                            hit.value = defaultOptionValue;
+                            display.selectedIndex = hit.selectedIndex;
+                        }
+                    });
+                } else {
+                    runEqConstraintPresetProgrammatic(() => {
+                        hit.selectedIndex = 0;
+                        display.selectedIndex = 0;
+                    });
+                }
+            })
+            .catch(() => {
+                /* Missing file or fetch error: keep row hidden */
+            });
+    };
     let eqConstraintsRoot = document.querySelector("div.extra-eq .extra-eq-constraints-inner");
     let eqMaxBandsCommitTimer = null;
     let wireEqConstraintsPanel = () => {
@@ -4785,6 +5219,7 @@ function addExtra() {
             return;
         }
         let onConstraintChange = () => {
+            notifyEqConstraintUserEditedPresetDropdown();
             syncEqConstraintDomToEqualizerConfig();
             cancelDeferredApplyEQ();
             applyEQExec();
@@ -4793,6 +5228,7 @@ function addExtra() {
         eqConstraintsRoot.querySelectorAll("input").forEach((inp) => {
             if (inp.name === "eq-constraint-max-bands") {
                 inp.addEventListener("input", () => {
+                    notifyEqConstraintUserEditedPresetDropdown();
                     if (eqMaxBandsCommitTimer !== null) {
                         clearTimeout(eqMaxBandsCommitTimer);
                     }
@@ -4802,6 +5238,7 @@ function addExtra() {
                     }, 450);
                 });
                 inp.addEventListener("change", () => {
+                    notifyEqConstraintUserEditedPresetDropdown();
                     if (eqMaxBandsCommitTimer !== null) {
                         clearTimeout(eqMaxBandsCommitTimer);
                         eqMaxBandsCommitTimer = null;
@@ -4809,6 +5246,7 @@ function addExtra() {
                     commitEqMaxBandsFromInput({ writeBackDom: true });
                 });
                 inp.addEventListener("blur", () => {
+                    notifyEqConstraintUserEditedPresetDropdown();
                     if (eqMaxBandsCommitTimer !== null) {
                         clearTimeout(eqMaxBandsCommitTimer);
                         eqMaxBandsCommitTimer = null;
@@ -4829,6 +5267,7 @@ function addExtra() {
         });
     };
     wireEqConstraintsPanel();
+    loadEqConstraintPresets();
     applyEqConstraintFreqRowUiMode();
     (() => {
         let eqConstraintsCard = document.querySelector("div.extra-eq .extra-eq-constraints");
