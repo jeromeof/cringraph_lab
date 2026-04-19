@@ -130,82 +130,6 @@ doc.html(`
           </div>
 
           <div class="extra-panel" style="display: none;">
-            <div class="live-sound-tools">
-              <div class="live-sound-tools-head">
-                <h5 class="live-sound-tools-title">Sound Tools</h5>
-                <label class="live-sound-eq-toggle-label">
-                  <span class="live-sound-eq-toggle-text">Apply EQ</span>
-                  <span class="live-sound-eq-switch">
-                    <span class="live-sound-eq-switch-track">
-                      <input type="checkbox" class="live-sound-eq-toggle" checked aria-label="Apply parametric EQ to live playback" />
-                      <span class="live-sound-eq-switch-thumb" aria-hidden="true"></span>
-                    </span>
-                  </span>
-                </label>
-              </div>
-              <div class="live-sound-band">
-                <span class="live-sound-band-label live-sound-source-title">Range</span>
-                <div class="live-sound-range-pair">
-                  <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20" aria-label="Minimum frequency" onclick="this.focus();this.select()"></input></span>
-                  <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000" aria-label="Maximum frequency" onclick="this.focus();this.select()"></input></span>
-                </div>
-              </div>
-              <div class="live-sound-sources">
-                <div class="live-sound-source extra-pink-noise">
-                  <div class="live-sound-source-head">
-                    <span class="live-sound-source-title">Pink Noise</span>
-                  </div>
-                  <div class="live-sound-source-actions">
-                    <button type="button" class="play" aria-label="Toggle pink noise playback">▶</button>
-                  </div>
-                </div>
-                <div class="live-sound-source extra-tone-generator">
-                  <div class="live-sound-source-head">
-                    <span class="live-sound-source-title">Tone Generator</span>
-                  </div>
-                  <div class="live-sound-source-actions tone-generator-play-row">
-                    <button type="button" class="play" aria-label="Toggle tone playback">▶</button>
-                  </div>
-                  <div class="live-sound-slider-row tone-generator-slider-row">
-                    <input name="tone-generator-freq" type="range" min="0" max="1" step="0.0001" value="0" aria-label="Tone frequency along band" />
-                    <span class="live-sound-tone-freq-display"><span class="freq-text">1000</span> Hz</span>
-                  </div>
-                  <div class="live-sound-tone-create-filter">
-                    <button type="button" class="tone-generator-add-filter">+ Add Filter</button>
-                  </div>
-                </div>
-                <div class="live-sound-source extra-music">
-                  <div class="live-sound-source-head">
-                    <span class="live-sound-source-title">Music</span>
-                  </div>
-                  <div class="music-playback-panel" aria-hidden="true">
-                    <div class="music-playback-panel-inner">
-                      <div class="live-sound-source-actions music-play-row">
-                        <button type="button" class="play" disabled aria-label="Toggle music playback">▶</button>
-                      </div>
-                      <div class="live-sound-slider-row music-slider-row">
-                        <div class="music-segment-slider music-segment-slider-disabled" role="group" aria-label="Playback and loop range">
-                          <div class="music-segment-track">
-                            <div class="music-segment-rail-bg" aria-hidden="true"></div>
-                            <div class="music-segment-outside music-segment-outside-l" aria-hidden="true"></div>
-                            <div class="music-segment-outside music-segment-outside-r" aria-hidden="true"></div>
-                            <div class="music-segment-looped" aria-hidden="true"></div>
-                            <div class="music-segment-progress" aria-hidden="true"></div>
-                            <div class="music-segment-seek"></div>
-                            <button type="button" class="music-segment-handle music-segment-handle-start" tabindex="-1" aria-label="Loop start"></button>
-                            <button type="button" class="music-segment-handle music-segment-handle-end" tabindex="-1" aria-label="Loop end"></button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="live-sound-music-file">
-                    <button type="button" class="music-add-remove">+ Add Music</button>
-                    <input type="file" class="music-file-input" accept="audio/*" tabindex="-1" aria-hidden="true" />
-                  </div>
-                </div>
-              </div>
-            </div>
             <div class="extra-eq">
               <div class="extra-eq-head">
                 <h5 class="extra-eq-panel-title">Parametric Equalizer</h5>
@@ -333,6 +257,82 @@ doc.html(`
               </div>
               <a style="display: none" id="file-filters-export"></a>
               <form style="display:none"><input type="file" id="file-filters-import" accept=".txt" /></form>
+            </div>
+            <div class="live-sound-tools">
+              <div class="live-sound-tools-head">
+                <h5 class="live-sound-tools-title">Sound Tools</h5>
+                <label class="live-sound-eq-toggle-label">
+                  <span class="live-sound-eq-toggle-text">Apply EQ</span>
+                  <span class="live-sound-eq-switch">
+                    <span class="live-sound-eq-switch-track">
+                      <input type="checkbox" class="live-sound-eq-toggle" checked aria-label="Apply parametric EQ to live playback" />
+                      <span class="live-sound-eq-switch-thumb" aria-hidden="true"></span>
+                    </span>
+                  </span>
+                </label>
+              </div>
+              <div class="live-sound-band">
+                <span class="live-sound-band-label live-sound-source-title">Range</span>
+                <div class="live-sound-range-pair">
+                  <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20" aria-label="Minimum frequency" onclick="this.focus();this.select()"></input></span>
+                  <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000" aria-label="Maximum frequency" onclick="this.focus();this.select()"></input></span>
+                </div>
+              </div>
+              <div class="live-sound-sources">
+                <div class="live-sound-source extra-pink-noise">
+                  <div class="live-sound-source-head">
+                    <span class="live-sound-source-title">Pink Noise</span>
+                  </div>
+                  <div class="live-sound-source-actions">
+                    <button type="button" class="play" aria-label="Toggle pink noise playback">▶</button>
+                  </div>
+                </div>
+                <div class="live-sound-source extra-tone-generator">
+                  <div class="live-sound-source-head">
+                    <span class="live-sound-source-title">Tone Generator</span>
+                  </div>
+                  <div class="live-sound-source-actions tone-generator-play-row">
+                    <button type="button" class="play" aria-label="Toggle tone playback">▶</button>
+                  </div>
+                  <div class="live-sound-slider-row tone-generator-slider-row">
+                    <input name="tone-generator-freq" type="range" min="0" max="1" step="0.0001" value="0" aria-label="Tone frequency along band" />
+                    <span class="live-sound-tone-freq-display"><span class="freq-text">1000</span> Hz</span>
+                  </div>
+                  <div class="live-sound-tone-create-filter">
+                    <button type="button" class="tone-generator-add-filter">+ Add Filter</button>
+                  </div>
+                </div>
+                <div class="live-sound-source extra-music">
+                  <div class="live-sound-source-head">
+                    <span class="live-sound-source-title">Music</span>
+                  </div>
+                  <div class="music-playback-panel" aria-hidden="true">
+                    <div class="music-playback-panel-inner">
+                      <div class="live-sound-source-actions music-play-row">
+                        <button type="button" class="play" disabled aria-label="Toggle music playback">▶</button>
+                      </div>
+                      <div class="live-sound-slider-row music-slider-row">
+                        <div class="music-segment-slider music-segment-slider-disabled" role="group" aria-label="Playback and loop range">
+                          <div class="music-segment-track">
+                            <div class="music-segment-rail-bg" aria-hidden="true"></div>
+                            <div class="music-segment-outside music-segment-outside-l" aria-hidden="true"></div>
+                            <div class="music-segment-outside music-segment-outside-r" aria-hidden="true"></div>
+                            <div class="music-segment-looped" aria-hidden="true"></div>
+                            <div class="music-segment-progress" aria-hidden="true"></div>
+                            <div class="music-segment-seek"></div>
+                            <button type="button" class="music-segment-handle music-segment-handle-start" tabindex="-1" aria-label="Loop start"></button>
+                            <button type="button" class="music-segment-handle music-segment-handle-end" tabindex="-1" aria-label="Loop end"></button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="live-sound-music-file">
+                    <button type="button" class="music-add-remove">+ Add Music</button>
+                    <input type="file" class="music-file-input" accept="audio/*" tabindex="-1" aria-hidden="true" />
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="extra-upload">
               <h5>Upload Data</h2>
@@ -3207,6 +3207,8 @@ function addExtra() {
     };
     /* Gap below panel top when snapping extra-eq into view (scroll slightly less than flush). */
     const EQ_FILTER_SCROLL_EQ_TOP_INSET_PX = 10;
+    /* If the filter row already fits in the panel, don’t smooth-scroll a few px just to nudge EQ inset. */
+    const EQ_FILTER_SCROLL_IGNORE_INSET_NUDGE_PX = 28;
     let scrollEqFilterRowIntoView = (row) => {
         if (row === null || !filtersContainer) {
             return;
@@ -3229,8 +3231,17 @@ function addExtra() {
                     - EQ_FILTER_SCROLL_EQ_TOP_INSET_PX;
                 let deltaRow = el.getBoundingClientRect().bottom - pr.bottom;
                 let delta = Math.max(deltaEq, deltaRow);
+                if (delta <= 0) {
+                    return;
+                }
+                if (deltaRow <= 0 && delta < EQ_FILTER_SCROLL_IGNORE_INSET_NUDGE_PX) {
+                    return;
+                }
                 let maxTop = Math.max(0, panel.scrollHeight - panel.clientHeight);
                 let nextTop = Math.max(0, Math.min(maxTop, panel.scrollTop + delta));
+                if (Math.abs(nextTop - panel.scrollTop) < 1) {
+                    return;
+                }
                 panel.scrollTo({ top: nextTop, behavior: "smooth" });
             } else {
                 el.scrollIntoView({ block: "nearest", behavior: "smooth" });

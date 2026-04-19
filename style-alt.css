@@ -1085,6 +1085,11 @@ div.extra-panel > div {
     margin: 0 0 1em 0;
 }
 
+/* Match Sound Tools → Upload Data: that gap includes the Upload h5 top margin (see div.extra-panel h5). */
+div.extra-panel > div.extra-eq {
+    margin-bottom: calc(1em + 16px);
+}
+
 div.extra-panel h5 {
     margin: 16px 0 8px 0;
     
