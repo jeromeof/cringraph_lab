@@ -1066,6 +1066,14 @@ div.miscTools button#theme:active {
 div.extra-panel {
     flex-direction: column;
     overflow: auto;
+    /* Apply EQ + constraint type toggles (shared track / thumb) */
+    --eq-switch-track-w: 54px;
+    --eq-switch-track-h: 24px;
+    --eq-switch-thumb: 14px;
+    --eq-switch-border: 1px;
+    /* Inset so thumb–edge gaps match top/bottom (thumb is vertically centered in the track) */
+    --eq-switch-gap: calc((var(--eq-switch-track-h) - 2 * var(--eq-switch-border) - var(--eq-switch-thumb)) / 2);
+    --eq-switch-travel: calc(var(--eq-switch-track-w) - 2 * var(--eq-switch-border) - 2 * var(--eq-switch-gap) - var(--eq-switch-thumb));
 }
 
 div.extra-panel > div {
@@ -1112,6 +1120,18 @@ div.extra-upload span.extra-upload-note {
 
 div.extra-panel span {
     color: var(--background-color-contrast-more);
+}
+
+/* Hide native number spinners (tighter right padding; arrow keys / wheel / validation still work) */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
 }
 
 div.extra-panel select {
@@ -1248,8 +1268,204 @@ div.extra-panel .extra-eq-reset-icon {
 
 div.extra-panel > div.extra-eq > div.select-eq-phone,
 div.extra-panel > div.extra-eq > div.filters,
+div.extra-panel > div.extra-eq > div.extra-eq-constraints,
 div.extra-panel div.settings-row {
     margin: 0 0 0.5em 0;
+}
+
+div.extra-panel > div.extra-eq > div.extra-eq-constraints.live-sound-source {
+    margin-top: 10px;
+    margin-bottom: 0.75em;
+}
+
+div.extra-panel > div.extra-eq > div.extra-eq-constraints .extra-eq-constraints-head {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    column-gap: 12px;
+    row-gap: 6px;
+    margin: 0;
+    width: 100%;
+}
+
+div.extra-panel > div.extra-eq > div.extra-eq-constraints.extra-eq-constraints-expanded .extra-eq-constraints-head {
+    margin-bottom: 12px;
+}
+
+div.extra-panel > div.extra-eq > div.extra-eq-constraints .extra-eq-constraints-body {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 200ms ease, opacity 200ms ease;
+    pointer-events: none;
+}
+
+div.extra-panel > div.extra-eq > div.extra-eq-constraints.extra-eq-constraints-expanded .extra-eq-constraints-body {
+    max-height: 900px;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Not a panel action chip: override div.extra-panel button (flex grow, border, !important bg) */
+div.extra-panel .extra-eq-constraints-gear {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    order: 0;
+    width: auto;
+    min-width: 0;
+    height: auto;
+    margin: 0 0 0 auto;
+    padding: 0;
+    display: inline-block;
+    border: none !important;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none;
+    color: var(--background-color-contrast-more);
+    font-family: var(--font-primary);
+    font-size: 17px;
+    font-weight: 400;
+    line-height: 1;
+    text-transform: none;
+    white-space: nowrap;
+    cursor: pointer;
+    outline: none;
+    vertical-align: baseline;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: color 200ms ease;
+}
+
+div.extra-panel .extra-eq-constraints-gear-char {
+    display: inline-block;
+    line-height: 1;
+    font-size: 1em;
+}
+
+div.extra-panel .extra-eq-constraints-gear:hover {
+    color: var(--accent-color);
+}
+
+div.extra-panel .extra-eq-constraints-gear:focus {
+    outline: none;
+}
+
+div.extra-panel .extra-eq-constraints-gear:focus-visible {
+    box-shadow: 0 0 0 2px var(--background-color-graph), 0 0 0 4px var(--accent-color-contrast);
+    border-radius: 2px;
+}
+
+div.extra-panel > div.extra-eq .extra-eq-constraints-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    width: 100%;
+    min-width: 0;
+}
+
+/* Constraints top: heading row + control row; type toggles use same 54×24 switch as Apply EQ */
+div.extra-panel > div.extra-eq .eq-constraint-top-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-top-headings,
+div.extra-panel > div.extra-eq .eq-constraint-top-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 30%) repeat(3, minmax(0, 1fr));
+    column-gap: 6px;
+    width: 100%;
+    min-width: 0;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-top-controls {
+    align-items: center;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-top-control-cell {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    min-width: 0;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-top-controls .extra-eq-constraint-type-switch-label {
+    margin: 0;
+    min-height: 0;
+}
+
+/* Same text rhythm as div.extra-panel > div.extra-eq > div.filters-header (font on .filters-header + span color) */
+div.extra-panel > div.extra-eq .eq-constraint-col-heading,
+div.extra-panel > div.extra-eq .eq-constraint-ranges-head-cell {
+    font-size: 12px;
+    line-height: 1em;
+    color: var(--background-color-contrast-more);
+    text-align: left;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-ranges-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+/* Same 30% / 35% / 35% as top row last three columns combined → min & max split 70% evenly */
+div.extra-panel > div.extra-eq .eq-constraint-range-row {
+    display: grid;
+    grid-template-columns: minmax(0, 30%) minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 6px;
+    row-gap: 0;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-range-label-slot,
+div.extra-panel > div.extra-eq .eq-constraint-range-min-slot,
+div.extra-panel > div.extra-eq .eq-constraint-range-max-slot {
+    min-width: 0;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-range-label-slot {
+    text-align: left;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-top-control-cell .eq-constraint-max-bands-input {
+    width: 100%;
+    text-align: left;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-range-row-header {
+    align-items: end;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-ranges-head-cell {
+    padding-bottom: 2px;
+}
+
+/* Match div.extra-panel select (filter type dropdown in EQ rows) */
+div.extra-panel > div.extra-eq .eq-constraint-range-name {
+    font-family: var(--font-family-secondary);
+    font-size: 11px;
+    line-height: 1em;
+    font-weight: 400;
+    color: var(--font-color-primary);
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-range-cell {
+    position: relative;
+    display: block;
+    min-width: 0;
 }
 
 div.extra-panel > div.extra-eq > div.select-eq-phone > select {
@@ -1293,6 +1509,8 @@ div.extra-panel div.settings-row > span {
 
 div.extra-panel > div.extra-eq > div.filters > div.filter > span > input,
 div.extra-panel div.settings-row > span > input,
+div.extra-panel > div.extra-eq .eq-constraint-range-cell > input,
+div.extra-panel > div.extra-eq .eq-constraint-max-bands-input,
 div.extra-panel .live-sound-range-pair > span > input {
     box-sizing: border-box;
     width: 100%;
@@ -1310,45 +1528,108 @@ div.extra-panel .live-sound-range-pair > span > input {
     outline: none;
 }
 
+/* EQ panel + Sound Tools range: right-align numeric/text field values */
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > input,
+div.extra-panel > div.extra-eq .eq-constraint-range-cell > input,
+div.extra-panel > div.extra-eq .eq-constraint-max-bands-input,
+div.extra-panel .live-sound-range-pair > span > input {
+    text-align: right;
+}
+
+/* Reserve space so right-aligned values stay clear of Hz / dB suffixes */
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="freq"],
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="gain"] {
+    padding-right: 2.75em;
+}
+
 div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="freq"]:focus:hover,
 div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="gain"]:focus:hover,
-div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="q"]:focus:hover {
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="q"]:focus:hover,
+div.extra-panel > div.extra-eq .eq-constraint-range-cell > input:focus:hover,
+div.extra-panel > div.extra-eq .eq-constraint-max-bands-input:focus:hover {
     outline: 2px solid var(--background-color-contrast-more);
     outline-offset: 1px;
 }
 
-span:has(input[name="freq"]),
-span:has(input[name="gain"]),
-span:has(input[name="autoeq-to"]),
+div.extra-panel > div.extra-eq > div.filters > div.filter > span:has(input[name="freq"]),
+div.extra-panel > div.extra-eq > div.filters > div.filter > span:has(input[name="gain"]),
 span:has(input[name="tone-generator-to"]) {
     position: relative;
 }
 
-span:has(input[name="freq"]):after,
-span:has(input[name="gain"]):after,
-span:has(input[name="autoeq-to"]):after,
+div.extra-panel > div.extra-eq > div.filters > div.filter > span:has(input[name="freq"]):after,
+div.extra-panel > div.extra-eq > div.filters > div.filter > span:has(input[name="gain"]):after,
 span:has(input[name="tone-generator-to"]):after {
     position: absolute;
-    top: 1px;
+    top: 50%;
     right: 1px;
-    
-    content: 'Hz';
+    transform: translateY(-50%);
     
     box-sizing: border-box;
-    padding: 6px 10px 6px 0;
+    padding: 0 10px 0 0;
     
     border-left: none;
     border-radius: 0 6px 6px 0;
     
     font-family: var(--font-secondary);
     font-size: 11px;
-    line-height: 11px;
+    line-height: 1;
+    color: var(--font-color-inputs);
+    opacity: 0.85;
     
     pointer-events: none;
 }
 
-span:has(input[name="gain"]):after {
+div.extra-panel .live-sound-range-pair span:has(input[name="tone-generator-to"]) > input {
+    padding-right: 2.75em;
+}
+
+div.extra-panel > div.extra-eq > div.filters > div.filter > span:has(input[name="freq"]):after,
+span:has(input[name="tone-generator-to"]):after {
+    content: 'Hz';
+}
+
+div.extra-panel > div.extra-eq > div.filters > div.filter > span:has(input[name="gain"]):after {
     content: 'dB';
+}
+
+div.extra-panel > div.extra-eq span.eq-constraint-input-with-unit {
+    position: relative;
+    display: block;
+}
+
+div.extra-panel > div.extra-eq span.eq-constraint-input-with-unit > input {
+    padding-right: 2.85em;
+}
+
+div.extra-panel > div.extra-eq span.eq-constraint-input-with-unit.eq-constraint-unit-hz::after,
+div.extra-panel > div.extra-eq span.eq-constraint-input-with-unit.eq-constraint-unit-db::after {
+    position: absolute;
+    top: 50%;
+    right: 1px;
+    transform: translateY(-50%);
+    box-sizing: border-box;
+    padding: 0 8px 0 0;
+    border-radius: 0 6px 6px 0;
+    font-family: var(--font-secondary);
+    font-size: 11px;
+    line-height: 1;
+    pointer-events: none;
+    color: var(--font-color-inputs);
+    opacity: 0.85;
+}
+
+div.extra-panel > div.extra-eq span.eq-constraint-input-with-unit.eq-constraint-unit-hz::after {
+    content: 'Hz';
+}
+
+div.extra-panel > div.extra-eq span.eq-constraint-input-with-unit.eq-constraint-unit-db::after {
+    content: 'dB';
+}
+
+div.extra-panel > div.extra-eq div.filters > div.filter.eq-filter-row-inactive {
+    opacity: 0.48;
+    filter: saturate(0.55);
 }
 
 div.filters-header {
@@ -1472,7 +1753,7 @@ div.extra-panel .live-sound-eq-toggle-text {
     opacity: 0.9;
 }
 
-/* EQ switch: same track geometry as range sliders (18px tall, 1px border, pill radius); thumb 12px like slider thumbs */
+/* EQ switch: shared 54×24 track; 14px thumb; symmetric inset + --eq-switch-travel for checked position */
 div.extra-panel .live-sound-eq-switch {
     flex-shrink: 0;
     display: inline-flex;
@@ -1486,21 +1767,23 @@ div.extra-panel .live-sound-eq-switch-track {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr;
     align-items: center;
-    width: 36px;
-    height: 18px;
+    width: var(--eq-switch-track-w);
+    height: var(--eq-switch-track-h);
     box-sizing: border-box;
-    padding: 0 3px;
-    border: 1px solid var(--background-color-contrast-more);
+    padding: var(--eq-switch-gap);
+    border: var(--eq-switch-border) solid var(--background-color-contrast-more);
     border-radius: 100px;
     background-color: var(--background-color);
     transition: background-color 200ms ease;
 }
 
-div.extra-panel .live-sound-eq-switch-track:has(.live-sound-eq-toggle:checked) {
+div.extra-panel .live-sound-eq-switch-track:has(.live-sound-eq-toggle:checked),
+div.extra-panel .live-sound-eq-switch-track:has(.eq-constraint-type-toggle:checked) {
     background-color: var(--background-color-inputs);
 }
 
-div.extra-panel .live-sound-eq-toggle {
+div.extra-panel .live-sound-eq-toggle,
+div.extra-panel .eq-constraint-type-toggle {
     grid-column: 1;
     grid-row: 1;
     z-index: 2;
@@ -1517,11 +1800,13 @@ div.extra-panel .live-sound-eq-toggle {
     background: transparent;
 }
 
-div.extra-panel .live-sound-eq-toggle:focus {
+div.extra-panel .live-sound-eq-toggle:focus,
+div.extra-panel .eq-constraint-type-toggle:focus {
     outline: none;
 }
 
-div.extra-panel .live-sound-eq-switch-track:has(.live-sound-eq-toggle:focus-visible) {
+div.extra-panel .live-sound-eq-switch-track:has(.live-sound-eq-toggle:focus-visible),
+div.extra-panel .live-sound-eq-switch-track:has(.eq-constraint-type-toggle:focus-visible) {
     box-shadow: 0 0 0 2px var(--background-color-graph), 0 0 0 4px var(--accent-color-contrast);
 }
 
@@ -1537,17 +1822,17 @@ div.extra-panel .live-sound-eq-switch-thumb {
     grid-row: 1;
     z-index: 1;
     justify-self: start;
-    width: 12px;
-    height: 12px;
+    width: var(--eq-switch-thumb);
+    height: var(--eq-switch-thumb);
     border-radius: 50%;
     background-color: var(--background-color-contrast-more);
     transition: transform 200ms ease, background-color 200ms ease;
     pointer-events: none;
 }
 
-/* Inner lane 28px, thumb 12px → 16px travel (matches slider thumb gutter) */
-div.extra-panel .live-sound-eq-toggle:checked + .live-sound-eq-switch-thumb {
-    transform: translateX(16px);
+div.extra-panel .live-sound-eq-toggle:checked + .live-sound-eq-switch-thumb,
+div.extra-panel .eq-constraint-type-toggle:checked + .live-sound-eq-switch-thumb {
+    transform: translateX(var(--eq-switch-travel));
     background-color: var(--accent-color);
 }
 
@@ -1980,7 +2265,8 @@ body.theme-contrast div.extra-panel .live-sound-tools .extra-music .music-play-r
     color: var(--background-color) !important;
 }
 
-body.theme-contrast div.extra-panel .live-sound-tools .live-sound-eq-switch-track {
+body.theme-contrast div.extra-panel .live-sound-tools .live-sound-eq-switch-track,
+body.theme-contrast div.extra-panel > div.extra-eq .live-sound-eq-switch-track {
     border-color: var(--background-color-contrast);
 }
 
