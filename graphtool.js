@@ -1120,6 +1120,8 @@ let gEqHoverPreview = gr.append("g")
     .attr("mask", "url(#graphFade)");
 let updateEqFilterMarkers = () => {};
 let updateEqTraceOpacity = () => {};
+/** When Parametric EQ tab is active, dims all graph traces except model / EQ / target (see addExtra). */
+let applyParametricEqGraphTraceFocus = () => {};
 /** @type {d3.Selection|null} */
 let graphPlotHitRect = null;
 /** Equalizer-tab graph: pointer gesture for add + vertical gain drag */
@@ -1576,6 +1578,7 @@ function updatePaths(trigger) {
     if (ifURL && !trigger) addPhonesToUrl();
     if (stickyLabels) drawLabels();
     updateEqFilterMarkers();
+    applyParametricEqGraphTraceFocus();
     updateEqTraceOpacity();
 }
 let colorBar = p=>'url(\'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 8"><path d="M0 8v-8h1c0.05 1.5,-0.3 3,-0.16 5s0.1 2,0.15 3z" fill="'+getBgColor(p)+'"/></svg>\')';
@@ -3080,6 +3083,8 @@ function addExtra() {
         document.querySelector("div.select > div.extra-panel").style["display"] = "flex";
         document.querySelector("div.select").setAttribute("data-selected", "extra");
         if (analyticsEnabled) { pushEventTag("clicked_equalizerTab", targetWindow); }
+        applyParametricEqGraphTraceFocus();
+        updateEqTraceOpacity();
     };
     extraButton.addEventListener("click", showExtraPanel);
     // Upload function
@@ -3157,6 +3162,72 @@ function addExtra() {
     // EQ Function
     let eqPhoneSelect = document.querySelector("div.extra-eq select[name='phone']");
     let eqPhoneTargetSelect = document.querySelector("div.extra-eq select[name='eq-target']");
+    let prevParametricFocusActive = false;
+    applyParametricEqGraphTraceFocus = () => {
+        let tab = document.querySelector("div.select");
+        let active = extraEnabled && extraEQEnabled && tab && tab.getAttribute("data-selected") === "extra";
+        if (!active) {
+            if (prevParametricFocusActive) {
+                prevParametricFocusActive = false;
+                updatePaths(false);
+            }
+            return;
+        }
+        let sel = eqPhoneSelect && eqPhoneSelect.value;
+        let modelP = sel ? activePhones.filter((p) => p.fullName === sel)[0] : null;
+        if (!modelP) {
+            modelP = activePhones.filter((p) => !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/))[0] || null;
+        }
+        if (!modelP) {
+            if (prevParametricFocusActive) {
+                prevParametricFocusActive = false;
+                updatePaths(false);
+            }
+            return;
+        }
+        prevParametricFocusActive = true;
+        let tsel = eqPhoneTargetSelect && eqPhoneTargetSelect.value;
+        let targetP = tsel ? activePhones.filter((p) => p.fullName === tsel)[0] : null;
+        if (!targetP) {
+            targetP = activePhones.filter((p) => p.isTarget)[0]
+                || activePhones.filter((p) => p !== modelP && !p.isTarget)[0] || null;
+        }
+        let eqP = modelP && modelP.eq;
+        let showSet = new Set([modelP, eqP, targetP].filter(Boolean));
+        gpath.selectAll("path").each(function (c) {
+            if (!c || !c.p) {
+                return;
+            }
+            let el = d3.select(this);
+            let vis = showSet.has(c.p);
+            if (!vis) {
+                el.attr("opacity", 0);
+                el.classed("eq-graph-focus-target", false);
+                el.style("stroke-dasharray", null);
+                return;
+            }
+            el.attr("opacity", c.p.hide ? 0 : null);
+            if (targetP && c.p === targetP && !c.p.isTarget) {
+                el.classed("eq-graph-focus-target", true);
+                if (typeof targetDashed !== "undefined" && targetDashed) {
+                    el.style("stroke-dasharray", "6, 3");
+                } else {
+                    el.style("stroke-dasharray", null);
+                }
+                if (typeof targetColorCustom !== "undefined" && targetColorCustom) {
+                    el.attr("stroke", targetColorCustom);
+                } else {
+                    el.attr("stroke", "var(--background-color-contrast-more)");
+                }
+            } else {
+                el.classed("eq-graph-focus-target", false);
+                if (!c.p.isTarget) {
+                    el.style("stroke-dasharray", null);
+                    el.attr("stroke", getColor_AC(c));
+                }
+            }
+        });
+    };
     let filtersContainer = document.querySelector("div.extra-eq > div.filters");
     let fileFiltersImport = document.querySelector("#file-filters-import");
     let filterEnabledInput, filterTypeSelect,
@@ -3296,6 +3367,8 @@ function addExtra() {
         document.querySelector("div.select").setAttribute("data-selected", selectedList);
         setEqFilterSelectedRow(null);
         syncEqHoverPreview(null);
+        applyParametricEqGraphTraceFocus();
+        updateEqTraceOpacity();
     };
     let parseEqConstraintGraphicFreqList = (raw) => {
         if (raw == null || typeof raw !== "string") {
@@ -4633,6 +4706,12 @@ function addExtra() {
         applyEQ();
         scheduleLiveEqSync();
     });
+    if (eqPhoneTargetSelect) {
+        eqPhoneTargetSelect.addEventListener("input", () => {
+            applyParametricEqGraphTraceFocus();
+            updateEqTraceOpacity();
+        });
+    }
     let resetParametricEqBandsAndConstraintsToDefaults = () => {
         eqFiltersUserHasEdited = false;
         let hit = document.getElementById("eq-constraint-preset-input");
