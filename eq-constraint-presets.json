@@ -30,6 +30,19 @@
       "qMax": "10"
     },
     {
+      "id": "generic-10-band",
+      "label": "Generic 10-band graphic EQ",
+      "maxBands": 10,
+      "allowPk": true,
+      "allowLsq": false,
+      "allowHsq": false,
+      "freqGraphicList": "31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000",
+      "gainMin": "-10",
+      "gainMax": "10",
+      "qMin": "0",
+      "qMax": "1.4"
+    },
+    {
       "id": "fiio-eh11",
       "label": "Fiio EH11",
       "maxBands": 10,
