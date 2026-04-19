@@ -1386,27 +1386,37 @@ div.extra-panel > div.extra-eq .eq-constraint-top-controls {
     flex-direction: row;
     flex-wrap: nowrap;
     align-items: center;
-    gap: 4px;
     width: 100%;
     min-width: 0;
 }
 
+/* Peak / LSQ / HSQ: column width = switch track only; 6px between consecutive toggles only.
+   Remaining horizontal space sits before Max Filters (margin-left: auto on that cell). */
 div.extra-panel > div.extra-eq .eq-constraint-top-headings > .eq-constraint-col-heading:not(.eq-constraint-col-heading-max-filters),
 div.extra-panel > div.extra-eq .eq-constraint-top-control-cell:not(.eq-constraint-top-control-cell-max-filters) {
-    flex: 1 1 0;
+    flex: 0 0 var(--eq-switch-track-w);
+    box-sizing: border-box;
     min-width: 0;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-top-headings > .eq-constraint-col-heading:not(.eq-constraint-col-heading-max-filters)
+    + .eq-constraint-col-heading:not(.eq-constraint-col-heading-max-filters),
+div.extra-panel > div.extra-eq .eq-constraint-top-control-cell:not(.eq-constraint-top-control-cell-max-filters)
+    + .eq-constraint-top-control-cell:not(.eq-constraint-top-control-cell-max-filters) {
+    margin-left: 6px;
 }
 
 div.extra-panel > div.extra-eq .eq-constraint-top-headings > .eq-constraint-col-heading-max-filters,
 div.extra-panel > div.extra-eq .eq-constraint-top-control-cell.eq-constraint-top-control-cell-max-filters {
     flex: 0 0 max(75px, 25%);
     box-sizing: border-box;
+    margin-left: auto;
 }
 
 div.extra-panel > div.extra-eq .eq-constraint-top-control-cell {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     min-width: 0;
 }
 
@@ -1428,6 +1438,11 @@ div.extra-panel > div.extra-eq .eq-constraint-ranges-head-cell {
     text-align: left;
     width: 100%;
     box-sizing: border-box;
+}
+
+/* Top row: don’t let width:100% stretch PK/LSQ/HSQ heading columns past the switch width */
+div.extra-panel > div.extra-eq .eq-constraint-top-headings > .eq-constraint-col-heading {
+    width: auto;
 }
 
 div.extra-panel > div.extra-eq .eq-constraint-ranges-block {
