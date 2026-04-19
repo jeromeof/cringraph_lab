@@ -143,6 +143,13 @@ doc.html(`
                   </span>
                 </label>
               </div>
+              <div class="live-sound-band">
+                <span class="live-sound-band-label live-sound-source-title">Range</span>
+                <div class="live-sound-range-pair">
+                  <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20" aria-label="Minimum frequency"></input></span>
+                  <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000" aria-label="Maximum frequency"></input></span>
+                </div>
+              </div>
               <div class="live-sound-sources">
                 <div class="live-sound-source extra-pink-noise">
                   <div class="live-sound-source-head">
@@ -198,49 +205,33 @@ doc.html(`
                   </div>
                 </div>
               </div>
-              <div class="live-sound-band">
-                <span class="live-sound-band-label live-sound-source-title">Range (Sound Tools)</span>
-                <div class="live-sound-range-pair">
-                  <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20" aria-label="Minimum frequency"></input></span>
-                  <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000" aria-label="Maximum frequency"></input></span>
-                </div>
-              </div>
             </div>
             <div class="extra-eq">
               <div class="extra-eq-head">
                 <h5 class="extra-eq-panel-title">Parametric Equalizer</h5>
-                <div class="extra-eq-reset-row">
-                  <label class="live-sound-eq-toggle-text" for="extra-eq-reset-btn">Reset EQ</label>
-                  <button type="button" id="extra-eq-reset-btn" class="extra-eq-reset-btn" aria-label="Reset all EQ bands: frequency, gain, and Q to zero">
-                    <svg class="extra-eq-reset-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
-                      <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0l6-6M3 9h12a6 6 0 0 1 6 6v0a6 6 0 0 1-6 6H9"/>
-                    </svg>
-                  </button>
+                <div class="extra-eq-head-trailing">
+                  <div class="extra-eq-reset-row">
+                    <label class="live-sound-eq-toggle-text" for="extra-eq-reset-btn">Reset</label>
+                    <button type="button" id="extra-eq-reset-btn" class="extra-eq-reset-btn" aria-label="Reset all EQ bands and parametric EQ settings to defaults">
+                      <svg class="extra-eq-reset-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0l6-6M3 9h12a6 6 0 0 1 6 6v0a6 6 0 0 1-6 6H9"/>
+                      </svg>
+                    </button>
+                  </div>
+                  <button type="button" class="extra-eq-constraints-gear" aria-expanded="false" aria-controls="extra-eq-constraints-body" aria-label="Parametric EQ settings" title="Parametric EQ settings"><span class="extra-eq-constraints-gear-char" aria-hidden="true">&#x2699;</span></button>
                 </div>
               </div>
-              <div class="select-eq-phone">
-                <select name="phone">
-                    <option value="" selected>Choose EQ model</option>
-                </select>
-              </div>
-              <div class="extra-eq-constraints live-sound-source">
-                <div class="extra-eq-constraints-head">
-                  <span class="live-sound-source-title">Constraints</span>
-                  <button type="button" class="extra-eq-constraints-gear" aria-expanded="false" aria-controls="extra-eq-constraints-body" aria-label="Constraint settings" title="Constraint settings"><span class="extra-eq-constraints-gear-char" aria-hidden="true">&#x2699;</span></button>
-                </div>
+              <div class="extra-eq-constraints">
                 <div id="extra-eq-constraints-body" class="extra-eq-constraints-body" aria-hidden="true">
                 <div class="extra-eq-constraints-inner">
                   <div class="eq-constraint-top-stack" role="group" aria-label="Filter count and allowed types">
                     <div class="eq-constraint-top-headings">
-                      <span class="eq-constraint-col-heading">Max Filters</span>
                       <span class="eq-constraint-col-heading" id="eq-constraint-heading-pk">Peak</span>
                       <span class="eq-constraint-col-heading" id="eq-constraint-heading-lsq">LSQ</span>
                       <span class="eq-constraint-col-heading" id="eq-constraint-heading-hsq">HSQ</span>
+                      <span class="eq-constraint-col-heading eq-constraint-col-heading-max-filters">Max Filters</span>
                     </div>
                     <div class="eq-constraint-top-controls">
-                      <div class="eq-constraint-top-control-cell">
-                        <input name="eq-constraint-max-bands" class="eq-constraint-max-bands-input" inputmode="numeric" type="number" min="0" max="20" step="1" value="0" aria-label="Maximum active filters (0 = no cap; extra rows stay visible but inactive)"></input>
-                      </div>
                       <div class="eq-constraint-top-control-cell">
                         <label class="live-sound-eq-toggle-label extra-eq-constraint-type-switch-label" aria-labelledby="eq-constraint-heading-pk">
                           <span class="live-sound-eq-switch">
@@ -271,6 +262,9 @@ doc.html(`
                           </span>
                         </label>
                       </div>
+                      <div class="eq-constraint-top-control-cell eq-constraint-top-control-cell-max-filters">
+                        <input name="eq-constraint-max-bands" class="eq-constraint-max-bands-input" inputmode="numeric" type="number" min="0" max="20" step="1" value="0" aria-label="Maximum active filters (0 = no cap; extra rows stay visible but inactive)"></input>
+                      </div>
                     </div>
                   </div>
                   <div class="eq-constraint-ranges-block" role="group" aria-label="EQ frequency, gain, and Q limits">
@@ -296,7 +290,12 @@ doc.html(`
                     </div>
                   </div>
                 </div>
-                </div>
+              </div>
+              </div>
+              <div class="select-eq-phone">
+                <select name="phone">
+                    <option value="" selected>Choose EQ model</option>
+                </select>
               </div>
               <div class="filters-header">
                 <span>Type</span>
@@ -4190,17 +4189,46 @@ function addExtra() {
         applyEQ();
         scheduleLiveEqSync();
     });
-    let resetAllEqBandsToZero = () => {
+    let resetParametricEqBandsAndConstraintsToDefaults = () => {
         for (let i = 0; i < eqBands; i++) {
             filterFreqInput[i].value = "0";
             filterGainInput[i].value = "0";
             filterQInput[i].value = "0";
         }
-        applyEQ();
-        scheduleLiveEqSync();
+        let cRoot = document.querySelector("div.extra-eq .extra-eq-constraints-inner");
+        if (cRoot) {
+            let mb = cRoot.querySelector("input[name='eq-constraint-max-bands']");
+            if (mb) {
+                mb.value = "0";
+            }
+            ["eq-constraint-freq-min", "eq-constraint-freq-max", "eq-constraint-q-min", "eq-constraint-q-max",
+                "eq-constraint-gain-min", "eq-constraint-gain-max"].forEach((nm) => {
+                let inp = cRoot.querySelector(`input[name='${nm}']`);
+                if (inp) {
+                    inp.value = "0";
+                }
+            });
+        }
+        let pkEl = document.querySelector("div.extra-eq input.eq-constraint-type-pk");
+        let lsqEl = document.querySelector("div.extra-eq input.eq-constraint-type-lsq");
+        let hsqEl = document.querySelector("div.extra-eq input.eq-constraint-type-hsq");
+        if (pkEl) {
+            pkEl.checked = true;
+        }
+        if (lsqEl) {
+            lsqEl.checked = true;
+        }
+        if (hsqEl) {
+            hsqEl.checked = true;
+        }
+        syncEqConstraintDomToEqualizerConfig({ writeBackDom: true });
+        commitEqMaxBandsFromInput({ writeBackDom: true });
     };
     document.querySelector("div.extra-eq button.extra-eq-reset-btn").addEventListener("click", () => {
-        resetAllEqBandsToZero();
+        if (!window.confirm("Reset all parametric EQ bands and settings (including constraints) to their defaults?")) {
+            return;
+        }
+        resetParametricEqBandsAndConstraintsToDefaults();
     });
     // Add new filter
     document.querySelector("div.extra-eq button.add-filter").addEventListener("click", () => {

@@ -1200,12 +1200,21 @@ div.extra-panel .extra-eq-panel-title {
     color: var(--background-color-contrast-more);
 }
 
+div.extra-panel .extra-eq-head-trailing {
+    flex: 0 0 auto;
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+}
+
 div.extra-panel .extra-eq-reset-row {
     flex: 0 0 auto;
     display: inline-flex;
     flex-direction: row;
     align-items: center;
-    gap: 6px;
+    gap: 2px;
     margin: 0;
     padding: 0;
     font-family: var(--font-primary);
@@ -1268,102 +1277,98 @@ div.extra-panel .extra-eq-reset-icon {
 
 div.extra-panel > div.extra-eq > div.select-eq-phone,
 div.extra-panel > div.extra-eq > div.filters,
-div.extra-panel > div.extra-eq > div.extra-eq-constraints,
 div.extra-panel div.settings-row {
     margin: 0 0 0.5em 0;
 }
 
-div.extra-panel > div.extra-eq > div.extra-eq-constraints.live-sound-source {
-    margin-top: 10px;
-    margin-bottom: 0.75em;
-}
-
-div.extra-panel > div.extra-eq > div.extra-eq-constraints .extra-eq-constraints-head {
+/* Constraints: outer only animates max-height + opacity (+ margin) like Music’s panel shell;
+   card padding/background live on .extra-eq-constraints-inner so they aren’t stripped mid-transition */
+div.extra-panel > div.extra-eq > div.extra-eq-constraints {
     box-sizing: border-box;
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    column-gap: 12px;
-    row-gap: 6px;
-    margin: 0;
-    width: 100%;
-}
-
-div.extra-panel > div.extra-eq > div.extra-eq-constraints.extra-eq-constraints-expanded .extra-eq-constraints-head {
-    margin-bottom: 12px;
-}
-
-div.extra-panel > div.extra-eq > div.extra-eq-constraints .extra-eq-constraints-body {
+    overflow: hidden;
     max-height: 0;
     opacity: 0;
-    overflow: hidden;
-    transition: max-height 200ms ease, opacity 200ms ease;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
     pointer-events: none;
+    transition: max-height 200ms ease, opacity 200ms ease, margin-bottom 200ms ease;
 }
 
-div.extra-panel > div.extra-eq > div.extra-eq-constraints.extra-eq-constraints-expanded .extra-eq-constraints-body {
+div.extra-panel > div.extra-eq > div.extra-eq-constraints.extra-eq-constraints-expanded {
     max-height: 900px;
     opacity: 1;
+    margin-top: 0;
+    margin-bottom: 10px;
     pointer-events: auto;
 }
 
 /* Not a panel action chip: override div.extra-panel button (flex grow, border, !important bg) */
-div.extra-panel .extra-eq-constraints-gear {
+div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear {
     box-sizing: border-box;
     flex: 0 0 auto;
     order: 0;
     width: auto;
     min-width: 0;
-    height: auto;
-    margin: 0 0 0 auto;
-    padding: 0;
-    display: inline-block;
+    /* Match reset control height so flex align-items: center lines up with label + icon */
+    height: 18px;
+    margin: 0;
+    /* Hit target extends left only so the glyph stays flush with the column’s right edge */
+    padding: 0 0 0 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
     border: none !important;
     border-radius: 0;
     background: transparent !important;
     box-shadow: none;
     color: var(--background-color-contrast-more);
     font-family: var(--font-primary);
-    font-size: 17px;
+    font-size: 22px;
     font-weight: 400;
     line-height: 1;
     text-transform: none;
     white-space: nowrap;
     cursor: pointer;
     outline: none;
-    vertical-align: baseline;
     -webkit-appearance: none;
     appearance: none;
     transition: color 200ms ease;
 }
 
-div.extra-panel .extra-eq-constraints-gear-char {
-    display: inline-block;
+div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear-char {
+    display: block;
     line-height: 1;
-    font-size: 1em;
+    font-size: 22px;
+    /* U+2699 often sits low in the em box; nudge up to match Reset label + circular icon */
+    transform: translateY(-2px);
 }
 
-div.extra-panel .extra-eq-constraints-gear:hover {
+div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear:hover {
     color: var(--accent-color);
 }
 
-div.extra-panel .extra-eq-constraints-gear:focus {
+div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear:focus {
     outline: none;
 }
 
-div.extra-panel .extra-eq-constraints-gear:focus-visible {
+div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear:focus-visible {
     box-shadow: 0 0 0 2px var(--background-color-graph), 0 0 0 4px var(--accent-color-contrast);
     border-radius: 2px;
 }
 
 div.extra-panel > div.extra-eq .extra-eq-constraints-inner {
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     gap: 18px;
     width: 100%;
     min-width: 0;
+    padding: 12px 12px 10px;
+    border-radius: 10px;
+    background-color: var(--background-color-graph);
 }
 
 /* Constraints top: heading row + control row; type toggles use same 54×24 switch as Apply EQ */
@@ -1377,22 +1382,36 @@ div.extra-panel > div.extra-eq .eq-constraint-top-stack {
 
 div.extra-panel > div.extra-eq .eq-constraint-top-headings,
 div.extra-panel > div.extra-eq .eq-constraint-top-controls {
-    display: grid;
-    grid-template-columns: minmax(0, 30%) repeat(3, minmax(0, 1fr));
-    column-gap: 6px;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 4px;
     width: 100%;
     min-width: 0;
 }
 
-div.extra-panel > div.extra-eq .eq-constraint-top-controls {
-    align-items: center;
+div.extra-panel > div.extra-eq .eq-constraint-top-headings > .eq-constraint-col-heading:not(.eq-constraint-col-heading-max-filters),
+div.extra-panel > div.extra-eq .eq-constraint-top-control-cell:not(.eq-constraint-top-control-cell-max-filters) {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-top-headings > .eq-constraint-col-heading-max-filters,
+div.extra-panel > div.extra-eq .eq-constraint-top-control-cell.eq-constraint-top-control-cell-max-filters {
+    flex: 0 0 max(75px, 25%);
+    box-sizing: border-box;
 }
 
 div.extra-panel > div.extra-eq .eq-constraint-top-control-cell {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
     min-width: 0;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-top-control-cell.eq-constraint-top-control-cell-max-filters {
+    justify-content: stretch;
 }
 
 div.extra-panel > div.extra-eq .eq-constraint-top-controls .extra-eq-constraint-type-switch-label {
@@ -1419,30 +1438,59 @@ div.extra-panel > div.extra-eq .eq-constraint-ranges-block {
     min-width: 0;
 }
 
-/* Same 30% / 35% / 35% as top row last three columns combined → min & max split 70% evenly */
+/* Min / Max: match EQ filter cell width (~75px at typical widths); max(75px, 25%) tracks with EQ flex: 25% 1 1 */
 div.extra-panel > div.extra-eq .eq-constraint-range-row {
+    box-sizing: border-box;
     display: grid;
-    grid-template-columns: minmax(0, 30%) minmax(0, 1fr) minmax(0, 1fr);
-    column-gap: 6px;
-    row-gap: 0;
+    grid-template-columns: minmax(0, 1fr) max(75px, 25%) max(75px, 25%);
+    column-gap: 4px;
     align-items: center;
     width: 100%;
     min-width: 0;
 }
 
-div.extra-panel > div.extra-eq .eq-constraint-range-label-slot,
-div.extra-panel > div.extra-eq .eq-constraint-range-min-slot,
-div.extra-panel > div.extra-eq .eq-constraint-range-max-slot {
+div.extra-panel > div.extra-eq .eq-constraint-range-row > .eq-constraint-range-label-slot {
+    grid-column: 1;
     min-width: 0;
+    text-align: left;
 }
 
-div.extra-panel > div.extra-eq .eq-constraint-range-label-slot {
+div.extra-panel > div.extra-eq .eq-constraint-range-row > .eq-constraint-range-min-slot {
+    grid-column: 2;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-range-row > .eq-constraint-range-max-slot {
+    grid-column: 3;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-range-row > .eq-constraint-range-min-slot > input,
+div.extra-panel > div.extra-eq .eq-constraint-range-row > .eq-constraint-range-max-slot > input {
+    width: 100%;
+    max-width: 100%;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-range-row-header > .eq-constraint-range-min-slot,
+div.extra-panel > div.extra-eq .eq-constraint-range-row-header > .eq-constraint-range-max-slot {
+    display: flex;
+    justify-content: flex-start;
     text-align: left;
 }
 
 div.extra-panel > div.extra-eq .eq-constraint-top-control-cell .eq-constraint-max-bands-input {
     width: 100%;
-    text-align: left;
+    text-align: right;
 }
 
 div.extra-panel > div.extra-eq .eq-constraint-range-row-header {
@@ -1536,9 +1584,11 @@ div.extra-panel .live-sound-range-pair > span > input {
     text-align: right;
 }
 
-/* Reserve space so right-aligned values stay clear of Hz / dB suffixes */
+/* Reserve space so right-aligned values stay clear of Hz / dB suffixes (EQ rows + constraint max fields) */
 div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="freq"],
-div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="gain"] {
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="gain"],
+div.extra-panel > div.extra-eq .eq-constraint-range-cell > input[name="eq-constraint-freq-max"],
+div.extra-panel > div.extra-eq .eq-constraint-range-cell > input[name="eq-constraint-gain-max"] {
     padding-right: 2.75em;
 }
 
@@ -1598,10 +1648,6 @@ div.extra-panel > div.extra-eq span.eq-constraint-input-with-unit {
     display: block;
 }
 
-div.extra-panel > div.extra-eq span.eq-constraint-input-with-unit > input {
-    padding-right: 2.85em;
-}
-
 div.extra-panel > div.extra-eq span.eq-constraint-input-with-unit.eq-constraint-unit-hz::after,
 div.extra-panel > div.extra-eq span.eq-constraint-input-with-unit.eq-constraint-unit-db::after {
     position: absolute;
@@ -1609,7 +1655,7 @@ div.extra-panel > div.extra-eq span.eq-constraint-input-with-unit.eq-constraint-
     right: 1px;
     transform: translateY(-50%);
     box-sizing: border-box;
-    padding: 0 8px 0 0;
+    padding: 0 10px 0 0;
     border-radius: 0 6px 6px 0;
     font-family: var(--font-secondary);
     font-size: 11px;
@@ -1698,7 +1744,7 @@ div.extra-panel button.play + span {
     line-height: 1em;
 }
 
-/* Live Sound Tools — cards + range row at bottom (no outer wrapper padding) */
+/* Live Sound Tools — range row under heading, then source cards (no outer wrapper padding) */
 div.extra-panel .live-sound-tools {
     box-sizing: border-box;
     display: flex;
@@ -1843,7 +1889,8 @@ div.extra-panel .live-sound-band {
     align-items: center;
     justify-content: space-between;
     gap: 8px 12px;
-    margin-top: 14px;
+    margin-top: 0;
+    margin-bottom: 10px;
     padding-top: 0;
     background-color: transparent;
 }
