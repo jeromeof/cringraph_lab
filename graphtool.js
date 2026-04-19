@@ -268,10 +268,10 @@ doc.html(`
               </div>
               <div class="filters-button extra-eq-filter-actions">
                 <button class="import-filters">Import</button>
+                <button class="export-filters">Export</button>
               </div>
               <div class="filters-button extra-eq-filter-actions">
-                <button class="export-filters">Export</button>
-                <button class="export-graphic-filters extra-eq-secondary-btn">Export (Wavelet)</button>
+                <button class="export-graphic-filters extra-eq-secondary-btn">Export Graphic EQ (Wavelet)</button>
               </div>
               <a style="display: none" id="file-filters-export"></a>
               <form style="display:none"><input type="file" id="file-filters-import" accept=".txt" /></form>
@@ -288,13 +288,6 @@ doc.html(`
                     </span>
                   </span>
                 </label>
-              </div>
-              <div class="live-sound-band">
-                <span class="live-sound-band-label live-sound-source-title">Range</span>
-                <div class="live-sound-range-pair">
-                  <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20" aria-label="Minimum frequency" onclick="this.focus();this.select()"></input></span>
-                  <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000" aria-label="Maximum frequency" onclick="this.focus();this.select()"></input></span>
-                </div>
               </div>
               <div class="live-sound-sources">
                 <div class="live-sound-source extra-pink-noise">
@@ -349,6 +342,13 @@ doc.html(`
                     <button type="button" class="music-add-remove">+ Add Music</button>
                     <input type="file" class="music-file-input" accept="audio/*" tabindex="-1" aria-hidden="true" />
                   </div>
+                </div>
+              </div>
+              <div class="live-sound-band">
+                <span class="live-sound-band-label live-sound-source-title">Range</span>
+                <div class="live-sound-range-pair">
+                  <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20" aria-label="Minimum frequency" onclick="this.focus();this.select()"></input></span>
+                  <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000" aria-label="Maximum frequency" onclick="this.focus();this.select()"></input></span>
                 </div>
               </div>
             </div>

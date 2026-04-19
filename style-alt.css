@@ -953,20 +953,16 @@ div.extra-panel > div.extra-eq > div.filters-button > button.remove-filter {
     border-color: var(--background-color-contrast) !important;
 }
 
-/* Import: one full-width row; Export + Wavelet: each full width on its own row */
+/* Import | Export: 50/50 on one row; Wavelet: full width on next row */
 div.extra-eq div.filters-button.extra-eq-filter-actions > button {
     flex: 1 1 0;
     min-width: 0;
 }
 
-div.extra-panel > div.extra-eq > div.filters-button.extra-eq-filter-actions > button.export-filters,
 div.extra-panel > div.extra-eq > div.filters-button.extra-eq-filter-actions > button.export-graphic-filters.extra-eq-secondary-btn {
     flex: 1 1 100%;
     width: 100%;
     max-width: 100%;
-}
-
-div.extra-panel > div.extra-eq > div.filters-button.extra-eq-filter-actions > button.export-graphic-filters.extra-eq-secondary-btn {
     border-color: var(--background-color) !important;
 }
 
@@ -1747,7 +1743,8 @@ div.extra-panel > div.extra-eq .eq-constraint-preset-stack > select {
     width: 100%;
     line-height: 14px;
     padding: 10px 22px 10px 10px;
-    border: 1px solid var(--background-color-contrast-more);
+    background-color: var(--background-color-contrast);
+    border: 1px solid var(--background-color-contrast);
     border-radius: 6px;
 }
 
@@ -1764,6 +1761,11 @@ div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[type='c
     -webkit-appearance: checkbox;
     appearance: checkbox;
     
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    border-radius: 0;
+    
     accent-color: var(--background-color-contrast);
     
     cursor: pointer;
@@ -1772,8 +1774,12 @@ div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[type='c
 div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[type='checkbox']:checked {
 }
 
+/* PK / LSQ / HSQ: keep minimal chrome (contrast fill lives on model / target / preset selects only) */
 div.extra-panel > div.extra-eq > div.filters > div.filter > span > select {
     width: 70%;
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
 }
 
 div.extra-panel div.settings-row > span {
@@ -1781,7 +1787,7 @@ div.extra-panel div.settings-row > span {
     display: inline-block;
 }
 
-div.extra-panel > div.extra-eq > div.filters > div.filter > span > input,
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > input:not([type='checkbox']),
 div.extra-panel div.settings-row > span > input,
 div.extra-panel > div.extra-eq .eq-constraint-range-cell > input,
 div.extra-panel > div.extra-eq .eq-constraint-max-bands-input,
@@ -1803,7 +1809,7 @@ div.extra-panel .live-sound-range-pair > span > input {
 }
 
 /* EQ panel + Sound Tools range: right-align numeric/text field values */
-div.extra-panel > div.extra-eq > div.filters > div.filter > span > input,
+div.extra-panel > div.extra-eq > div.filters > div.filter > span > input:not([type='checkbox']),
 div.extra-panel > div.extra-eq .eq-constraint-range-cell > input,
 div.extra-panel > div.extra-eq .eq-constraint-max-bands-input,
 div.extra-panel .live-sound-range-pair > span > input {
@@ -1976,7 +1982,7 @@ div.extra-panel button.play + span {
     line-height: 1em;
 }
 
-/* Live Sound Tools — range row under heading, then source cards (no outer wrapper padding) */
+/* Live Sound Tools — heading, source cards, then Range row at bottom (no outer wrapper padding) */
 div.extra-panel .live-sound-tools {
     box-sizing: border-box;
     display: flex;
@@ -2121,7 +2127,7 @@ div.extra-panel .live-sound-band {
     align-items: center;
     justify-content: space-between;
     gap: 8px 12px;
-    margin-top: 0;
+    margin-top: 10px;
     margin-bottom: 10px;
     padding-top: 0;
     background-color: transparent;
