@@ -154,6 +154,33 @@ doc.html(`
                       <select id="eq-constraint-preset-input" class="eq-constraint-preset-hit" name="eq-constraint-preset" aria-label="Constraint presets" title="Apply a constraint configuration from eq-constraint-presets.json"></select>
                     </div>
                   </div>
+                  <div class="eq-constraint-ranges-block" role="group" aria-label="EQ frequency, gain, and Q limits">
+                    <div class="eq-constraint-range-row eq-constraint-range-row-header">
+                      <span class="eq-constraint-range-label-slot eq-constraint-ranges-head-cell">Ranges</span>
+                      <span class="eq-constraint-range-min-slot eq-constraint-ranges-head-cell">Min</span>
+                      <span class="eq-constraint-range-max-slot eq-constraint-ranges-head-cell">Max</span>
+                    </div>
+                    <div class="eq-constraint-range-row eq-constraint-freq-row">
+                      <span class="eq-constraint-range-label-slot eq-constraint-range-name">Frequency</span>
+                      <div class="eq-constraint-freq-parametric-cells">
+                        <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-freq-min" inputmode="decimal" type="text" value="0" aria-label="Minimum EQ frequency (0 = no limit); for graphic bands when max is unlimited use comma then space between Hz (e.g. 32, 64, 125)" title="0 = no limit. With max also 0, use comma + space between Hz (e.g. 32, 64, 125) for graphic EQ — not 2,000 (thousands)." onclick="this.focus();this.select()"></input></span>
+                        <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-hz"><input name="eq-constraint-freq-max" inputmode="decimal" type="text" value="0" aria-label="Maximum EQ frequency (0 = no limit); for graphic bands when min is unlimited use comma then space between Hz (e.g. 32, 64, 125)" title="0 = no limit. With min also 0, use comma + space between Hz (e.g. 32, 64, 125) for graphic EQ." onclick="this.focus();this.select()"></input></span>
+                      </div>
+                      <div class="eq-constraint-freq-graphic-full" hidden>
+                        <input name="eq-constraint-freq-graphic-list" type="text" class="eq-constraint-freq-graphic-list-input" inputmode="text" value="" autocomplete="off" spellcheck="false" aria-label="Graphic EQ band frequencies in Hz; use a comma then space between values (e.g. 32, 64, 125)" title="Hz with comma + space between bands (e.g. 32, 64, 125, 250). Clear to return to min/max limits." onclick="this.focus();this.select()"></input>
+                      </div>
+                    </div>
+                    <div class="eq-constraint-range-row">
+                      <span class="eq-constraint-range-label-slot eq-constraint-range-name">Gain</span>
+                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-gain-min" inputmode="decimal" type="number" min="-40" max="40" step="0.1" value="0" aria-label="Minimum gain dB (0 = no limit)" onclick="this.focus();this.select()"></input></span>
+                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-db"><input name="eq-constraint-gain-max" inputmode="decimal" type="number" min="-40" max="40" step="0.1" value="0" aria-label="Maximum gain dB (0 = no limit)" onclick="this.focus();this.select()"></input></span>
+                    </div>
+                    <div class="eq-constraint-range-row">
+                      <span class="eq-constraint-range-label-slot eq-constraint-range-name">Q</span>
+                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-q-min" inputmode="decimal" type="number" min="0" max="10" step="0.1" value="0" aria-label="Minimum Q (0 = no limit)" onclick="this.focus();this.select()"></input></span>
+                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell"><input name="eq-constraint-q-max" inputmode="decimal" type="number" min="0" max="10" step="0.1" value="0" aria-label="Maximum Q (0 = no limit)" onclick="this.focus();this.select()"></input></span>
+                    </div>
+                  </div>
                   <div class="eq-constraint-top-stack" role="group" aria-label="Filter count and allowed types">
                     <div class="eq-constraint-top-headings">
                       <span class="eq-constraint-col-heading" id="eq-constraint-heading-pk">Peak</span>
@@ -195,33 +222,6 @@ doc.html(`
                       <div class="eq-constraint-top-control-cell eq-constraint-top-control-cell-max-filters">
                         <input name="eq-constraint-max-bands" class="eq-constraint-max-bands-input" inputmode="numeric" type="number" min="0" max="20" step="1" value="0" aria-label="Maximum active filters (0 = no cap; extra rows stay visible but inactive)" onclick="this.focus();this.select()"></input>
                       </div>
-                    </div>
-                  </div>
-                  <div class="eq-constraint-ranges-block" role="group" aria-label="EQ frequency, gain, and Q limits">
-                    <div class="eq-constraint-range-row eq-constraint-range-row-header">
-                      <span class="eq-constraint-range-label-slot eq-constraint-ranges-head-cell">Ranges</span>
-                      <span class="eq-constraint-range-min-slot eq-constraint-ranges-head-cell">Min</span>
-                      <span class="eq-constraint-range-max-slot eq-constraint-ranges-head-cell">Max</span>
-                    </div>
-                    <div class="eq-constraint-range-row eq-constraint-freq-row">
-                      <span class="eq-constraint-range-label-slot eq-constraint-range-name">Frequency</span>
-                      <div class="eq-constraint-freq-parametric-cells">
-                        <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-freq-min" inputmode="decimal" type="text" value="0" aria-label="Minimum EQ frequency (0 = no limit); for graphic bands when max is unlimited use comma then space between Hz (e.g. 32, 64, 125)" title="0 = no limit. With max also 0, use comma + space between Hz (e.g. 32, 64, 125) for graphic EQ — not 2,000 (thousands)." onclick="this.focus();this.select()"></input></span>
-                        <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-hz"><input name="eq-constraint-freq-max" inputmode="decimal" type="text" value="0" aria-label="Maximum EQ frequency (0 = no limit); for graphic bands when min is unlimited use comma then space between Hz (e.g. 32, 64, 125)" title="0 = no limit. With min also 0, use comma + space between Hz (e.g. 32, 64, 125) for graphic EQ." onclick="this.focus();this.select()"></input></span>
-                      </div>
-                      <div class="eq-constraint-freq-graphic-full" hidden>
-                        <input name="eq-constraint-freq-graphic-list" type="text" class="eq-constraint-freq-graphic-list-input" inputmode="text" value="" autocomplete="off" spellcheck="false" aria-label="Graphic EQ band frequencies in Hz; use a comma then space between values (e.g. 32, 64, 125)" title="Hz with comma + space between bands (e.g. 32, 64, 125, 250). Clear to return to min/max limits." onclick="this.focus();this.select()"></input>
-                      </div>
-                    </div>
-                    <div class="eq-constraint-range-row">
-                      <span class="eq-constraint-range-label-slot eq-constraint-range-name">Gain</span>
-                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-gain-min" inputmode="decimal" type="number" min="-40" max="40" step="0.1" value="0" aria-label="Minimum gain dB (0 = no limit)" onclick="this.focus();this.select()"></input></span>
-                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-db"><input name="eq-constraint-gain-max" inputmode="decimal" type="number" min="-40" max="40" step="0.1" value="0" aria-label="Maximum gain dB (0 = no limit)" onclick="this.focus();this.select()"></input></span>
-                    </div>
-                    <div class="eq-constraint-range-row">
-                      <span class="eq-constraint-range-label-slot eq-constraint-range-name">Q</span>
-                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-q-min" inputmode="decimal" type="number" min="0" max="10" step="0.1" value="0" aria-label="Minimum Q (0 = no limit)" onclick="this.focus();this.select()"></input></span>
-                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell"><input name="eq-constraint-q-max" inputmode="decimal" type="number" min="0" max="10" step="0.1" value="0" aria-label="Maximum Q (0 = no limit)" onclick="this.focus();this.select()"></input></span>
                     </div>
                   </div>
                 </div>
@@ -4805,6 +4805,7 @@ function addExtra() {
         return out.length >= 2 ? out : null;
     };
     let EQ_CONSTRAINT_PRESET_VALUE_CUSTOM = "__custom__";
+    let EQ_CONSTRAINT_PRESET_STORAGE_KEY = "eq-constraint-preset-last";
     let EQ_CONSTRAINT_PRESET_DIVIDER_PREFIX = "__divider__";
     let isEqConstraintPresetDividerValue = (v) => {
         return v != null && String(v).indexOf(EQ_CONSTRAINT_PRESET_DIVIDER_PREFIX) === 0;
@@ -4983,6 +4984,7 @@ function addExtra() {
         }
         hit.value = EQ_CONSTRAINT_PRESET_VALUE_CUSTOM;
         display.selectedIndex = hit.selectedIndex;
+        persistEqConstraintPresetSelectionToStorage();
     };
     let clearEqConstraintPresetSelection = () => {
         eqFiltersUserHasEdited = false;
@@ -5028,6 +5030,57 @@ function addExtra() {
         }
         display.selectedIndex = hit.selectedIndex;
     };
+    let persistEqConstraintPresetSelectionToStorage = () => {
+        if (eqConstraintPresetProgrammaticSyncDepth > 0) {
+            return;
+        }
+        let hit = document.getElementById("eq-constraint-preset-input");
+        let row = document.getElementById("eq-constraint-preset-row");
+        if (!hit || row.hidden) {
+            return;
+        }
+        try {
+            localStorage.setItem(EQ_CONSTRAINT_PRESET_STORAGE_KEY, hit.value);
+        } catch (err) {
+            /* Quota, private mode, or disabled storage */
+        }
+    };
+    let tryRestoreEqConstraintPresetFromStorage = (hit, display) => {
+        let saved = null;
+        try {
+            saved = localStorage.getItem(EQ_CONSTRAINT_PRESET_STORAGE_KEY);
+        } catch (err) {
+            return false;
+        }
+        if (saved == null) {
+            return false;
+        }
+        if (saved === EQ_CONSTRAINT_PRESET_VALUE_CUSTOM || isEqConstraintPresetDividerValue(saved)) {
+            return false;
+        }
+        let matched = Array.from(hit.querySelectorAll("option")).some((o) => !o.disabled && o.value === saved);
+        if (!matched) {
+            return false;
+        }
+        if (saved === "") {
+            runEqConstraintPresetProgrammatic(() => {
+                clearEqConstraintPresetSelection();
+                hit.value = "";
+                display.selectedIndex = hit.selectedIndex;
+            });
+            return true;
+        }
+        let p = findEqConstraintPresetByOptionValue(saved);
+        if (!p) {
+            return false;
+        }
+        runEqConstraintPresetProgrammatic(() => {
+            applyEqConstraintPreset(p);
+            hit.value = saved;
+            display.selectedIndex = hit.selectedIndex;
+        });
+        return true;
+    };
     let wireEqConstraintPresetSelectStack = () => {
         let hit = document.getElementById("eq-constraint-preset-input");
         if (!hit || hit.dataset.eqPresetStackWired) {
@@ -5041,20 +5094,19 @@ function addExtra() {
                 runEqConstraintPresetProgrammatic(() => {
                     clearEqConstraintPresetSelection();
                 });
-                return;
+            } else if (v === EQ_CONSTRAINT_PRESET_VALUE_CUSTOM) {
+                /* selection only; constraints unchanged */
+            } else if (isEqConstraintPresetDividerValue(v)) {
+                /* disabled; should not fire */
+            } else {
+                let p = findEqConstraintPresetByOptionValue(v);
+                if (p) {
+                    runEqConstraintPresetProgrammatic(() => {
+                        applyEqConstraintPreset(p);
+                    });
+                }
             }
-            if (v === EQ_CONSTRAINT_PRESET_VALUE_CUSTOM) {
-                return;
-            }
-            if (isEqConstraintPresetDividerValue(v)) {
-                return;
-            }
-            let p = findEqConstraintPresetByOptionValue(v);
-            if (p) {
-                runEqConstraintPresetProgrammatic(() => {
-                    applyEqConstraintPreset(p);
-                });
-            }
+            persistEqConstraintPresetSelectionToStorage();
         });
     };
     let loadEqConstraintPresets = () => {
@@ -5193,19 +5245,22 @@ function addExtra() {
                 row.hidden = false;
                 wireEqConstraintPresetSelectStack();
                 let defPreset = defaultPresetObj;
-                if (defPreset) {
-                    runEqConstraintPresetProgrammatic(() => {
-                        applyEqConstraintPreset(defPreset);
-                        if (defaultOptionValue != null) {
-                            hit.value = defaultOptionValue;
-                            display.selectedIndex = hit.selectedIndex;
-                        }
-                    });
-                } else {
-                    runEqConstraintPresetProgrammatic(() => {
-                        hit.selectedIndex = 0;
-                        display.selectedIndex = 0;
-                    });
+                let restored = tryRestoreEqConstraintPresetFromStorage(hit, display);
+                if (!restored) {
+                    if (defPreset) {
+                        runEqConstraintPresetProgrammatic(() => {
+                            applyEqConstraintPreset(defPreset);
+                            if (defaultOptionValue != null) {
+                                hit.value = defaultOptionValue;
+                                display.selectedIndex = hit.selectedIndex;
+                            }
+                        });
+                    } else {
+                        runEqConstraintPresetProgrammatic(() => {
+                            hit.selectedIndex = 0;
+                            display.selectedIndex = 0;
+                        });
+                    }
                 }
             })
             .catch(() => {
