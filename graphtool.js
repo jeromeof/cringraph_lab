@@ -323,12 +323,13 @@ doc.html(`
                 <button class="remove-filter">－</button>
                 <button class="sort-filters">Sort</button>
               </div>
-              <div class="filters-button">
-                <button class="autoeq">AutoEQ</button>
-                <button class="readme">Readme</button>
+              <div class="filters-button extra-eq-filter-actions">
                 <button class="import-filters">Import</button>
+                <button class="autoeq extra-eq-secondary-btn">AutoEQ</button>
+              </div>
+              <div class="filters-button extra-eq-filter-actions">
                 <button class="export-filters">Export</button>
-                <button class="export-graphic-filters">Export Graphic EQ (For Wavelet)</button>
+                <button class="export-graphic-filters extra-eq-secondary-btn">Export (Wavelet)</button>
               </div>
               <a style="display: none" id="file-filters-export"></a>
               <form style="display:none"><input type="file" id="file-filters-import" accept=".txt" /></form>
@@ -4358,14 +4359,6 @@ function addExtra() {
         exportElem.href = URL.createObjectURL(new Blob([settings]));
         exportElem.download = phoneObj.fullName.replace(/^Uploaded /, "") + " Graphic Filters.txt";
         exportElem.click();
-    });
-    // Readme
-    document.querySelector("div.extra-eq button.readme").addEventListener("click", () => {
-        alert("1. If you want to AutoEQ model A to B, display A B and remove target\n" +
-            "2. Add/Remove bands before AutoEQ may give you a better result\n" +
-            "3. Curve of PK filter close to 20K is implementation dependent, avoid such filter if you're not sure how your DSP software works\n" +
-            "4. EQ treble require resonant peak matching and fine tune by ear, keep treble untouched if you're not sure how to do that\n" +
-            "5. Tone generator is useful to find actual location of peaks and dips, notice the web version may not work on some platform\n");
     });
     // AutoEQ (uses EQ constraints panel for range, Q/gain limits, max bands, and PK/LSQ/HSQ flags)
     let eqConstraintsRoot = document.querySelector("div.extra-eq .extra-eq-constraints-inner");

@@ -942,20 +942,23 @@ div.filters-button {
     gap: 0 4px;
 }
 
-div.extra-panel button.sort-filters,
-div.extra-panel button.readme {
+div.extra-panel button.sort-filters {
     flex: calc(50% - 2px) 0 0;
     border-color: var(--background-color-contrast) !important;
 }
 
-div.extra-panel button.import-filters,
-div.extra-panel button.export-filters {
-    position: relative;
-    
-    flex: 100% 0 0;
+/* Import|AutoEQ and Export|Wavelet: equal half-width rows */
+div.extra-eq div.filters-button.extra-eq-filter-actions > button {
+    flex: 1 1 0;
+    min-width: 0;
 }
 
-button.export-graphic-filters {
+div.extra-panel button.export-filters {
+    position: relative;
+}
+
+/* De-emphasized EQ actions (AutoEQ, Wavelet export) */
+div.extra-panel > div.extra-eq button.extra-eq-secondary-btn {
     border-color: var(--background-color-contrast) !important;
 }
 
