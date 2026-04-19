@@ -151,7 +151,7 @@ doc.html(`
                   <div id="eq-constraint-preset-row" class="eq-constraint-preset-row" hidden>
                     <div class="select-eq-phone eq-constraint-preset-stack">
                       <select id="eq-constraint-preset-display" class="eq-constraint-preset-display" tabindex="-1" aria-hidden="true"></select>
-                      <select id="eq-constraint-preset-input" class="eq-constraint-preset-hit" name="eq-constraint-preset" aria-label="Constraint presets" title="Apply a constraint configuration from eq-constraint-presets.json"></select>
+                      <select id="eq-constraint-preset-input" class="eq-constraint-preset-hit" name="eq-constraint-preset" aria-label="Constraint presets" title="Apply a constraint configuration from equalizer-constraints.json"></select>
                     </div>
                   </div>
                   <div class="eq-constraint-ranges-block" role="group" aria-label="EQ frequency, gain, and Q limits">
@@ -5775,7 +5775,7 @@ function addExtra() {
         if (!row || !hit || !display) {
             return;
         }
-        let url = new URL("eq-constraint-presets.json", window.location.href).href;
+        let url = new URL("equalizer-constraints.json", window.location.href).href;
         fetch(url, { cache: "no-store" })
             .then((r) => (r.ok ? r.json() : null))
             .then((data) => {
