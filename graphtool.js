@@ -137,12 +137,10 @@ doc.html(`
                   <div class="extra-eq-reset-row">
                     <button type="button" id="extra-eq-reset-btn" class="extra-eq-reset-btn" aria-label="Reset all EQ bands and parametric EQ settings to defaults">
                       <span class="extra-eq-reset-label">Reset</span>
-                      <svg class="extra-eq-reset-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
-                        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0l6-6M3 9h12a6 6 0 0 1 6 6v0a6 6 0 0 1-6 6H9"/>
-                      </svg>
+                      <span class="extra-eq-reset-icon" aria-hidden="true"></span>
                     </button>
                   </div>
-                  <button type="button" class="extra-eq-constraints-gear" aria-expanded="false" aria-controls="extra-eq-constraints-body" aria-label="Parametric EQ settings" title="Parametric EQ settings"><span class="extra-eq-constraints-gear-char" aria-hidden="true">&#x2699;</span><span class="extra-eq-constraints-gear-preset-badge" aria-hidden="true" hidden>!</span></button>
+                  <button type="button" class="extra-eq-constraints-gear" aria-expanded="false" aria-controls="extra-eq-constraints-body" aria-label="Parametric EQ settings" title="Parametric EQ settings"><span class="extra-eq-constraints-gear-char" aria-hidden="true"></span><span class="extra-eq-constraints-gear-preset-badge" aria-hidden="true" hidden>!</span></button>
                 </div>
               </div>
               <div class="extra-eq-constraints">
@@ -295,7 +293,7 @@ doc.html(`
                     <span class="live-sound-source-title">Pink Noise</span>
                   </div>
                   <div class="live-sound-source-actions">
-                    <button type="button" class="play" aria-label="Toggle pink noise playback">▶</button>
+                    <button type="button" class="play" aria-label="Toggle pink noise playback"></button>
                   </div>
                 </div>
                 <div class="live-sound-source extra-tone-generator">
@@ -303,7 +301,7 @@ doc.html(`
                     <span class="live-sound-source-title">Tone Generator</span>
                   </div>
                   <div class="live-sound-source-actions tone-generator-play-row">
-                    <button type="button" class="play" aria-label="Toggle tone playback">▶</button>
+                    <button type="button" class="play" aria-label="Toggle tone playback"></button>
                   </div>
                   <div class="live-sound-slider-row tone-generator-slider-row">
                     <input name="tone-generator-freq" type="range" min="0" max="1" step="0.0001" value="0" aria-label="Tone frequency along band" />
@@ -320,7 +318,7 @@ doc.html(`
                   <div class="music-playback-panel" aria-hidden="true">
                     <div class="music-playback-panel-inner">
                       <div class="live-sound-source-actions music-play-row">
-                        <button type="button" class="play" disabled aria-label="Toggle music playback">▶</button>
+                        <button type="button" class="play" disabled aria-label="Toggle music playback"></button>
                       </div>
                       <div class="live-sound-slider-row music-slider-row">
                         <div class="music-segment-slider music-segment-slider-disabled" role="group" aria-label="Playback and loop range">
@@ -6591,7 +6589,6 @@ function addExtra() {
             return;
         }
         pinkNoisePlaying = false;
-        pinkNoisePlayButton.innerText = "▶";
         pinkNoisePlayButton.classList.remove("playback-active");
         if (liveEqSyncRafId !== null) {
             cancelAnimationFrame(liveEqSyncRafId);
@@ -6826,7 +6823,6 @@ function addExtra() {
         }
         musicAudio.pause();
         if (musicPlayButton) {
-            musicPlayButton.innerText = "▶";
             musicPlayButton.classList.remove("playback-active");
         }
         musicSpectrumViz.syncSpectrumViz();
@@ -7529,7 +7525,6 @@ function addExtra() {
                 toneGeneratorMasterGain = null;
             }
             disconnectToneGeneratorAnalyser();
-            toneGeneratorPlayButton.innerText = "▶";
             toneGeneratorPlayButton.classList.remove("playback-active");
         }
         pauseMusicForLiveSoundSwitch();
@@ -7545,7 +7540,6 @@ function addExtra() {
         pinkNoiseMasterGain.disconnect();
         pinkNoiseMasterGain.connect(pinkNoiseAnalyser);
         pinkNoiseAnalyser.connect(pinkNoiseContext.destination);
-        pinkNoisePlayButton.innerText = "⏹";
         pinkNoisePlayButton.classList.add("playback-active");
         lastEqPlaybackSource = "pink";
         if (pinkNoiseContext.state !== "running") {
@@ -7641,7 +7635,6 @@ function addExtra() {
                 toneGeneratorMasterGain = null;
             }
             disconnectToneGeneratorAnalyser();
-            toneGeneratorPlayButton.innerText = "▶";
             toneGeneratorPlayButton.classList.remove("playback-active");
             musicSpectrumViz.syncSpectrumViz();
             updateEqTraceOpacity();
@@ -7667,7 +7660,6 @@ function addExtra() {
             toneGeneratorMasterGain.connect(toneGeneratorAnalyser);
             toneGeneratorAnalyser.connect(toneGeneratorContext.destination);
             toneGeneratorOsc.start();
-            toneGeneratorPlayButton.innerText = "⏹";
             toneGeneratorPlayButton.classList.add("playback-active");
             lastEqPlaybackSource = "tone";
             if (toneGeneratorContext.state !== "running") {
@@ -7705,7 +7697,6 @@ function addExtra() {
         musicSegEndU = 1;
         if (musicPlayButton) {
             musicPlayButton.disabled = true;
-            musicPlayButton.innerText = "▶";
             musicPlayButton.classList.remove("playback-active");
         }
         if (musicSegmentSliderEl) {
@@ -7797,7 +7788,6 @@ function addExtra() {
                 toneGeneratorMasterGain = null;
             }
             disconnectToneGeneratorAnalyser();
-            toneGeneratorPlayButton.innerText = "▶";
             toneGeneratorPlayButton.classList.remove("playback-active");
         }
     };
@@ -7856,7 +7846,6 @@ function addExtra() {
         stopPinkAndToneForExclusiveMusic();
         void musicContext.resume();
         return musicAudio.play().then(() => {
-            musicPlayButton.innerText = "⏹";
             musicPlayButton.classList.add("playback-active");
             lastEqPlaybackSource = "music";
             musicSpectrumViz.syncSpectrumViz();
@@ -7874,7 +7863,6 @@ function addExtra() {
         }
         musicAudio.pause();
         musicSpectrumViz.stop();
-        musicPlayButton.innerText = "▶";
         musicPlayButton.classList.remove("playback-active");
         musicObjectUrl = URL.createObjectURL(blob);
         if (segOpt && typeof segOpt.segStartU === "number" && typeof segOpt.segEndU === "number") {
@@ -7957,7 +7945,6 @@ function addExtra() {
                 });
             } else {
                 musicAudio.pause();
-                musicPlayButton.innerText = "▶";
                 musicPlayButton.classList.remove("playback-active");
                 musicSpectrumViz.syncSpectrumViz();
                 updateEqTraceOpacity();
@@ -8222,7 +8209,9 @@ function addExtra() {
             return;
         }
         if (t.closest && t.closest("div.extra-panel button") && !t.closest("button.play")) {
-            if (t.closest && t.closest("button.music-add-remove") && musicFileLoaded) {
+            if (t.closest("button.extra-eq-constraints-gear")) {
+                /* Gear keeps focus after open/close; native Space would toggle the panel instead of play/pause. */
+            } else if (t.closest && t.closest("button.music-add-remove") && musicFileLoaded) {
                 e.preventDefault();
             } else {
                 return;
