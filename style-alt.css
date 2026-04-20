@@ -1199,10 +1199,10 @@ div.extra-panel .eq-constraint-preset-stack > select {
     calc(100% - 9px) 50%;
 }
 
-/* EQ only: 36px total with bordered shell (10 + 14 + 10 + 2); 14px line avoids tight 1em clipping */
+/* EQ model / target selects: 12px text and line box */
 div.extra-panel > div.extra-eq select {
     font-size: 12px;
-    line-height: 14px;
+    line-height: 12px;
     padding: 10px 0;
 }
 
