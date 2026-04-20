@@ -247,8 +247,8 @@ doc.html(`
               <div class="filters">
                 <div class="filter">
                     <span>
-                      <input name="enabled" type="checkbox" checked></input>
-                      <select name="type">
+                      <input name="enabled" type="checkbox" checked tabindex="-1" aria-label="Enable filter band"></input>
+                      <select name="type" tabindex="-1" aria-label="Filter type (PK, LSQ, HSQ)">
                         <option value="PK" selected>PK</option>
                         <option value="LSQ">LSQ</option>
                         <option value="HSQ">HSQ</option>
