@@ -340,7 +340,8 @@ doc.html(`
                   </div>
                   <div class="live-sound-music-file">
                     <button type="button" class="music-add-remove">+ Add Music</button>
-                    <input type="file" class="music-file-input" accept="audio/*" tabindex="-1" aria-hidden="true" />
+                    <input type="file" class="music-file-input" tabindex="-1" aria-hidden="true"
+                        accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/x-aac,audio/aac,audio/wav,audio/x-wav,audio/flac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.aac,.wav,.caf,.flac,.ogg,.opus,.webm,audio/*" />
                   </div>
                 </div>
               </div>
