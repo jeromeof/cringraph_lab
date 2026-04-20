@@ -184,6 +184,17 @@ svg#fr-graph g.eq-filter-markers circle.eq-filter-marker {
                 fill 0.1s ease;
 }
 
+/* EQ tab: horizontal drag off nodes / traces highlights Sound Tools band (same vibe as tutorial overlays). */
+svg#fr-graph g.eq-sound-range-brush {
+    pointer-events: none;
+}
+
+svg#fr-graph g.eq-sound-range-brush-inner > rect.eq-sound-range-brush-rect {
+    fill: var(--accent-color);
+    opacity: 0.12;
+    pointer-events: none;
+}
+
 /* EQ marker fill/stroke set in JS (graphtool.js); default fill from theme when cleared. */
 
 g.dBScaler {
@@ -1291,13 +1302,10 @@ div.extra-panel .extra-eq-reset-btn {
     min-height: 20px;
 }
 
-div.extra-panel .extra-eq-reset-btn:focus {
-    outline: none;
-}
-
+div.extra-panel .extra-eq-reset-btn:focus,
 div.extra-panel .extra-eq-reset-btn:focus-visible {
-    box-shadow: 0 0 0 2px var(--background-color-graph), 0 0 0 4px var(--accent-color-contrast);
-    border-radius: 4px;
+    outline: none;
+    box-shadow: none;
 }
 
 div.extra-panel .extra-eq-reset-icon {
@@ -1848,7 +1856,9 @@ div.extra-panel .live-sound-range-pair > span > input {
 div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="freq"],
 div.extra-panel > div.extra-eq > div.filters > div.filter > span > input[name="gain"],
 div.extra-panel > div.extra-eq .eq-constraint-range-cell > input[name="eq-constraint-freq-max"],
-div.extra-panel > div.extra-eq .eq-constraint-range-cell > input[name="eq-constraint-gain-max"] {
+div.extra-panel > div.extra-eq .eq-constraint-range-cell > input[name="eq-constraint-gain-max"],
+div.extra-panel .live-sound-range-pair span:has(input[name="tone-generator-from"]) > input,
+div.extra-panel .live-sound-range-pair span:has(input[name="tone-generator-to"]) > input {
     padding-right: 2.75em;
 }
 
@@ -1873,13 +1883,15 @@ div.extra-panel > div.extra-eq > div.filters > div.filter > span > select.eq-fil
 
 div.extra-panel > div.extra-eq > div.filters > div.filter > span:has(input[name="freq"]),
 div.extra-panel > div.extra-eq > div.filters > div.filter > span:has(input[name="gain"]),
-span:has(input[name="tone-generator-to"]) {
+div.extra-panel .live-sound-range-pair span:has(input[name="tone-generator-from"]),
+div.extra-panel .live-sound-range-pair span:has(input[name="tone-generator-to"]) {
     position: relative;
 }
 
 div.extra-panel > div.extra-eq > div.filters > div.filter > span:has(input[name="freq"]):after,
 div.extra-panel > div.extra-eq > div.filters > div.filter > span:has(input[name="gain"]):after,
-span:has(input[name="tone-generator-to"]):after {
+div.extra-panel .live-sound-range-pair span:has(input[name="tone-generator-from"]):after,
+div.extra-panel .live-sound-range-pair span:has(input[name="tone-generator-to"]):after {
     position: absolute;
     top: 50%;
     right: 1px;
@@ -1900,12 +1912,9 @@ span:has(input[name="tone-generator-to"]):after {
     pointer-events: none;
 }
 
-div.extra-panel .live-sound-range-pair span:has(input[name="tone-generator-to"]) > input {
-    padding-right: 2.75em;
-}
-
 div.extra-panel > div.extra-eq > div.filters > div.filter > span:has(input[name="freq"]):after,
-span:has(input[name="tone-generator-to"]):after {
+div.extra-panel .live-sound-range-pair span:has(input[name="tone-generator-from"]):after,
+div.extra-panel .live-sound-range-pair span:has(input[name="tone-generator-to"]):after {
     content: 'Hz';
 }
 
@@ -2013,6 +2022,9 @@ div.extra-panel button.play + span {
 /* Live Sound Tools — heading, source cards, then Range row at bottom (no outer wrapper padding) */
 div.extra-panel .live-sound-tools {
     box-sizing: border-box;
+    width: 100%;
+    container-type: inline-size;
+    container-name: live-sound-tools;
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -2152,8 +2164,7 @@ div.extra-panel .live-sound-band {
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
+    align-items: baseline;
     gap: 8px 12px;
     margin-top: 10px;
     margin-bottom: 10px;
@@ -2161,31 +2172,117 @@ div.extra-panel .live-sound-band {
     background-color: transparent;
 }
 
+/* Range label, then reset + inputs (reset flush with inputs) */
+div.extra-panel .live-sound-band-controls {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: baseline;
+    gap: 8px;
+    flex: 1 1 200px;
+    min-width: 0;
+    justify-content: flex-end;
+}
+
+/* Same pattern as div.extra-panel .extra-eq-reset-row / .extra-eq-reset-btn (Parametric EQ header) */
+div.extra-panel .live-sound-range-reset-row {
+    flex: 0 0 auto;
+    display: inline-flex;
+    flex-direction: row;
+    align-items: baseline;
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-primary);
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 500;
+    color: var(--background-color-contrast-more);
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+div.extra-panel .live-sound-range-reset-row .live-sound-range-reset-label {
+    margin: 0;
+}
+
+div.extra-panel .live-sound-range-reset-btn {
+    box-sizing: border-box;
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    transition: color 200ms ease;
+    -webkit-appearance: none;
+    appearance: none;
+    display: inline-flex;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: center;
+    gap: 2px;
+    min-height: 20px;
+}
+
+div.extra-panel .live-sound-range-reset-btn:focus,
+div.extra-panel .live-sound-range-reset-btn:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+div.extra-panel .live-sound-range-reset-icon {
+    box-sizing: border-box;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    display: block;
+    align-self: center;
+    background-color: currentColor;
+    mask: var(--icon-eq-reset);
+    -webkit-mask: var(--icon-eq-reset);
+    mask-repeat: no-repeat;
+    -webkit-mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-position: center;
+    mask-size: 20px 20px;
+    -webkit-mask-size: 20px 20px;
+}
+
 div.extra-panel .live-sound-band-label {
     flex: 0 0 auto;
 }
 
-div.extra-panel .live-sound-band-label.live-sound-source-title {
-    font-size: 12px;
+/* Match Pink Noise / Tone / Music section titles (13px); normal weight */
+div.extra-panel .live-sound-band-heading {
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 500;
+    color: var(--background-color-contrast-more);
 }
 
-/* Same proportions as AutoEQ: two inputs share ~50% of row (each span ≈25% there); here the pair is capped at 50% of the column */
+/* Each field ≈25% of Sound Tools width; 4px gap (container query on .live-sound-tools) */
 div.extra-panel .live-sound-range-pair {
     box-sizing: border-box;
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 4px;
-    flex: 0 0 50%;
-    width: 50%;
-    max-width: 50%;
+    flex: 0 0 auto;
+    width: calc(50cqw + 4px);
+    max-width: calc(50cqw + 4px);
     min-width: 0;
     justify-content: flex-end;
 }
 
 div.extra-panel .live-sound-range-pair > span {
-    flex: 1 1 0;
+    flex: 0 0 25cqw;
+    max-width: 25cqw;
     min-width: 0;
-    display: block;
+    display: flex;
+    align-items: center;
 }
 
 div.extra-panel .live-sound-sources {

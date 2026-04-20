@@ -344,10 +344,18 @@ doc.html(`
                 </div>
               </div>
               <div class="live-sound-band">
-                <span class="live-sound-band-label live-sound-source-title">Range</span>
-                <div class="live-sound-range-pair">
-                  <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20" aria-label="Minimum frequency" onclick="this.focus();this.select()"></input></span>
-                  <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000" aria-label="Maximum frequency" onclick="this.focus();this.select()"></input></span>
+                <span class="live-sound-band-label live-sound-band-heading">Range</span>
+                <div class="live-sound-band-controls">
+                  <div class="live-sound-range-reset-row">
+                    <button type="button" id="live-sound-range-reset-btn" class="live-sound-range-reset-btn" aria-label="Reset Sound Tools frequency range to full band (20 Hz – 20 kHz)" title="Reset range to full band (20 Hz – 20 kHz)">
+                      <span class="live-sound-range-reset-label">Reset</span>
+                      <span class="live-sound-range-reset-icon" aria-hidden="true"></span>
+                    </button>
+                  </div>
+                  <div class="live-sound-range-pair">
+                    <span><input name="tone-generator-from" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20" aria-label="Minimum frequency" onclick="this.focus();this.select()"></input></span>
+                    <span><input name="tone-generator-to" inputmode="decimal" type="number" min="20" max="20000" step="1" value="20000" aria-label="Maximum frequency" onclick="this.focus();this.select()"></input></span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1121,6 +1129,12 @@ let gEqHoverPreview = gr.append("g")
     .attr("class", "eq-hover-preview")
     .attr("pointer-events", "none")
     .attr("mask", "url(#graphFade)");
+let gEqSoundRangeBrush = gr.insert("g", ".eq-hover-preview")
+    .attr("class", "eq-sound-range-brush")
+    .attr("pointer-events", "none")
+    .attr("mask", "url(#graphFade)");
+/** Set in addExtra: redraw Sound Tools range band on graph after zoom / input changes. */
+let eqSoundRangeUiHooks = { syncBrushFromInputs: () => {} };
 let updateEqFilterMarkers = () => {};
 let updateEqTraceOpacity = () => {};
 /** When Parametric EQ tab is active, dims all graph traces except model / EQ / target (see addExtra). */
@@ -1586,6 +1600,7 @@ function updatePaths(trigger) {
     updateEqFilterMarkers();
     applyParametricEqGraphTraceFocus();
     updateEqTraceOpacity();
+    eqSoundRangeUiHooks.syncBrushFromInputs();
 }
 let colorBar = p=>'url(\'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 8"><path d="M0 8v-8h1c0.05 1.5,-0.3 3,-0.16 5s0.1 2,0.15 3z" fill="'+getBgColor(p)+'"/></svg>\')';
 
@@ -2686,6 +2701,7 @@ graphPlotHitRect = gr.append("rect")
         });
     })
     .on("click", graphInteract(true));
+gEqSoundRangeBrush.raise();
 gEqFilterMarkers.raise();
 gEqHoverPreview.raise();
 
@@ -3100,6 +3116,7 @@ function addExtra() {
         }
         applyParametricEqGraphTraceFocus();
         updateEqTraceOpacity();
+        eqSoundRangeUiHooks.syncBrushFromInputs();
     };
     extraButton.addEventListener("click", showExtraPanel);
     // Upload function
@@ -4400,6 +4417,7 @@ function addExtra() {
             ? eqGraphPointerState.filterIndex
             : null;
         applyEqFilterMarkerFillAndSize(dragIx);
+        gEqSoundRangeBrush.raise();
         gEqFilterMarkers.raise();
         gEqHoverPreview.raise();
         if (!eqGraphPointerState && lastGraphPlotPointerClient) {
@@ -4423,7 +4441,7 @@ function addExtra() {
         }
         let mUse = m;
         let draggingGraph = !!eqGraphPointerState;
-        if (draggingGraph) {
+        if (draggingGraph && eqGraphPointerState.mode !== "soundRange") {
             let hz = typeof eqGraphPointerState.liveFHz === "number"
                 ? eqGraphPointerState.liveFHz
                 : eqGraphPointerState.fHz;
@@ -4454,11 +4472,19 @@ function addExtra() {
             }
         }
         applyEqGraphTraceStrokeEmphasis(tracePhoneEm, emphasizeTrace);
+        let tabEq = document.querySelector("div.select");
+        let onExtraEqTab = extraEnabled && extraEQEnabled && tabEq
+                && tabEq.getAttribute("data-selected") === "extra";
+        let soundRangeAffordance = onExtraEqTab && isLiveSoundPlaybackActive() && !draggingGraph && !near
+                && !emphasizeTrace;
         if (graphPlotHitRect && graphPlotHitRect.node()) {
             graphPlotHitRect.node().style.cursor =
-                draggingGraph ? "grabbing"
+                draggingGraph && eqGraphPointerState.mode === "soundRange"
+                    ? (eqGraphPointerState.soundRangeActive ? "ew-resize" : "pointer")
+                : draggingGraph ? "grabbing"
                 : near ? "grab"
-                : emphasizeTrace ? "cell" : "";
+                : emphasizeTrace ? "cell"
+                : soundRangeAffordance ? "pointer" : "";
         }
         if (near) {
             return;
@@ -6567,6 +6593,13 @@ function addExtra() {
                 });
             }, 100);
         }
+        if (!eqGraphPointerState && lastGraphPlotPointerClient) {
+            let lp = lastGraphPlotPointerClient;
+            let mResync = clientToGraphPlotXY(lp.x, lp.y);
+            if (mResync) {
+                syncEqHoverPreview(mResync);
+            }
+        }
     };
     let configureLiveSpectrumAnalyser = (a) => {
         a.fftSize = 2048;
@@ -6830,6 +6863,11 @@ function addExtra() {
     };
     let toneGeneratorContext = null;
     let toneGeneratorOsc = null;
+    /** Pink / tone / music segment actively producing sound (Sound Tools graph range drag only when true). */
+    function isLiveSoundPlaybackActive() {
+        return pinkNoisePlaying || !!toneGeneratorOsc
+            || (musicAudio && !musicAudio.paused);
+    }
     let toneGeneratorTimeoutHandle = null;
     let toneSweepRafId = null;
     let toneSweepDurationSec = 6;
@@ -6972,6 +7010,55 @@ function addExtra() {
     };
     let eqGraphTypeCycleOrder = { PK: "LSQ", LSQ: "HSQ", HSQ: "PK" };
     let eqGraphPerformDragCleanup = (st, endEvent) => {
+        if (st.mode === "soundRange") {
+            if (st.soundRangeActive) {
+                applyLiveSoundRangeFromHzPair(st.soundRangeAnchorHz, st.soundRangeLastHz);
+                let bandEl = document.querySelector("div.live-sound-tools .live-sound-band");
+                if (bandEl && typeof bandEl.scrollIntoView === "function") {
+                    bandEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+                }
+                if (toneGeneratorToInput) {
+                    requestAnimationFrame(() => {
+                        toneGeneratorToInput.focus();
+                        toneGeneratorToInput.select();
+                    });
+                }
+            }
+            syncEqSoundRangeBrushFromLiveSoundInputs();
+            if (graphPlotHitRect && graphPlotHitRect.node()) {
+                graphPlotHitRect.node().style.cursor = "";
+            }
+            if (endEvent && typeof endEvent.clientX === "number"
+                    && typeof endEvent.clientY === "number") {
+                lastGraphPlotPointerClient = { x: endEvent.clientX, y: endEvent.clientY };
+            }
+            eqGraphExitPointerLockIfAny();
+            if (st.captureEl) {
+                st.captureEl.style.cursor = "";
+                try {
+                    st.captureEl.releasePointerCapture(st.pointerId);
+                } catch (err) { /* noop */ }
+            }
+            eqGraphRemoveDragListeners();
+            cancelAnimationFrame(eqGraphApplyEqDragTimer);
+            eqGraphApplyEqDragTimer = null;
+            eqGraphPointerState = null;
+            eqGraphSkipNextClick = true;
+            if (eqGraphSkipClickClearTimer) {
+                clearTimeout(eqGraphSkipClickClearTimer);
+            }
+            eqGraphSkipClickClearTimer = setTimeout(() => {
+                eqGraphSkipClickClearTimer = null;
+                eqGraphSkipNextClick = false;
+            }, 800);
+            if (endEvent) {
+                let mUp = clientToGraphPlotXY(endEvent.clientX, endEvent.clientY);
+                if (mUp) {
+                    syncEqHoverPreview(mUp);
+                }
+            }
+            return;
+        }
         let didTapAddNewBand = !st.dragging && st.filterIndex === null;
         if (endEvent && typeof endEvent.clientX === "number"
                 && typeof endEvent.clientY === "number") {
@@ -7046,6 +7133,32 @@ function addExtra() {
             return;
         }
         let st = eqGraphPointerState;
+        if (st.mode === "soundRange") {
+            let mClient = clientToGraphPlotXY(e.clientX, e.clientY);
+            if (!mClient) {
+                return;
+            }
+            let mx = Math.min(pad.l + W, Math.max(pad.l, mClient[0]));
+            let [fLoSr, fHiSr] = getEqConstraintFreqLoHi();
+            let hz = Math.round(Math.min(fHiSr, Math.max(fLoSr, x.invert(mx))));
+            st.soundRangeLastHz = hz;
+            let dx = e.clientX - st.startClientX;
+            let dy = e.clientY - st.downClientY;
+            if (!st.soundRangeActive
+                    && Math.abs(dx) >= EQ_GRAPH_DRAG_THRESHOLD_PX
+                    && Math.abs(dx) > Math.abs(dy)) {
+                st.soundRangeActive = true;
+            }
+            if (st.soundRangeActive) {
+                renderEqSoundRangeBrush(st.soundRangeAnchorHz, st.soundRangeLastHz);
+                gEqSoundRangeBrush.raise();
+                gEqFilterMarkers.raise();
+                gEqHoverPreview.raise();
+            }
+            lastGraphPlotPointerClient = { x: e.clientX, y: e.clientY };
+            syncEqHoverPreview(mClient);
+            return;
+        }
         let svg = st.captureEl;
         let locked = document.pointerLockElement === svg;
         let coalesced = typeof e.getCoalescedEvents === "function" ? e.getCoalescedEvents() : null;
@@ -7231,6 +7344,7 @@ function addExtra() {
         lastGraphPlotPointerClient = { x: e.clientX, y: e.clientY };
         let hit = findEqGraphMarkerHit(m);
         let stPreview;
+        let soundRangeSelect = false;
         let initialAccumMovementY = 0;
         let initialFilterIndex = null;
         let gainDragAnchorDb = EQ_GRAPH_BASE_GAIN;
@@ -7245,17 +7359,29 @@ function addExtra() {
             stPreview = { fHz: Math.min(20000, Math.max(20, fCell)) };
             setEqFilterSelectedRow(hit.rowIndex, true);
         } else {
+            let tabEq = document.querySelector("div.select");
+            if (!extraEnabled || !extraEQEnabled || !tabEq
+                    || tabEq.getAttribute("data-selected") !== "extra") {
+                return;
+            }
             stPreview = computeEqNodePreviewAtMouse(m);
-            if (!stPreview) {
+            let nearTrace = false;
+            if (stPreview) {
+                let yOff = y(getOffset(stPreview.tracePhone)) - y(0);
+                let cx = x(stPreview.fHz);
+                let cy = y(stPreview.db) + yOff;
+                nearTrace = eqGraphPlotDistPx(m, cx, cy) <= EQ_GRAPH_MARKER_HIT_PX;
+            }
+            if (nearTrace) {
+                setEqFilterSelectedRow(null);
+            } else if (isLiveSoundPlaybackActive()) {
+                soundRangeSelect = true;
+                setEqFilterSelectedRow(null);
+            } else {
+                /* No playback: graph click off-trace must not start EQ add-node drag (only near-trace adds). */
+                setEqFilterSelectedRow(null);
                 return;
             }
-            let yOff = y(getOffset(stPreview.tracePhone)) - y(0);
-            let cx = x(stPreview.fHz);
-            let cy = y(stPreview.db) + yOff;
-            if (eqGraphPlotDistPx(m, cx, cy) > EQ_GRAPH_MARKER_HIT_PX) {
-                return;
-            }
-            setEqFilterSelectedRow(null);
         }
         let svg = node.ownerSVGElement || node;
         let plotRect = svg.getBoundingClientRect();
@@ -7278,16 +7404,24 @@ function addExtra() {
             }
         }
         let gainDragRefPlotY = originMy;
+        let mxClampFreq = Math.min(pad.l + W, Math.max(pad.l, m[0]));
+        let [fLoPtr, fHiPtr] = getEqConstraintFreqLoHi();
+        let freqAtPointer = Math.round(Math.min(fHiPtr, Math.max(fLoPtr, x.invert(mxClampFreq))));
+        let previewFHz = stPreview ? stPreview.fHz : freqAtPointer;
         cancelAnimationFrame(eqGraphApplyEqDragTimer);
         eqGraphApplyEqDragTimer = null;
         eqGraphPointerState = {
+            mode: soundRangeSelect ? "soundRange" : "eq",
+            soundRangeAnchorHz: soundRangeSelect ? freqAtPointer : null,
+            soundRangeLastHz: soundRangeSelect ? freqAtPointer : null,
+            soundRangeActive: false,
             startClientX: e.clientX,
             startClientY: startClientYVal,
             grabOffClientX: grabOffClientX,
             grabOffClientY: grabOffClientY,
             downClientY: e.clientY,
-            fHz: stPreview.fHz,
-            liveFHz: stPreview.fHz,
+            fHz: soundRangeSelect ? freqAtPointer : previewFHz,
+            liveFHz: soundRangeSelect ? freqAtPointer : previewFHz,
             filterIndex: initialFilterIndex,
             dragging: false,
             axisLock: null,
@@ -7551,6 +7685,10 @@ function addExtra() {
     // Tone Generator
     toneGeneratorFromInput.addEventListener("input", scheduleLiveEqSync);
     toneGeneratorToInput.addEventListener("input", scheduleLiveEqSync);
+    toneGeneratorFromInput.addEventListener("input", syncEqSoundRangeBrushFromLiveSoundInputs);
+    toneGeneratorToInput.addEventListener("input", syncEqSoundRangeBrushFromLiveSoundInputs);
+    toneGeneratorFromInput.addEventListener("change", syncEqSoundRangeBrushFromLiveSoundInputs);
+    toneGeneratorToInput.addEventListener("change", syncEqSoundRangeBrushFromLiveSoundInputs);
     toneGeneratorSlider.addEventListener("input", () => {
         if (toneSweepRafId !== null) {
             cancelAnimationFrame(toneSweepRafId);
@@ -8123,6 +8261,128 @@ function addExtra() {
             toneGeneratorOsc.frequency.setTargetAtTime(hz, t, 0.2);
         }
     };
+    function clearEqSoundRangeBrush() {
+        gEqSoundRangeBrush.selectAll("*").remove();
+    }
+    function resetLiveSoundFrequencyRangeToFullBand(ev) {
+        if (ev && ev.stopPropagation) {
+            ev.stopPropagation();
+        }
+        if (ev && ev.preventDefault) {
+            ev.preventDefault();
+        }
+        if (!toneGeneratorFromInput || !toneGeneratorToInput) {
+            return;
+        }
+        toneGeneratorFromInput.value = "20";
+        toneGeneratorToInput.value = "20000";
+        let midHz = Math.round(Math.exp((Math.log(20) + Math.log(20000)) / 2));
+        syncToneGeneratorToEqFrequencyHz(midHz);
+        scheduleLiveEqSync();
+        clearEqSoundRangeBrush();
+    }
+    let liveSoundRangeResetBtn = document.getElementById("live-sound-range-reset-btn");
+    if (liveSoundRangeResetBtn) {
+        liveSoundRangeResetBtn.addEventListener("click", resetLiveSoundFrequencyRangeToFullBand);
+    }
+    document.addEventListener("keydown", (e) => {
+        if (e.code !== "Escape") {
+            return;
+        }
+        let tab = document.querySelector("div.select");
+        if (!extraEnabled || !tab || tab.getAttribute("data-selected") !== "extra") {
+            return;
+        }
+        if (e.target !== toneGeneratorFromInput && e.target !== toneGeneratorToInput) {
+            return;
+        }
+        e.preventDefault();
+        resetLiveSoundFrequencyRangeToFullBand(e);
+        if (typeof e.target.blur === "function") {
+            e.target.blur();
+        }
+    });
+    function renderEqSoundRangeBrush(hz1, hz2) {
+        gEqSoundRangeBrush.selectAll("*").remove();
+        if (hz1 === null || hz1 === undefined || hz2 === null || hz2 === undefined) {
+            return;
+        }
+        if (!Number.isFinite(hz1) || !Number.isFinite(hz2)) {
+            return;
+        }
+        let lo = Math.min(hz1, hz2);
+        let hi = Math.max(hz1, hz2);
+        let [fLo, fHi] = getEqConstraintFreqLoHi();
+        lo = Math.min(fHi, Math.max(fLo, lo));
+        hi = Math.min(fHi, Math.max(fLo, hi));
+        if (hi <= lo) {
+            return;
+        }
+        let xa = Math.min(x(lo), x(hi));
+        let xb = Math.max(x(lo), x(hi));
+        let w = Math.max(0.5, xb - xa);
+        let inner = gEqSoundRangeBrush.append("g").attr("class", "eq-sound-range-brush-inner");
+        inner.append("rect")
+            .attr("class", "eq-sound-range-brush-rect")
+            .attr("x", xa)
+            .attr("y", pad.t)
+            .attr("width", w)
+            .attr("height", H);
+    }
+    function syncEqSoundRangeBrushFromLiveSoundInputs() {
+        let tab = document.querySelector("div.select");
+        if (!extraEnabled || !extraEQEnabled || !tab
+                || tab.getAttribute("data-selected") !== "extra") {
+            clearEqSoundRangeBrush();
+            return;
+        }
+        if (!toneGeneratorFromInput || !toneGeneratorToInput) {
+            clearEqSoundRangeBrush();
+            return;
+        }
+        let from = Math.min(Math.max(parseInt(toneGeneratorFromInput.value, 10) || 20, 20), 20000);
+        let to = Math.min(Math.max(parseInt(toneGeneratorToInput.value, 10) || 20, 20), 20000);
+        let lo = Math.min(from, to);
+        let hi = Math.max(from, to);
+        if (lo > 20 || hi < 20000) {
+            renderEqSoundRangeBrush(lo, hi);
+            gEqSoundRangeBrush.raise();
+            gEqFilterMarkers.raise();
+            gEqHoverPreview.raise();
+        } else {
+            clearEqSoundRangeBrush();
+        }
+    }
+    function applyLiveSoundRangeFromHzPair(hz1, hz2) {
+        if (!toneGeneratorFromInput || !toneGeneratorToInput) {
+            return;
+        }
+        if (hz1 === null || hz1 === undefined || hz2 === null || hz2 === undefined) {
+            return;
+        }
+        if (!Number.isFinite(hz1) || !Number.isFinite(hz2)) {
+            return;
+        }
+        let lo = Math.round(Math.min(hz1, hz2));
+        let hi = Math.round(Math.max(hz1, hz2));
+        let [fLo, fHi] = getEqConstraintFreqLoHi();
+        lo = Math.min(fHi, Math.max(fLo, lo));
+        hi = Math.min(fHi, Math.max(fLo, hi));
+        if (hi < lo) {
+            let t = lo;
+            lo = hi;
+            hi = t;
+        }
+        if (hi <= lo) {
+            hi = Math.min(fHi, lo + 1);
+        }
+        toneGeneratorFromInput.value = String(lo);
+        toneGeneratorToInput.value = String(hi);
+        let midHz = Math.round(Math.exp((Math.log(Math.max(lo, 20.001)) + Math.log(hi)) / 2));
+        syncToneGeneratorToEqFrequencyHz(midHz);
+        scheduleLiveEqSync();
+    }
+    eqSoundRangeUiHooks.syncBrushFromInputs = syncEqSoundRangeBrushFromLiveSoundInputs;
     filtersContainer.addEventListener("focusin", (e) => {
         let rowEl = e.target.closest && e.target.closest("div.filter");
         if (rowEl && filtersContainer.contains(rowEl)) {
@@ -8211,6 +8471,8 @@ function addExtra() {
         if (t.closest && t.closest("div.extra-panel button") && !t.closest("button.play")) {
             if (t.closest("button.extra-eq-constraints-gear")) {
                 /* Gear keeps focus after open/close; native Space would toggle the panel instead of play/pause. */
+            } else if (t.closest("button.extra-eq-reset-btn") || t.closest("button.live-sound-range-reset-btn")) {
+                /* Same as gear: keep global Space → play/pause; avoid trapping focus on reset. */
             } else if (t.closest && t.closest("button.music-add-remove") && musicFileLoaded) {
                 e.preventDefault();
             } else {
