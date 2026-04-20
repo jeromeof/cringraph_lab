@@ -3179,6 +3179,9 @@ function addExtra() {
     // EQ Function
     let eqPhoneSelect = document.querySelector("div.extra-eq select[name='phone']");
     let eqPhoneTargetSelect = document.querySelector("div.extra-eq select[name='eq-target']");
+    let eqTargetExcludedByCompTxtFileName = (p) => {
+        return p && String(p.fileName || "").indexOf("Comp.txt") !== -1;
+    };
     /** EQ model row: explicit model dropdown match, else first graphed IEM (not target, not "* EQ" child name). */
     let resolveEqModelPhone = () => {
         let sel = eqPhoneSelect && eqPhoneSelect.value;
@@ -3196,12 +3199,13 @@ function addExtra() {
         let fromSel = tsel
             ? activePhones.filter((p) => p.fullName === tsel)[0]
             : null;
-        if (fromSel) {
+        if (fromSel && !eqTargetExcludedByCompTxtFileName(fromSel)) {
             return fromSel;
         }
         let eqP = modelP.eq || null;
-        return activePhones.filter((p) => p.isTarget)[0]
-            || activePhones.filter((p) => p !== modelP && p !== eqP && !p.isTarget)[0] || null;
+        return activePhones.filter((p) => p.isTarget && !eqTargetExcludedByCompTxtFileName(p))[0]
+            || activePhones.filter((p) => p !== modelP && p !== eqP && !p.isTarget
+                && !eqTargetExcludedByCompTxtFileName(p))[0] || null;
     };
     let prevParametricFocusActive = false;
     applyParametricEqGraphTraceFocus = () => {
@@ -4670,9 +4674,11 @@ function addExtra() {
             return;
         }
         let phoneSelected = eqPhoneSelect.value;
-        let targs = activePhones.filter((p) => p.isTarget && p.fullName && !p.fullName.match(/ EQ$/));
+        let targs = activePhones.filter((p) => p.isTarget && p.fullName && !p.fullName.match(/ EQ$/)
+            && !eqTargetExcludedByCompTxtFileName(p));
         let others = activePhones.filter((p) => !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/)
-            && (!phoneSelected || p.fullName !== phoneSelected));
+            && (!phoneSelected || p.fullName !== phoneSelected)
+            && !eqTargetExcludedByCompTxtFileName(p));
         let byName = (a, b) => String(a.fullName).localeCompare(String(b.fullName));
         targs.sort(byName);
         others.sort(byName);
