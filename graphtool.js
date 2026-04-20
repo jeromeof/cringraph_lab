@@ -1134,6 +1134,9 @@ let eqGraphPointerState = null;
     after updateEqFilterMarkers(), e.g. when focusin on a filter field runs in a later frame. */
 let lastGraphPlotPointerClient = null;
 let eqGraphSkipNextClick = false;
+/** After touch on the plot, browsers emit a synthetic click; skip click-to-add so EQ graph edits are mouse-only. */
+let eqGraphSuppressClickAddFromTouch = false;
+let eqGraphTouchSuppressClearTimer = null;
 let eqGraphSkipClickClearTimer = null;
 let eqGraphApplyEqDragTimer = null;
 /** @type {(m: number[]) => boolean} */
@@ -2563,7 +2566,13 @@ let graphInteract = imm => function () {
         }
         return;
     }
-    if (imm && !interactInspect && tryEqGraphClickAddFilter(m)) {
+    if (imm && eqGraphSuppressClickAddFromTouch) {
+        eqGraphSuppressClickAddFromTouch = false;
+        if (eqGraphTouchSuppressClearTimer) {
+            clearTimeout(eqGraphTouchSuppressClearTimer);
+            eqGraphTouchSuppressClearTimer = null;
+        }
+    } else if (imm && !interactInspect && tryEqGraphClickAddFilter(m)) {
         syncEqHoverPreview(m);
         return;
     }
@@ -7183,6 +7192,20 @@ function addExtra() {
         if (interactInspect) {
             return;
         }
+        if (e.pointerType === "touch") {
+            eqGraphSuppressClickAddFromTouch = true;
+            if (eqGraphTouchSuppressClearTimer) {
+                clearTimeout(eqGraphTouchSuppressClearTimer);
+            }
+            eqGraphTouchSuppressClearTimer = setTimeout(() => {
+                eqGraphTouchSuppressClearTimer = null;
+                eqGraphSuppressClickAddFromTouch = false;
+            }, 600);
+            return;
+        }
+        if (e.pointerType && e.pointerType !== "mouse") {
+            return;
+        }
         if (e.pointerType === "mouse" && e.button !== 0) {
             return;
         }
@@ -7222,10 +7245,6 @@ function addExtra() {
                 return;
             }
             setEqFilterSelectedRow(null);
-        }
-        /* preventDefault on mouse breaks compatibility mouse events; only touch needs it (scroll). */
-        if (e.pointerType === "touch") {
-            e.preventDefault();
         }
         let svg = node.ownerSVGElement || node;
         let plotRect = svg.getBoundingClientRect();
