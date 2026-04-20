@@ -141,6 +141,7 @@ svg#fr-graph {
     
     pointer-events: none;
     overflow: visible;
+    margin-bottom: -1.75%;
 }
 
 svg#fr-graph g.curves-g path {

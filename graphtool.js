@@ -3087,6 +3087,9 @@ function addExtra() {
         document.querySelector("div.select > div.extra-panel").style["display"] = "flex";
         document.querySelector("div.select").setAttribute("data-selected", "extra");
         if (analyticsEnabled) { pushEventTag("clicked_equalizerTab", targetWindow); }
+        if (typeof window.updateEQPhoneSelect === "function") {
+            window.updateEQPhoneSelect();
+        }
         applyParametricEqGraphTraceFocus();
         updateEqTraceOpacity();
     };
@@ -3166,6 +3169,30 @@ function addExtra() {
     // EQ Function
     let eqPhoneSelect = document.querySelector("div.extra-eq select[name='phone']");
     let eqPhoneTargetSelect = document.querySelector("div.extra-eq select[name='eq-target']");
+    /** EQ model row: explicit model dropdown match, else first graphed IEM (not target, not "* EQ" child name). */
+    let resolveEqModelPhone = () => {
+        let sel = eqPhoneSelect && eqPhoneSelect.value;
+        if (sel) {
+            return activePhones.filter((p) => p.fullName === sel)[0] || null;
+        }
+        return activePhones.filter((p) =>
+            !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/))[0] || null;
+    };
+    /** Comparison trace: explicit `eq-target` value if set and valid, else first `isTarget`, else first other IEM (never the model’s parametric EQ child). */
+    let resolveEqTargetPhone = (modelP, tsel) => {
+        if (!modelP) {
+            return null;
+        }
+        let fromSel = tsel
+            ? activePhones.filter((p) => p.fullName === tsel)[0]
+            : null;
+        if (fromSel) {
+            return fromSel;
+        }
+        let eqP = modelP.eq || null;
+        return activePhones.filter((p) => p.isTarget)[0]
+            || activePhones.filter((p) => p !== modelP && p !== eqP && !p.isTarget)[0] || null;
+    };
     let prevParametricFocusActive = false;
     applyParametricEqGraphTraceFocus = () => {
         let tab = document.querySelector("div.select");
@@ -3177,11 +3204,7 @@ function addExtra() {
             }
             return;
         }
-        let sel = eqPhoneSelect && eqPhoneSelect.value;
-        let modelP = sel ? activePhones.filter((p) => p.fullName === sel)[0] : null;
-        if (!modelP) {
-            modelP = activePhones.filter((p) => !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/))[0] || null;
-        }
+        let modelP = resolveEqModelPhone();
         if (!modelP) {
             if (prevParametricFocusActive) {
                 prevParametricFocusActive = false;
@@ -3191,11 +3214,7 @@ function addExtra() {
         }
         prevParametricFocusActive = true;
         let tsel = eqPhoneTargetSelect && eqPhoneTargetSelect.value;
-        let targetP = tsel ? activePhones.filter((p) => p.fullName === tsel)[0] : null;
-        if (!targetP) {
-            targetP = activePhones.filter((p) => p.isTarget)[0]
-                || activePhones.filter((p) => p !== modelP && !p.isTarget)[0] || null;
-        }
+        let targetP = resolveEqTargetPhone(modelP, tsel);
         let eqP = modelP && modelP.eq;
         let showSet = new Set([modelP, eqP, targetP].filter(Boolean));
         gpath.selectAll("path").each(function (c) {
@@ -3211,7 +3230,8 @@ function addExtra() {
                 return;
             }
             el.attr("opacity", c.p.hide ? 0 : null);
-            if (targetP && c.p === targetP && !c.p.isTarget) {
+            /* Never paint the parametric EQ trace as the "target" line (gray); fallback targetP can equal eqP when the target dropdown is empty. */
+            if (targetP && c.p === targetP && !c.p.isTarget && c.p !== eqP) {
                 el.classed("eq-graph-focus-target", true);
                 if (typeof targetDashed !== "undefined" && targetDashed) {
                     el.style("stroke-dasharray", "6, 3");
@@ -4669,15 +4689,8 @@ function addExtra() {
             eqPhoneTargetSelect.value = "";
         }
         if (!eqPhoneTargetSelect.value && opts.length > 0) {
-            let phoneSel = eqPhoneSelect.value;
-            let phoneObjForTarget = phoneSel
-                ? activePhones.filter((p) => p.fullName === phoneSel)[0]
-                : null;
-            if (!phoneObjForTarget) {
-                phoneObjForTarget = activePhones.filter((p) => !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/))[0] || null;
-            }
-            let implicitT = activePhones.filter((p) => p.isTarget)[0]
-                || (phoneObjForTarget && activePhones.filter((p) => p !== phoneObjForTarget && !p.isTarget)[0]);
+            let modelM = resolveEqModelPhone();
+            let implicitT = resolveEqTargetPhone(modelM, "");
             if (implicitT && opts.some((p) => p.fullName === implicitT.fullName)) {
                 eqPhoneTargetSelect.value = implicitT.fullName;
             }
@@ -4687,7 +4700,9 @@ function addExtra() {
             tgPlaceholder.textContent = opts.length === 0
                 ? "Target: Add a target to the graph"
                 : "Choose EQ target";
-            tgPlaceholder.hidden = !!eqPhoneTargetSelect.value;
+            let hasTarget = !!eqPhoneTargetSelect.value;
+            tgPlaceholder.hidden = hasTarget;
+            tgPlaceholder.disabled = hasTarget;
         }
     };
     window.updateEQPhoneSelect = () => {
@@ -6037,14 +6052,14 @@ function addExtra() {
         let phoneObj = phoneSelected && activePhones.filter(
             p => p.fullName == phoneSelected)[0];
         let targetSel = eqPhoneTargetSelect && eqPhoneTargetSelect.value;
-        let targetObj = (targetSel && activePhones.filter((p) => p.fullName === targetSel)[0])
-            || (activePhones.filter(p => p.isTarget)[0]
-                || activePhones.filter(p => p !== phoneObj && !p.isTarget)[0]);
+        let eqChild = phoneObj && phoneObj.eq;
+        let targetObj = resolveEqTargetPhone(phoneObj, targetSel);
         if (!phoneObj || !targetObj) {
             alert("Please select an EQ model and a target trace (or add a target / second model on the graph).");
             return;
         }
-        if (phoneObj === targetObj || (phoneObj.fullName && targetObj.fullName && phoneObj.fullName === targetObj.fullName)) {
+        if (phoneObj === targetObj || (phoneObj.fullName && targetObj.fullName && phoneObj.fullName === targetObj.fullName)
+                || (eqChild && targetObj === eqChild)) {
             alert("AutoEQ target must be a different trace than the EQ model.");
             return;
         }
