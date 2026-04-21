@@ -195,6 +195,49 @@ svg#fr-graph g.eq-sound-range-brush-inner > rect.eq-sound-range-brush-rect {
     pointer-events: none;
 }
 
+/* Fixed overlay (not in SVG user space): icon and padding stay constant in CSS pixels. */
+.eq-sound-range-brush-dismiss-overlay {
+    position: fixed;
+    z-index: 50;
+    pointer-events: none;
+    box-sizing: border-box;
+}
+
+.eq-sound-range-brush-dismiss-overlay button.eq-sound-range-brush-dismiss {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 10px;
+    border: 0;
+    border-radius: 0;
+    cursor: pointer;
+    background-color: transparent;
+    pointer-events: auto;
+}
+
+.eq-sound-range-brush-dismiss-overlay span.eq-sound-range-brush-dismiss-icon {
+    display: block;
+    box-sizing: border-box;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    opacity: 0.4;
+    background-color: var(--font-color-primary);
+    mask: var(--icon-remove);
+    -webkit-mask: var(--icon-remove);
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    pointer-events: none;
+}
+
 /* EQ marker fill/stroke set in JS (graphtool.js); default fill from theme when cleared. */
 
 g.dBScaler {

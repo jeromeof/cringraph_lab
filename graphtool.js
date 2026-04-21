@@ -8491,7 +8491,69 @@ function addExtra() {
             toneGeneratorOsc.frequency.setTargetAtTime(hz, t, 0.2);
         }
     };
+    const EQ_SOUND_BRUSH_DISMISS_PAD_PX = 10;
+    const EQ_SOUND_BRUSH_DISMISS_ICON_PX = 16;
+    const EQ_SOUND_BRUSH_DISMISS_BOX_PX = 2 * EQ_SOUND_BRUSH_DISMISS_PAD_PX + EQ_SOUND_BRUSH_DISMISS_ICON_PX;
+    let eqSoundRangeBrushDismissOverlay = null;
+    /** @type {{ xRight: number, yTop: number }|null} */
+    let eqSoundRangeBrushDismissLast = null;
+    let eqSoundRangeBrushDismissListeners = false;
+    let hideEqSoundRangeBrushDismissOverlay = () => {
+        eqSoundRangeBrushDismissLast = null;
+        if (eqSoundRangeBrushDismissOverlay) {
+            eqSoundRangeBrushDismissOverlay.style.display = "none";
+        }
+    };
+    let syncEqSoundRangeBrushDismissOverlay = () => {
+        let o = eqSoundRangeBrushDismissOverlay;
+        let last = eqSoundRangeBrushDismissLast;
+        if (!o || !last) {
+            return;
+        }
+        let pBr = graphPlotXYToClient(last.xRight, last.yTop);
+        if (!pBr) {
+            o.style.display = "none";
+            return;
+        }
+        let box = EQ_SOUND_BRUSH_DISMISS_BOX_PX;
+        o.style.display = "block";
+        o.style.left = Math.round(pBr[0] - box) + "px";
+        o.style.top = Math.round(pBr[1]) + "px";
+        o.style.width = box + "px";
+        o.style.height = box + "px";
+    };
+    let ensureEqSoundRangeBrushDismissOverlay = () => {
+        if (eqSoundRangeBrushDismissOverlay) {
+            return;
+        }
+        let o = document.createElement("div");
+        o.className = "eq-sound-range-brush-dismiss-overlay";
+        o.style.display = "none";
+        let btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "eq-sound-range-brush-dismiss";
+        btn.title = "Clear band highlight (full 20 Hz – 20 kHz range)";
+        btn.setAttribute("aria-label", "Clear sound tools band highlight on graph");
+        let icon = document.createElement("span");
+        icon.className = "eq-sound-range-brush-dismiss-icon";
+        icon.setAttribute("aria-hidden", "true");
+        btn.appendChild(icon);
+        btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            ev.preventDefault();
+            resetLiveSoundFrequencyRangeToFullBand(ev);
+        });
+        o.appendChild(btn);
+        document.body.appendChild(o);
+        eqSoundRangeBrushDismissOverlay = o;
+        if (!eqSoundRangeBrushDismissListeners) {
+            eqSoundRangeBrushDismissListeners = true;
+            window.addEventListener("resize", syncEqSoundRangeBrushDismissOverlay, true);
+            window.addEventListener("scroll", syncEqSoundRangeBrushDismissOverlay, true);
+        }
+    };
     function clearEqSoundRangeBrush() {
+        hideEqSoundRangeBrushDismissOverlay();
         gEqSoundRangeBrush.selectAll("*").remove();
     }
     function resetLiveSoundFrequencyRangeToFullBand(ev) {
@@ -8534,6 +8596,7 @@ function addExtra() {
     });
     function renderEqSoundRangeBrush(hz1, hz2) {
         gEqSoundRangeBrush.selectAll("*").remove();
+        hideEqSoundRangeBrushDismissOverlay();
         if (hz1 === null || hz1 === undefined || hz2 === null || hz2 === undefined) {
             return;
         }
@@ -8555,9 +8618,12 @@ function addExtra() {
         inner.append("rect")
             .attr("class", "eq-sound-range-brush-rect")
             .attr("x", xa)
-            .attr("y", pad.t)
+            .attr("y", 20)
             .attr("width", w)
-            .attr("height", H);
+            .attr("height", 302);
+        ensureEqSoundRangeBrushDismissOverlay();
+        eqSoundRangeBrushDismissLast = { xRight: xa + w, yTop: 20 };
+        syncEqSoundRangeBrushDismissOverlay();
     }
     function syncEqSoundRangeBrushFromLiveSoundInputs() {
         let tab = document.querySelector("div.select");
