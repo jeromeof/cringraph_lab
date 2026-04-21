@@ -641,7 +641,8 @@ function drawLabels() {
 
     gr.selectAll(".lineLabel").remove();
     let g = gr.selectAll(".lineLabel").data(bcurves)
-        .join("g").attr("class","lineLabel").attr("opacity", 0);
+        .join("g").attr("class","lineLabel").attr("opacity", 0)
+        .attr("pointer-events", "none");
     let t = g.append("text")
         .attrs({x:0, y:0, fill:c=>getTooltipColor(c)})
         .text(c=>c.id);
@@ -1353,6 +1354,49 @@ let eqGraphSuppressClickAddFromTouch = false;
 let eqGraphTouchSuppressClearTimer = null;
 let eqGraphSkipClickClearTimer = null;
 let eqGraphApplyEqDragTimer = null;
+/** Saved inline styles while EQ graph drag disables text/image selection (Safari + trackpad). */
+let eqGraphDragSelectSaved = null;
+function eqGraphDragSelectBlock(ev) {
+    ev.preventDefault();
+}
+function eqGraphInstallDragSelectLock() {
+    if (eqGraphDragSelectSaved !== null) {
+        eqGraphRemoveDragSelectLock();
+    }
+    let de = document.documentElement;
+    let b = document.body;
+    eqGraphDragSelectSaved = {
+        deUser: de.style.userSelect,
+        deWebkit: de.style.webkitUserSelect || "",
+        bUser: b.style.userSelect,
+        bWebkit: b.style.webkitUserSelect || "",
+    };
+    de.style.userSelect = "none";
+    de.style.webkitUserSelect = "none";
+    b.style.userSelect = "none";
+    b.style.webkitUserSelect = "none";
+    document.addEventListener("selectstart", eqGraphDragSelectBlock, true);
+    document.addEventListener("dragstart", eqGraphDragSelectBlock, true);
+    let sel = typeof window.getSelection === "function" ? window.getSelection() : null;
+    if (sel && sel.rangeCount > 0) {
+        sel.removeAllRanges();
+    }
+}
+function eqGraphRemoveDragSelectLock() {
+    if (eqGraphDragSelectSaved === null) {
+        return;
+    }
+    let s = eqGraphDragSelectSaved;
+    eqGraphDragSelectSaved = null;
+    let de = document.documentElement;
+    let b = document.body;
+    de.style.userSelect = s.deUser;
+    de.style.webkitUserSelect = s.deWebkit;
+    b.style.userSelect = s.bUser;
+    b.style.webkitUserSelect = s.bWebkit;
+    document.removeEventListener("selectstart", eqGraphDragSelectBlock, true);
+    document.removeEventListener("dragstart", eqGraphDragSelectBlock, true);
+}
 /** @type {(m: number[]) => boolean} */
 let tryEqGraphClickAddFilter = (_m) => false;
 /** @type {(m: number[] | null) => void} */
@@ -1783,11 +1827,8 @@ function setModeEmbed() {
     document.querySelector("body").setAttribute("embed-mode", "true");
 }
 
-function updatePaths(trigger) {
-    reorderActivePhonesByInitOrder();
-    clusterTargetsFirstInActivePhones();
-    refreshTargetStyleSlots();
-    clearLabels();
+/** Rejoin path elements to active curve data and redraw (no clearLabels / URL / sticky labels). */
+function rebindGraphPathSelectionAndRedraw() {
     let c = curvesTargetsFirstForPaint(d3.merge(activePhones.map(p => p.activeCurves || []))),
         p = gpath.selectAll("path").data(c, d=>d.id);
     let joined = p.join("path").attr("opacity", (c) => graphPathOpacityForCurve(c) ?? (c.p.hide ? 0 : null))
@@ -1811,7 +1852,17 @@ function updatePaths(trigger) {
             clearNonTargetCurveStrokePattern(n);
         }
     });
-    if (targetColorCustom) t.attr("stroke", targetColorCustom);
+    if (targetColorCustom) {
+        t.attr("stroke", targetColorCustom);
+    }
+}
+
+function updatePaths(trigger) {
+    reorderActivePhonesByInitOrder();
+    clusterTargetsFirstInActivePhones();
+    refreshTargetStyleSlots();
+    clearLabels();
+    rebindGraphPathSelectionAndRedraw();
     if (ifURL && !trigger) addPhonesToUrl();
     if (stickyLabels) drawLabels();
     updateEqFilterMarkers();
@@ -2396,8 +2447,17 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
         p.hide = true;
     }
     if (exclusive) {
-        activePhones = activePhones.filter(q => q.active = keep(q));
-        if (baseline.p && !baseline.p.active) setBaseline(baseline0,1);
+        /* Must use removePhone (not only active=false) so EQ children / p.eq links clear and
+           extra-EQ reset runs — the old filter-assignment left orphan EQ traces on the graph. */
+        activePhones.filter((q) => !keep(q)).forEach(removePhone);
+        activePhones.forEach((q) => {
+            if (keep(q)) {
+                q.active = true;
+            }
+        });
+        if (baseline.p && !baseline.p.active) {
+            setBaseline(baseline0, 1);
+        }
     }
     let blockedFromCompareList = !suppressVariant && !p.copyOf && p.objs && p.objs.length;
     if (activePhones.indexOf(p)===-1 && !blockedFromCompareList) {
@@ -2426,8 +2486,8 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
     } else {
         document.activeElement.blur();
     }
-    if (extraEnabled && extraEQEnabled) {
-        updateEQPhoneSelect();
+    if (extraEnabled && extraEQEnabled && typeof window.updateEQPhoneSelect === "function") {
+        window.updateEQPhoneSelect();
     }
     if (!p.isTarget && alt_augment ) { augmentList(p); }
     
@@ -2471,8 +2531,8 @@ function removePhone(p) {
     d3.selectAll("#phones div,.target")
         .filter(q=>q===(p.copyOf||p))
         .call(setPhoneTr);
-    if (extraEnabled && extraEQEnabled) {
-        updateEQPhoneSelect();
+    if (extraEnabled && extraEQEnabled && typeof window.updateEQPhoneSelect === "function") {
+        window.updateEQPhoneSelect();
         if (hadEqChild && typeof window.eqResetParametricAfterBaseModelRemoved === "function") {
             window.eqResetParametricAfterBaseModelRemoved();
         }
@@ -2502,8 +2562,8 @@ function removeSampleRow(p, sub) {
     if (baseline.p && !baseline.p.active) {
         setBaseline(baseline0);
     }
-    if (extraEnabled && extraEQEnabled) {
-        updateEQPhoneSelect();
+    if (extraEnabled && extraEQEnabled && typeof window.updateEQPhoneSelect === "function") {
+        window.updateEQPhoneSelect();
     }
 }
 
@@ -2798,7 +2858,8 @@ function pathHL(c, m, imm) {
 }
 function pathTooltip(c, m) {
     let g = gr.selectAll(".lineLabel").data([c.id])
-        .join("g").attr("class","lineLabel");
+        .join("g").attr("class","lineLabel")
+        .attr("pointer-events", "none");
     let t = g.append("text")
         .attrs({x:m[0], y:m[1]-6, fill:getTooltipColor(c)})
         .text(t=>t);
@@ -2811,6 +2872,13 @@ function pathTooltip(c, m) {
 }
 let interactInspect = false;
 let graphInteract = imm => function () {
+    /* EQ graph drag uses Pointer Events on document + pointer capture; d3 mousemove still fires on
+       Safari/trackpad with coordinates that can disagree with the pointer stream, which fights
+       syncEqHoverPreview and pathHL (strobe on nearest-curve highlight). Ignore synthetic mouse path
+       for the whole gesture. */
+    if (eqGraphPointerState) {
+        return;
+    }
     let ev = d3.event;
     if (ev && typeof ev.clientX === "number" && typeof ev.clientY === "number") {
         lastGraphPlotPointerClient = { x: ev.clientX, y: ev.clientY };
@@ -2860,6 +2928,7 @@ let graphInteract = imm => function () {
         cy.sort((d,e) => d[1]-e[1]);
         function newTooltip(t) {
             t.attr("class","lineLabel")
+                .attr("pointer-events", "none")
                 .attr("fill",d=>getTooltipColor(d));
             t.append("text").attr("x",2).text(d=>d.id);
             t.append("g").selectAll().data([0,1])
@@ -2918,6 +2987,7 @@ let graphInteract = imm => function () {
 function stopInspect() { gr.selectAll(".inspector").remove(); }
 graphPlotHitRect = gr.append("rect")
     .attr("class", "graph-plot-hit")
+    .style("touch-action", "none")
     .attrs({x:pad.l,y:pad.t,width:W,height:H,opacity:0})
     .on("mousemove", graphInteract())
     .on("mouseout", () => {
@@ -4450,6 +4520,33 @@ function addExtra() {
         return activePhones.filter(p =>
             !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/))[0] || null;
     };
+    /* Prefer the EQ child channel when present; otherwise derive the EQ-shaped curve from the DOM
+       filters so preview/markers never snap to the raw trace during one-frame EQ lag (notably
+       Safari + overlap with the unequalized curve). */
+    let eqGraphResolveEqTraceForLayout = (phoneObj) => {
+        if (!phoneObj) {
+            return null;
+        }
+        let rawCh = firstPresentChannel(phoneObj.rawChannels);
+        if (!rawCh) {
+            return null;
+        }
+        let eqPhone = phoneObj.eq;
+        let eqCh = eqPhone && firstPresentChannel(eqPhone.rawChannels);
+        if (eqCh) {
+            return { tracePhone: eqPhone, traceCh: eqCh, strokePhone: eqPhone };
+        }
+        let filters = elemToFiltersClampedForEqualizerApply(false);
+        if (filters.length && typeof Equalizer !== "undefined" && Equalizer.apply) {
+            try {
+                let fr = Equalizer.apply(rawCh, filters);
+                if (fr) {
+                    return { tracePhone: phoneObj, traceCh: fr, strokePhone: phoneObj };
+                }
+            } catch (err) { /* noop */ }
+        }
+        return { tracePhone: phoneObj, traceCh: rawCh, strokePhone: phoneObj };
+    };
     let computeEqNodePreviewAtMouse = (m) => {
         if (!m || m.length < 2) {
             return null;
@@ -4463,14 +4560,11 @@ function addExtra() {
         if (!phoneObj) {
             return null;
         }
-        let eqPhone = phoneObj.eq;
-        let eqTraceCh = eqPhone && firstPresentChannel(eqPhone.rawChannels);
-        let hasEqTrace = !!eqTraceCh;
-        let tracePhone = hasEqTrace ? eqPhone : phoneObj;
-        let traceCh = firstPresentChannel(tracePhone.rawChannels);
-        if (!traceCh) {
+        let resolved = eqGraphResolveEqTraceForLayout(phoneObj);
+        if (!resolved) {
             return null;
         }
+        let { tracePhone, traceCh } = resolved;
         let fHz = Math.min(20000, Math.max(20, x.invert(m[0])));
         let pts = baseline.fn(traceCh);
         let db = eqInterpDbAtHz(pts, fHz);
@@ -4551,15 +4645,14 @@ function addExtra() {
         if (!phoneObj) {
             return null;
         }
-        let eqPhone = phoneObj.eq;
-        let tracePhone = firstPresentChannel(eqPhone && eqPhone.rawChannels) ? eqPhone : phoneObj;
-        let traceCh = firstPresentChannel(tracePhone.rawChannels);
-        if (!traceCh) {
+        let resolved = eqGraphResolveEqTraceForLayout(phoneObj);
+        if (!resolved) {
             return null;
         }
+        let { tracePhone, traceCh, strokePhone } = resolved;
         let pts = baseline.fn(traceCh);
         let yOff = y(getOffset(tracePhone)) - y(0);
-        let strokeCol = getCurveColor(tracePhone.id, 0);
+        let strokeCol = getCurveColor(strokePhone.id, 0);
         let phoneRaw0 = firstPresentChannel(phoneObj.rawChannels);
         let rows = [];
         let maxA = getEffectiveEqMaxBands();
@@ -4774,9 +4867,31 @@ function addExtra() {
             updateEqFilterMarkers();
             return; // Allow empty filters if eq is applied before
         }
+        let nextEqChannels = phoneObj.rawChannels.map(
+            (c) => (c ? Equalizer.apply(c, filters) : null));
+        let liveGraphEqDrag = Boolean(execOpt.liveGraphEqDrag && eqGraphPointerState
+            && eqGraphPointerState.mode === "eq");
+        if (liveGraphEqDrag && phoneObj.eq && activePhones.indexOf(phoneObj.eq) !== -1) {
+            let eqP = phoneObj.eq;
+            eqP.rawChannels = nextEqChannels;
+            eqP.smooth = undefined;
+            smoothPhone(eqP);
+            normalizePhone(phoneObj);
+            setCurves(eqP);
+            reorderActivePhonesByInitOrder();
+            clusterTargetsFirstInActivePhones();
+            refreshTargetStyleSlots();
+            rebindGraphPathSelectionAndRedraw();
+            applyParametricEqGraphTraceFocus();
+            updateEqTraceOpacity();
+            updateEqFilterMarkers();
+            if (!execOpt.skipRestoreFocus) {
+                activeElem.focus();
+            }
+            return;
+        }
         let phoneEQ = { name: phoneObj.phone + " EQ" };
-        let phoneObjEQ = addOrUpdatePhone(phoneObj.brand, phoneEQ,
-            phoneObj.rawChannels.map(c => c ? Equalizer.apply(c, filters) : null));
+        let phoneObjEQ = addOrUpdatePhone(phoneObj.brand, phoneEQ, nextEqChannels);
         phoneObj.eq = phoneObjEQ;
         phoneObjEQ.eqParent = phoneObj;
         showPhone(phoneObjEQ, false, !!execOpt.skipRestoreFocus);
@@ -7300,7 +7415,7 @@ function addExtra() {
         eqGraphApplyEqDragTimer = requestAnimationFrame(() => {
             eqGraphApplyEqDragTimer = null;
             cancelDeferredApplyEQ();
-            applyEQExec();
+            applyEQExec({ skipRestoreFocus: true, liveGraphEqDrag: true });
             scheduleLiveEqSync();
         });
     };
@@ -7390,6 +7505,7 @@ function addExtra() {
         return true;
     };
     let eqGraphRemoveDragListeners = () => {
+        eqGraphRemoveDragSelectLock();
         document.removeEventListener("pointermove", eqGraphDragMove, true);
         document.removeEventListener("pointerup", eqGraphDragEnd, true);
         document.removeEventListener("pointercancel", eqGraphDragEnd, true);
@@ -7624,23 +7740,26 @@ function addExtra() {
                 if (dist < EQ_GRAPH_DRAG_THRESHOLD_PX) {
                     continue;
                 }
-            if (st.axisLock === null) {
-                st.axisLock = Math.abs(adx) >= Math.abs(ady) ? "freq" : "gain";
-                if (st.axisLock === "freq") {
-                    /* Ignore vertical bleed before axis lock: keep gain at pointer-down anchor. */
-                    st.lockGainDb = roundEqGraphGainDb(st.gainDragAnchorDb);
-                } else {
-                    /* Ignore horizontal bleed before lock: keep freq at drag start. */
-                    let [fLoL, fHiL] = getEqConstraintFreqLoHi();
-                    st.lockFreqHz = Math.round(Math.min(fHiL, Math.max(fLoL, st.fHz)));
+                /* Before axis lock / addPeakingFilterFromHz: Safari can deliver pointerup reentrantly
+                   while this handler runs; didTapAddNewBand uses !dragging — set dragging early so
+                   cleanup cannot spawn a duplicate band mid-creation. */
+                st.dragging = true;
+                if (st.axisLock === null) {
+                    st.axisLock = Math.abs(adx) >= Math.abs(ady) ? "freq" : "gain";
+                    if (st.axisLock === "freq") {
+                        /* Ignore vertical bleed before axis lock: keep gain at pointer-down anchor. */
+                        st.lockGainDb = roundEqGraphGainDb(st.gainDragAnchorDb);
+                    } else {
+                        /* Ignore horizontal bleed before lock: keep freq at drag start. */
+                        let [fLoL, fHiL] = getEqConstraintFreqLoHi();
+                        st.lockFreqHz = Math.round(Math.min(fHiL, Math.max(fLoL, st.fHz)));
+                    }
                 }
-            }
-            let freq = st.axisLock === "freq" ? freqT : st.lockFreqHz;
-            let gain = st.axisLock === "gain" ? gainT : st.lockGainDb;
-            st.dragging = true;
-            let idx = addPeakingFilterFromHz(freq, gain, {
-                skipFocus: true,
-            });
+                let freq = st.axisLock === "freq" ? freqT : st.lockFreqHz;
+                let gain = st.axisLock === "gain" ? gainT : st.lockGainDb;
+                let idx = addPeakingFilterFromHz(freq, gain, {
+                    skipFocus: true,
+                });
                 if (idx < 0) {
                     eqGraphSkipNextClick = true;
                     eqGraphPointerState = null;
@@ -7667,7 +7786,7 @@ function addExtra() {
                 if (st.axisLock === "freq") {
                     syncToneGeneratorToEqFrequencyHz(freq);
                 }
-                return;
+                continue;
             }
             let distExisting = locked
                 ? Math.hypot(st.accumMovementX,
@@ -7677,6 +7796,7 @@ function addExtra() {
             if (distExisting < EQ_GRAPH_DRAG_THRESHOLD_PX) {
                 continue;
             }
+            st.dragging = true;
             if (st.axisLock === null) {
                 st.axisLock = Math.abs(adx) >= Math.abs(ady) ? "freq" : "gain";
                 if (st.axisLock === "freq") {
@@ -7688,7 +7808,6 @@ function addExtra() {
             }
             let freq = st.axisLock === "freq" ? freqT : st.lockFreqHz;
             let gain = st.axisLock === "gain" ? gainT : st.lockGainDb;
-            st.dragging = true;
             st.liveFHz = freq;
             eqFiltersUserHasEdited = true;
             filterFreqInput[st.filterIndex].value = String(freq);
@@ -7802,6 +7921,7 @@ function addExtra() {
         let previewFHz = stPreview ? stPreview.fHz : freqAtPointer;
         cancelAnimationFrame(eqGraphApplyEqDragTimer);
         eqGraphApplyEqDragTimer = null;
+        pathHL(false);
         eqGraphPointerState = {
             mode: soundRangeSelect ? "soundRange" : "eq",
             soundRangeAnchorHz: soundRangeSelect ? freqAtPointer : null,
@@ -7833,6 +7953,8 @@ function addExtra() {
             svgScaleY: svgScaleY,
             pointerLockActive: false,
         };
+        e.preventDefault();
+        eqGraphInstallDragSelectLock();
         svg.style.cursor = "grabbing";
         if (graphPlotHitRect && graphPlotHitRect.node()) {
             graphPlotHitRect.node().style.cursor = "grabbing";

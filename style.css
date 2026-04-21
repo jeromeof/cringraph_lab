@@ -6,6 +6,11 @@ html { background:#e5e5e5; }
 .graphBox { margin:0.25em auto 0.75em; }
 #fr-graph { width:calc((100vh - 13.5em) * 800 / 360); max-width:100%; }
 svg text { cursor:default; user-select:none; }
+.graph-plot-hit {
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+}
 .controls { flex:auto; display:flex; flex-flow:row-reverse wrap; }
 .manage,.select { flex:1; margin:0 0.8em; font-size:large; }
 .select { border-bottom:2px solid #1c2126; }
@@ -182,6 +187,8 @@ input[type=number] { width:2.3em; border:1px solid #899174; height:1.5em; }
 svg#fr-graph g.lineLabel,
 svg#fr-graph g.lineLabel * {
     pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .inspector { pointer-events:none; }
