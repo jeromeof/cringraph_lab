@@ -1058,6 +1058,64 @@ function hasImbalance(p) {
 }
 
 let activePhones = [];
+/** Maps init / share `fileName` to ordinal so `activePhones` matches init order after async loads. */
+let initPhoneOrderIndex = new Map();
+function setInitPhoneOrderFromReq(req) {
+    initPhoneOrderIndex.clear();
+    if (!req || !Array.isArray(req)) {
+        return;
+    }
+    req.forEach((name, i) => {
+        let k = String(name || "").trim();
+        if (k && !initPhoneOrderIndex.has(k)) {
+            initPhoneOrderIndex.set(k, i);
+        }
+    });
+}
+function initOrderRankForPhone(p) {
+    if (!p) {
+        return null;
+    }
+    let fn = String(p.fileName || "").trim();
+    if (initPhoneOrderIndex.has(fn)) {
+        return initPhoneOrderIndex.get(fn);
+    }
+    if (p.copyOf) {
+        let root = p.copyOf,
+            pf = String(root.fileName || "").trim();
+        if (initPhoneOrderIndex.has(pf)) {
+            let base = initPhoneOrderIndex.get(pf),
+                objs = root.objs || [root],
+                j = objs.indexOf(p);
+            if (j < 0) {
+                j = objs.length;
+            }
+            return base + j * 1e-4;
+        }
+    }
+    return null;
+}
+function reorderActivePhonesByInitOrder() {
+    if (!initPhoneOrderIndex.size) {
+        return;
+    }
+    let orig = new Map();
+    activePhones.forEach((q, i) => orig.set(q, i));
+    activePhones.sort((a, b) => {
+        let ra = initOrderRankForPhone(a),
+            rb = initOrderRankForPhone(b);
+        if (ra == null) {
+            ra = 1e6 + orig.get(a) * 1e-6;
+        }
+        if (rb == null) {
+            rb = 1e6 + orig.get(b) * 1e-6;
+        }
+        if (ra !== rb) {
+            return ra - rb;
+        }
+        return orig.get(a) - orig.get(b);
+    });
+}
 let phoneManageIdentityMap = new WeakMap(),
     phoneManageIdentitySeq = 1;
 function phoneManageIdentity(p) {
@@ -1085,9 +1143,83 @@ const EQ_GRAPH_MARKER_SEL_FILL = "trace";
 const EQ_GRAPH_MARKER_SEL_HOVER_SCALE = 1.2;
 const EQ_GRAPH_MARKER_STROKE_W = 4;
 const EQ_GRAPH_MARKER_STROKE_HOVER_MULT = 2;
+/** Base stroke width in SVG user units (sample vs main traces). Not overridden by CSS when scoped in style.css. */
 const EQ_GRAPH_TRACE_STROKE_SAMPLE = 1.9;
 const EQ_GRAPH_TRACE_STROKE_NORMAL = 2.3;
 const EQ_GRAPH_TRACE_STROKE_EMPH_MULT = 2;
+
+/** Dash + stroke width per slot. `w` is the target trace stroke width in SVG user units (absolute, not added to NORMAL/SAMPLE). */
+const TARGET_TRACE_DOT_SPECS = [
+    { dash: "6 3", w: 2.8, cap: "butt" },
+    { dash: "18 9", w: 1.25, cap: "round" },
+    { dash: "2 6", w: 1.45, cap: "round" },
+    { dash: "2 3", w: 1.55, cap: "round" },
+    { dash: "6 4", w: 1.75, cap: "round" },
+    { dash: "10 5", w: 1.3, cap: "round" },
+    { dash: "14 4 2 4", w: 1.65, cap: "round" },
+    { dash: "1 5", w: 1.95, cap: "round" },
+    { dash: "8 3 2 3", w: 1.4, cap: "round" },
+    { dash: "4 2 1 2 8 2", w: 1.7, cap: "round" },
+];
+/** Stable slot per target identity: first time a target key is graphed it keeps that pattern forever (session). */
+let targetLinePatternNextSlot = 0;
+let targetLinePatternSlotByKey = new Map();
+function targetLinePatternKeyForPhone(phone) {
+    if (!phone) {
+        return "";
+    }
+    let fn = String(phone.fileName || "").trim();
+    if (fn) {
+        return "f:" + fn;
+    }
+    let nm = String(phone.fullName || "").trim();
+    if (nm) {
+        return "n:" + nm;
+    }
+    return "";
+}
+function targetTraceDotSpecSlotForPhone(phone) {
+    let key = targetLinePatternKeyForPhone(phone);
+    if (!key) {
+        return 0;
+    }
+    if (targetLinePatternSlotByKey.has(key)) {
+        return targetLinePatternSlotByKey.get(key);
+    }
+    let slot = targetLinePatternNextSlot++;
+    targetLinePatternSlotByKey.set(key, slot);
+    return slot;
+}
+function targetTraceDotSpecForPhone(phone) {
+    if (!phone) {
+        return TARGET_TRACE_DOT_SPECS[0];
+    }
+    let slot = targetTraceDotSpecSlotForPhone(phone);
+    return TARGET_TRACE_DOT_SPECS[slot % TARGET_TRACE_DOT_SPECS.length];
+}
+function targetTraceStrokeWidthFromSpec(spec) {
+    let w = spec && typeof spec.w === "number" && Number.isFinite(spec.w)
+        ? spec.w
+        : TARGET_TRACE_DOT_SPECS[0].w;
+    return Math.max(0.02, w);
+}
+function targetTraceStrokeWidthForPhone(phone) {
+    return targetTraceStrokeWidthFromSpec(targetTraceDotSpecForPhone(phone));
+}
+function applyTargetCurveStrokePattern(pathSel, phone) {
+    let spec = targetTraceDotSpecForPhone(phone);
+    let cap = spec.cap || "round";
+    pathSel
+        .style("stroke-dasharray", spec.dash)
+        .attr("stroke-linecap", cap)
+        .attr("stroke-linejoin", cap === "round" ? "round" : "miter");
+}
+function clearNonTargetCurveStrokePattern(pathSel) {
+    pathSel
+        .style("stroke-dasharray", null)
+        .attr("stroke-linecap", null)
+        .attr("stroke-linejoin", null);
+}
 
 let gpath = gr.insert("g",".dBScaler")
     .attr("fill","none")
@@ -1115,10 +1247,12 @@ function resetGraphPathStrokesToBase() {
     gpath.selectAll("path").each(function () {
         let n = d3.select(this);
         n.interrupt(EQ_GRAPH_TRACE_EM_TNAME);
+        let c = n.datum();
         let base = this.classList.contains("sample")
             ? EQ_GRAPH_TRACE_STROKE_SAMPLE
             : EQ_GRAPH_TRACE_STROKE_NORMAL;
-        n.attr("stroke-width", base);
+        let sw = (c && c.p && c.p.isTarget) ? targetTraceStrokeWidthForPhone(c.p) : base;
+        n.attr("stroke-width", sw);
     });
 }
 let gEqFilterMarkers = gr.append("g")
@@ -1593,7 +1727,17 @@ function updatePaths(trigger) {
         .attr("data-phone-name", c=>c.p.fullName)
         .attr("class", "target");
     resetGraphPathStrokesToBase();
-    if (targetDashed) t.style("stroke-dasharray", "6, 3");
+    gpath.selectAll("path").each(function (c) {
+        let n = d3.select(this);
+        if (!c || !c.p) {
+            return;
+        }
+        if (c.p.isTarget) {
+            applyTargetCurveStrokePattern(n, c.p);
+        } else {
+            clearNonTargetCurveStrokePattern(n);
+        }
+    });
     if (targetColorCustom) t.attr("stroke", targetColorCustom);
     if (ifURL && !trigger) addPhonesToUrl();
     if (stickyLabels) drawLabels();
@@ -2191,6 +2335,7 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
         p.active = true;
         setCurves(p, avg);
     }
+    reorderActivePhonesByInitOrder();
     updatePaths(trigger);
     updatePhoneTable(trigger);
     d3.selectAll("#phones .phone-item,.target")
@@ -2353,6 +2498,7 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
     
     // Apply user config to inits
     userConfigAppendInits(initReq);
+    setInitPhoneOrderFromReq(Array.isArray(initReq) ? initReq : null);
     
     let isInit = initReq ? f => initReq.indexOf(f) !== -1
                          : _ => false;
@@ -2435,6 +2581,16 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
         ts.forEach((t,i) => {
             t.id = i-ts.length;
             if (isInit(t.fileName)) inits.push(t);
+        });
+    }
+
+    if (initReq && Array.isArray(initReq) && initReq.length) {
+        inits.sort((a, b) => {
+            let ia = initReq.indexOf(String(a.fileName || "").trim());
+            let ib = initReq.indexOf(String(b.fileName || "").trim());
+            ia = ia < 0 ? 1e9 : ia;
+            ib = ib < 0 ? 1e9 : ib;
+            return ia - ib;
         });
     }
 
@@ -3263,18 +3419,23 @@ function addExtra() {
             if (!vis) {
                 el.attr("opacity", 0);
                 el.classed("eq-graph-focus-target", false);
-                el.style("stroke-dasharray", null);
+                if (!c.p.isTarget) {
+                    el.style("stroke-dasharray", null);
+                }
                 return;
             }
             el.attr("opacity", c.p.hide ? 0 : null);
             /* Never paint the parametric EQ trace as the "target" line (gray); fallback targetP can equal eqP when the target dropdown is empty. */
             if (targetP && c.p === targetP && !c.p.isTarget && c.p !== eqP) {
                 el.classed("eq-graph-focus-target", true);
-                if (typeof targetDashed !== "undefined" && targetDashed) {
-                    el.style("stroke-dasharray", "6, 3");
-                } else {
-                    el.style("stroke-dasharray", null);
-                }
+                let spec = targetP.isTarget
+                    ? targetTraceDotSpecForPhone(targetP)
+                    : TARGET_TRACE_DOT_SPECS[0];
+                let cap = spec.cap || "round";
+                el.style("stroke-dasharray", spec.dash)
+                    .attr("stroke-linecap", cap)
+                    .attr("stroke-linejoin", cap === "round" ? "round" : "miter");
+                el.attr("stroke-width", targetTraceStrokeWidthFromSpec(spec));
                 if (typeof targetColorCustom !== "undefined" && targetColorCustom) {
                     el.attr("stroke", targetColorCustom);
                 } else {
@@ -3284,7 +3445,11 @@ function addExtra() {
                 el.classed("eq-graph-focus-target", false);
                 if (!c.p.isTarget) {
                     el.style("stroke-dasharray", null);
+                    el.attr("stroke-linecap", null);
+                    el.attr("stroke-linejoin", null);
                     el.attr("stroke", getColor_AC(c));
+                } else {
+                    applyTargetCurveStrokePattern(el, c.p);
                 }
             }
         });
@@ -4240,7 +4405,13 @@ function addExtra() {
                 : EQ_GRAPH_TRACE_STROKE_NORMAL;
             let match = Boolean(enabled && tracePhone && d && d.p
                 && (d.p === tracePhone || d.p.fileName === tracePhone.fileName));
-            let w = match ? base * EQ_GRAPH_TRACE_STROKE_EMPH_MULT : base;
+            let w;
+            if (d && d.p && d.p.isTarget) {
+                let tW = targetTraceStrokeWidthForPhone(d.p);
+                w = match ? tW * EQ_GRAPH_TRACE_STROKE_EMPH_MULT : tW;
+            } else {
+                w = match ? base * EQ_GRAPH_TRACE_STROKE_EMPH_MULT : base;
+            }
             /* Always set via .attr; CSS transitions stroke-width on g.curves-g path. D3 transitions
                here restarted every sync when de-emphasized and could stick thin if attr was inherited. */
             n.interrupt(EQ_GRAPH_TRACE_EM_TNAME);
@@ -6580,15 +6751,26 @@ function addExtra() {
         });
         if (emphTargets.length) {
             let emph = EQ_GRAPH_TRACE_STROKE_NORMAL * EQ_GRAPH_TRACE_STROKE_EMPH_MULT;
-            emphTargets.forEach(n => d3.select(n).attr("stroke-width", emph));
+            emphTargets.forEach(n => {
+                let d = d3.select(n).datum();
+                let w = (d && d.p && d.p.isTarget)
+                    ? targetTraceStrokeWidthForPhone(d.p) * EQ_GRAPH_TRACE_STROKE_EMPH_MULT
+                    : emph;
+                d3.select(n).attr("stroke-width", w);
+            });
             if (eqTraceOpacityPulseTimer) clearTimeout(eqTraceOpacityPulseTimer);
             eqTraceOpacityPulseTimer = setTimeout(() => {
                 eqTraceOpacityPulseTimer = null;
                 emphTargets.forEach(n => {
-                    let base = n.classList.contains("sample")
-                        ? EQ_GRAPH_TRACE_STROKE_SAMPLE
-                        : EQ_GRAPH_TRACE_STROKE_NORMAL;
-                    d3.select(n).attr("stroke-width", base);
+                    let d = d3.select(n).datum();
+                    if (d && d.p && d.p.isTarget) {
+                        d3.select(n).attr("stroke-width", targetTraceStrokeWidthForPhone(d.p));
+                    } else {
+                        let base = n.classList.contains("sample")
+                            ? EQ_GRAPH_TRACE_STROKE_SAMPLE
+                            : EQ_GRAPH_TRACE_STROKE_NORMAL;
+                        d3.select(n).attr("stroke-width", base);
+                    }
                 });
             }, 100);
         }
