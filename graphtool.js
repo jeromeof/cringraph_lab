@@ -8470,6 +8470,10 @@ function addExtra() {
         tryRestorePersistedMusic();
     }
     let syncToneGeneratorToEqFrequencyHz = (hz) => {
+        /* EQ freq edits normally retune the tone preview; skip while a sweep is running so the ramp is not cancelled. */
+        if (toneSweepRafId !== null) {
+            return;
+        }
         let [fLo, fHi] = getEqConstraintFreqLoHi();
         hz = Math.min(fHi, Math.max(fLo, Math.round(Number(hz)) || fLo));
         let from = Math.min(Math.max(parseInt(toneGeneratorFromInput.value) || 0, 20), 20000);
