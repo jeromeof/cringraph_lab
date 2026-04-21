@@ -37,7 +37,7 @@ Icons *****/
 
 :root {
     --icon-remove: url("data:image/svg+xml,%3Csvg id='Layer_1' data-name='Layer 1' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cdefs%3E%3Cstyle%3E.cls-1%7Bfill:%23000000;%7D%3C/style%3E%3C/defs%3E%3Cpath class='cls-1' d='M95.36,24.64h0a5,5,0,0,0-7.08,0L60,52.93,31.72,24.64a5,5,0,0,0-7.08,0h0a5,5,0,0,0,0,7.08L52.93,60,24.64,88.28a5,5,0,0,0,0,7.08h0a5,5,0,0,0,7.08,0L60,67.07,88.28,95.36a5,5,0,0,0,7.08,0h0a5,5,0,0,0,0-7.08L67.07,60,95.36,31.72A5,5,0,0,0,95.36,24.64Z'/%3E%3C/svg%3E");
-    /* Tabler outline 24×24 @ #000 for mask; use at 20×20 via mask-size */
+    /* Tabler outline 24×24 @ #000 for mask; use at 16×16 via mask-size */
     --icon-baseline: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M0%200h24v24H0z%22%20fill%3D%22none%22%2F%3E%3Cpath%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M4%2012h16%22%2F%3E%3C%2Fsvg%3E");
     --icon-squiggle: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M0%200h24v24H0z%22%20fill%3D%22none%22%2F%3E%3Cpath%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M21%2012h-2c-.894%200%20-1.662%20-.857%20-1.761%20-2c-.296%20-3.45%20-.749%20-6%20-2.749%20-6s-2.5%203.582%20-2.5%208s-.5%208%20-2.5%208s-2.452%20-2.547%20-2.749%20-6c-.1%20-1.147%20-.867%20-2%20-1.763%20-2h-2%22%2F%3E%3C%2Fsvg%3E");
     --icon-download: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M0%200h24v24H0z%22%20fill%3D%22none%22%2F%3E%3Cpath%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M4%2017v2a2%202%200%200%200%202%202h12a2%202%200%200%200%202%20-2v-2%22%2F%3E%3Cpath%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M7%2011l5%205l5%20-5%22%2F%3E%3Cpath%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M12%204l0%2012%22%2F%3E%3C%2Fsvg%3E");
@@ -47,7 +47,7 @@ Icons *****/
     --icon-plus: url("data:image/svg+xml,%3Csvg id='Layer_1' data-name='Layer 1' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cdefs%3E%3Cstyle%3E.cls-1%7Bfill:%23000000;%7D%3C/style%3E%3C/defs%3E%3Cpath class='cls-1' d='M110,60h0a5,5,0,0,0-5-5H65V15a5,5,0,0,0-5-5h0a5,5,0,0,0-5,5V55H15a5,5,0,0,0-5,5h0a5,5,0,0,0,5,5H55v40a5,5,0,0,0,5,5h0a5,5,0,0,0,5-5V65h40A5,5,0,0,0,110,60Z'/%3E%3C/svg%3E");
     --icon-new-tab: url("data:image/svg+xml,%3Csvg id='Layer_1' data-name='Layer 1' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3Cstyle%3E.cls-1,.cls-2%7Bfill:none;stroke:%23231f20;%7D.cls-2%7Bstroke-linecap:round;%7D%3C/style%3E%3C/defs%3E%3Cpath class='cls-1' d='M21,11v2c0,3.77,0,5.66-1.17,6.83S16.77,21,13,21H11c-3.77,0-5.66,0-6.83-1.17S3,16.77,3,13V11C3,7.23,3,5.34,4.17,4.17S7.23,3,11,3h1'/%3E%3Cpath class='cls-2' d='M21,3.15H16.76m4.24,0V7.39m0-4.24-8.49,8.48'/%3E%3C/svg%3E");
 
-    /* Tabler-derived (viewBox 0 0 24 24); use at 20×20 via mask-size — Sound Tools play/stop, EQ settings / reset */
+    /* Tabler-derived (viewBox 0 0 24 24); use at 16×16 via mask-size — Sound Tools play/stop, EQ settings / reset */
     --icon-player-play: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20d%3D%22M0%200h24v24H0z%22%2F%3E%3Cpath%20fill%3D%22%23000%22%20d%3D%22M6%204v16a1%201%200%200%200%201.524%20.852l13%20-8a1%201%200%200%200%200%20-1.704l-13%20-8a1%201%200%200%200%20-1.524%20.852z%22%2F%3E%3C%2Fsvg%3E");
     --icon-player-stop: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20d%3D%22M0%200h24v24H0z%22%2F%3E%3Cpath%20fill%3D%22%23000%22%20d%3D%22M17%204h-10a3%203%200%200%200%20-3%203v10a3%203%200%200%200%203%203h10a3%203%200%200%200%203%20-3v-10a3%203%200%200%200%20-3%20-3z%22%2F%3E%3C%2Fsvg%3E");
     --icon-eq-settings: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%3E%3Cpath%20stroke%3D%22none%22%20d%3D%22M0%200h24v24H0z%22%2F%3E%3Cpath%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M10.325%204.317c.426%20-1.756%202.924%20-1.756%203.35%200a1.724%201.724%200%200%200%202.573%201.066c1.543%20-.94%203.31%20.826%202.37%202.37a1.724%201.724%200%200%200%201.065%202.572c1.756%20.426%201.756%202.924%200%203.35a1.724%201.724%200%200%200%20-1.066%202.573c.94%201.543%20-.826%203.31%20-2.37%202.37a1.724%201.724%200%200%200%20-2.572%201.065c-.426%201.756%20-2.924%201.756%20-3.35%200a1.724%201.724%200%200%200%20-2.573%20-1.066c-1.543%20.94%20-3.31%20-.826%20-2.37%20-2.37a1.724%201.724%200%200%200%20-1.065%20-2.572c-1.756%20-.426%20-1.756%20-2.924%200%20-3.35a1.724%201.724%200%200%200%201.066%20-2.573c-.94%20-1.543%20.826%20-3.31%202.37%20-2.37c1%20.608%202.296%20.07%202.572%20-1.065%22%2F%3E%3Cpath%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M9%2012a3%203%200%201%200%206%200a3%203%200%200%200%20-6%200%22%2F%3E%3C%2Fsvg%3E");
@@ -643,10 +643,10 @@ button#expand-collapse:before {
     
     mask: var(--icon-expand);
     -webkit-mask: var(--icon-expand);
-    mask-size: 20px;
+    mask-size: 16px;
     mask-repeat: no-repeat;
     mask-position: center;
-    -webkit-mask-size: 20px;
+    -webkit-mask-size: 16px;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
     
@@ -662,10 +662,10 @@ body[data-graph-frame="expanded"] button#expand-collapse:before {
 
     mask: var(--icon-collapse);
     -webkit-mask: var(--icon-collapse);
-    mask-size: 20px;
+    mask-size: 16px;
     mask-repeat: no-repeat;
     mask-position: center;
-    -webkit-mask-size: 20px;
+    -webkit-mask-size: 16px;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
 }
@@ -1049,10 +1049,10 @@ button.export-filters:after {
     
     mask: var(--icon-download);
     -webkit-mask: var(--icon-download);
-    mask-size: 20px;
+    mask-size: 16px;
     mask-repeat: no-repeat;
     mask-position: center;
-    -webkit-mask-size: 20px;
+    -webkit-mask-size: 16px;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
 }
@@ -1364,8 +1364,8 @@ div.extra-panel .extra-eq-reset-icon {
     -webkit-mask-repeat: no-repeat;
     mask-position: center;
     -webkit-mask-position: center;
-    mask-size: 20px 20px;
-    -webkit-mask-size: 20px 20px;
+    mask-size: 16px 16px;
+    -webkit-mask-size: 16px 16px;
 }
 
 div.extra-panel > div.extra-eq > div.select-eq-phone-model-target {
@@ -1376,12 +1376,12 @@ div.extra-panel > div.extra-eq > div.select-eq-phone-model-target {
     width: 100%;
 }
 
-/* Target + Auto EQ: 3:1 flex split (same rhythm as four filter columns); flex centers label vs native select metrics */
+/* Same 4-column track + 4px gaps as .filters-header / .filter so Auto EQ lines up with the Q column */
 div.extra-panel > div.extra-eq > div.select-eq-phone-model-target > div.select-eq-phone-target-row {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    gap: 4px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    column-gap: 4px;
+    row-gap: 0;
     align-items: stretch;
     width: 100%;
     min-width: 0;
@@ -1394,7 +1394,7 @@ div.extra-panel > div.extra-eq > div.select-eq-phone-model-target > div.select-e
 }
 
 div.extra-panel > div.extra-eq > div.select-eq-phone-model-target > div.select-eq-phone-target-row > .select-eq-target-select-wrap {
-    flex: 3 1 0;
+    grid-column: 1 / span 3;
     min-width: 0;
     max-width: 100%;
     display: flex;
@@ -1411,17 +1411,20 @@ div.extra-panel > div.extra-eq > div.select-eq-phone-model-target > div.select-e
 
 div.extra-panel > div.extra-eq > div.select-eq-phone-model-target > div.select-eq-phone-target-row > button.autoeq.extra-eq-secondary-btn {
     box-sizing: border-box;
+    grid-column: 4;
     min-width: 0;
+    width: 100%;
     max-width: none;
-    flex: 1 1 0 !important;
+    flex: unset !important;
     order: 0 !important;
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
     padding: 10px 4px;
     font-size: 12px;
     line-height: 14px;
     white-space: normal;
+    text-transform: none;
     border: 1px solid var(--background-color-contrast-more) !important;
 }
 
@@ -1504,8 +1507,8 @@ div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear-char {
     -webkit-mask-repeat: no-repeat;
     mask-position: center;
     -webkit-mask-position: center;
-    mask-size: 20px 20px;
-    -webkit-mask-size: 20px 20px;
+    mask-size: 16px 16px;
+    -webkit-mask-size: 16px 16px;
 }
 
 div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear-preset-badge {
@@ -2291,8 +2294,8 @@ div.extra-panel .live-sound-range-reset-icon {
     -webkit-mask-repeat: no-repeat;
     mask-position: center;
     -webkit-mask-position: center;
-    mask-size: 20px 20px;
-    -webkit-mask-size: 20px 20px;
+    mask-size: 16px 16px;
+    -webkit-mask-size: 16px 16px;
 }
 
 div.extra-panel .live-sound-band-label {
@@ -2417,8 +2420,8 @@ div.extra-panel .live-sound-tools .extra-music .music-play-row button.play::befo
     -webkit-mask-repeat: no-repeat;
     mask-position: center;
     -webkit-mask-position: center;
-    mask-size: 20px 20px;
-    -webkit-mask-size: 20px 20px;
+    mask-size: 16px 16px;
+    -webkit-mask-size: 16px 16px;
 }
 
 /* Pink / tone: playing — contrast-more fill, icon uses page background */
@@ -3021,10 +3024,10 @@ tbody.curves > tr > td.remove:after {
     mask: var(--icon-remove);
     -webkit-mask: var(--icon-remove);
     
-    mask-size: 20px;
+    mask-size: 16px;
     mask-repeat: no-repeat;
     mask-position: center;
-    -webkit-mask-size: 20px;
+    -webkit-mask-size: 16px;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
 }
@@ -3037,10 +3040,10 @@ tbody.curves > tr > td.button-pin:after {
     mask: var(--icon-pin);
     -webkit-mask: var(--icon-pin);
     
-    mask-size: 20px;
+    mask-size: 16px;
     mask-repeat: no-repeat;
     mask-position: center;
-    -webkit-mask-size: 20px;
+    -webkit-mask-size: 16px;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
 }
@@ -3049,10 +3052,10 @@ tbody.curves > tr > td.button.hideIcon:after {
     mask: var(--icon-hide);
     -webkit-mask: var(--icon-hide);
     
-    mask-size: 20px;
+    mask-size: 16px;
     mask-repeat: no-repeat;
     mask-position: center;
-    -webkit-mask-size: 20px;
+    -webkit-mask-size: 16px;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
 }
@@ -3061,10 +3064,10 @@ tbody.curves > tr > td.button.hideIcon.selected:after {
     mask: var(--icon-hidden);
     -webkit-mask: var(--icon-hidden);
     
-    mask-size: 20px;
+    mask-size: 16px;
     mask-repeat: no-repeat;
     mask-position: center;
-    -webkit-mask-size: 20px;
+    -webkit-mask-size: 16px;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
 }
@@ -3073,10 +3076,10 @@ tbody.curves > tr > td.button.button-export:after {
     mask: var(--icon-download);
     -webkit-mask: var(--icon-download);
     
-    mask-size: 20px;
+    mask-size: 16px;
     mask-repeat: no-repeat;
     mask-position: center;
-    -webkit-mask-size: 20px;
+    -webkit-mask-size: 16px;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
 }
@@ -3085,10 +3088,10 @@ tbody.curves > tr > td.button.button-baseline:after {
     mask: var(--icon-squiggle);
     -webkit-mask: var(--icon-squiggle);
     
-    mask-size: 20px;
+    mask-size: 16px;
     mask-repeat: no-repeat;
     mask-position: center;
-    -webkit-mask-size: 20px;
+    -webkit-mask-size: 16px;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
 }
@@ -3097,10 +3100,10 @@ tbody.curves > tr > td.button.button-baseline.selected:after {
     mask: var(--icon-baseline);
     -webkit-mask: var(--icon-baseline);
     
-    mask-size: 20px;
+    mask-size: 16px;
     mask-repeat: no-repeat;
     mask-position: center;
-    -webkit-mask-size: 20px;
+    -webkit-mask-size: 16px;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
 }
@@ -4465,10 +4468,10 @@ div.fadeAll:after {
     
     mask: var(--icon-remove);
     -webkit-mask: var(--icon-remove);
-    mask-size: 20px;
+    mask-size: 16px;
     mask-repeat: no-repeat;
     mask-position: center;
-    -webkit-mask-size: 20px;
+    -webkit-mask-size: 16px;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
     
@@ -4809,10 +4812,10 @@ Responsive styles *****/
         background-color: var(--header-menu-icon-color);
         mask: var(--icon-hamburger);
         -webkit-mask: var(--icon-hamburger);
-        mask-size: 20px;
+        mask-size: 16px;
         mask-repeat: no-repeat;
         mask-position: center;
-        -webkit-mask-size: 20px;
+        -webkit-mask-size: 16px;
         -webkit-mask-repeat: no-repeat;
         -webkit-mask-position: center;
 
