@@ -6868,6 +6868,7 @@ function addExtra() {
     /** log(20k/20); sweep uses log-frequency interpolation — partial ranges use the same share of wall time as on a full 20–20k sweep. */
     const TONE_SWEEP_FULL_LOG_SPAN = Math.log(20000 / 20);
     const TONE_SWEEP_MIN_DURATION_SEC = 1;
+    /** Last Space keydown in Extra tab (any live sound source); two within `toneSpaceDoubleMs` → sine sweep. */
     let lastToneSpaceKeydownTime = 0;
     let toneSpaceDoubleMs = 200;
     /** While true, tone sweep restarts from range low when a pass completes (Space held, or 2nd press held past TONE_PLAY_BTN_HOLD_MS on play). */
@@ -8818,20 +8819,18 @@ function addExtra() {
             return;
         }
         e.preventDefault();
+        let now = performance.now();
+        if (lastToneSpaceKeydownTime > 0 && now - lastToneSpaceKeydownTime < toneSpaceDoubleMs) {
+            lastToneSpaceKeydownTime = 0;
+            startToneGeneratorSweep();
+            return;
+        }
+        lastToneSpaceKeydownTime = now;
         if (lastEqPlaybackSource === "tone") {
-            let now = performance.now();
-            if (lastToneSpaceKeydownTime > 0 && now - lastToneSpaceKeydownTime < toneSpaceDoubleMs) {
-                lastToneSpaceKeydownTime = 0;
-                startToneGeneratorSweep();
-                return;
-            }
-            lastToneSpaceKeydownTime = now;
             toneGeneratorPlayButton.click();
         } else if (lastEqPlaybackSource === "music" && musicFileLoaded && musicPlayButton) {
-            lastToneSpaceKeydownTime = 0;
             musicPlayButton.click();
         } else {
-            lastToneSpaceKeydownTime = 0;
             pinkNoisePlayButton.click();
         }
     });
