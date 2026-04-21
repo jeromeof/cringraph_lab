@@ -2446,6 +2446,17 @@ function removeCopies(p) {
 }
 
 function removePhone(p) {
+    let hadEqChild = Boolean(!p.isTarget && p.eq);
+    if (p.eqParent) {
+        p.eqParent.eq = null;
+        p.eqParent = null;
+    }
+    if (p.eq) {
+        let eqP = p.eq;
+        p.eq = null;
+        eqP.eqParent = null;
+        eqP.active = false;
+    }
     p.active = p.pin = false; nextPN = null;
     activePhones = activePhones.filter(q => q.active);
     if (!p.isTarget) {
@@ -2462,6 +2473,9 @@ function removePhone(p) {
         .call(setPhoneTr);
     if (extraEnabled && extraEQEnabled) {
         updateEQPhoneSelect();
+        if (hadEqChild && typeof window.eqResetParametricAfterBaseModelRemoved === "function") {
+            window.eqResetParametricAfterBaseModelRemoved();
+        }
     }
 }
 
@@ -5022,6 +5036,21 @@ function addExtra() {
             phPlaceholder.hidden = !!eqPhoneSelect.value;
         }
         eqPhoneSelect.dataset.eqLastModel = eqPhoneSelect.value || "";
+    };
+    window.eqResetParametricAfterBaseModelRemoved = () => {
+        eqFiltersUserHasEdited = false;
+        filtersToElem([{ disabled: false, type: "PK", freq: 0, q: 0, gain: 0 }]);
+        eqFiltersUserHasEdited = false;
+        if (eqPhoneSelect) {
+            eqPhoneSelect.dataset.eqLastModel = eqPhoneSelect.value || "";
+        }
+        setEqFilterSelectedRow(null);
+        updateEQPhoneTargetSelect();
+        applyEQ();
+        scheduleLiveEqSync();
+        applyParametricEqGraphTraceFocus();
+        updateEqTraceOpacity();
+        updateEqFilterMarkers();
     };
     updateFilterElements();
     updateEqFilterMarkers();
