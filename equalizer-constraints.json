@@ -3,6 +3,7 @@
     {
       "id": "default",
       "label": "Default",
+      "twoChannelSupport": false,
       "maxBands": 0,
       "allowPk": true,
       "allowLsq": true,

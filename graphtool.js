@@ -222,6 +222,18 @@ doc.html(`
                       </div>
                     </div>
                   </div>
+                  <div class="eq-constraint-2ch-row" role="group" aria-label="Stereo EQ banks">
+                    <label class="live-sound-eq-toggle-label eq-constraint-2ch-toggle-label"
+                        title="Both bank applies to L and R; L and R banks add channel-specific filters on top. With Apply EQ on, live playback runs separate L/R chains (mono sources are duplicated to each side).">
+                      <span class="live-sound-eq-toggle-text">2-Channel Support</span>
+                      <span class="live-sound-eq-switch">
+                        <span class="live-sound-eq-switch-track">
+                          <input type="checkbox" name="eq-constraint-2ch" class="eq-constraint-2ch-toggle" aria-label="Enable separate left and right EQ filter banks"/>
+                          <span class="live-sound-eq-switch-thumb" aria-hidden="true"></span>
+                        </span>
+                      </span>
+                    </label>
+                  </div>
                 </div>
               </div>
               </div>
@@ -236,6 +248,23 @@ doc.html(`
                     </select>
                   </div>
                   <button type="button" class="autoeq extra-eq-secondary-btn">Auto EQ</button>
+                </div>
+                <div id="eq-2ch-bank-tabs" class="eq-2ch-bank-tabs" role="tablist" aria-label="EQ filter bank" hidden>
+                  <div class="eq-2ch-bank-seg-track" data-eq-2ch-pos="1">
+                    <span class="eq-2ch-bank-seg-thumb" aria-hidden="true"></span>
+                    <div class="eq-2ch-bank-seg-slot" data-slot="L">
+                      <span class="eq-2ch-bank-seg-label">L</span>
+                      <button type="button" role="tab" class="eq-2ch-bank-seg-btn" data-eq-2ch-bank="L" aria-selected="false" tabindex="-1" aria-label="Left channel filter bank"></button>
+                    </div>
+                    <div class="eq-2ch-bank-seg-slot" data-slot="both">
+                      <span class="eq-2ch-bank-seg-label">L + R</span>
+                      <button type="button" role="tab" class="eq-2ch-bank-seg-btn" data-eq-2ch-bank="both" aria-selected="true" tabindex="0" aria-label="L + R — both channels (shared) filter bank"></button>
+                    </div>
+                    <div class="eq-2ch-bank-seg-slot" data-slot="R">
+                      <span class="eq-2ch-bank-seg-label">R</span>
+                      <button type="button" role="tab" class="eq-2ch-bank-seg-btn" data-eq-2ch-bank="R" aria-selected="false" tabindex="-1" aria-label="Right channel filter bank"></button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="filters-header">
@@ -4137,8 +4166,7 @@ function addExtra() {
         return filters;
     };
     /* Clamp to Equalizer.config ranges for audio / export only; never mutates DOM. */
-    let elemToFiltersClampedForEqualizerApply = (includeAll) => {
-        let raw = elemToFilters(includeAll);
+    let elemToFiltersClampedRowsForEqualizerApply = (raw, includeAll) => {
         let [fLo, fHi] = getEqConstraintFreqLoHi();
         let [qLo, qHi] = getEqConstraintQLoHi();
         let [gLo, gHi] = getEqConstraintGainLoHi();
@@ -4161,6 +4189,8 @@ function addExtra() {
             return { ...f, type, freq, q, gain };
         });
     };
+    let elemToFiltersClampedForEqualizerApply = (includeAll) =>
+        elemToFiltersClampedRowsForEqualizerApply(elemToFilters(includeAll), includeAll);
     let filtersToElem = (filters) => {
         // Set filters to ui
         let filtersCopy = filters.map(f => f);
@@ -4183,7 +4213,251 @@ function addExtra() {
         applyEqConstraintAttributesToFilterInputs();
         refreshEqFilterConstraintViolationStyles();
         refreshEqFilterInactiveStateForMaxBands();
+        if (isEqTwoChannelSupportEnabled()) {
+            eq2chBankData[eq2chActiveBank] = filtersCopy.map((f) => ({
+                disabled: !!f.disabled,
+                type: f.type,
+                freq: f.freq,
+                q: f.q,
+                gain: f.gain
+            }));
+        }
     };
+    let eq2chConstraintToggle = document.querySelector("input.eq-constraint-2ch-toggle");
+    let eq2chBankTabsEl = document.getElementById("eq-2ch-bank-tabs");
+    let eq2chBankData = { both: [], L: [], R: [] };
+    let eq2chActiveBank = "both";
+    const EQ_2CH_BANK_SWAP_ANIM_MS = 300;
+    const EQ_2CH_BANK_SWAP_APPLY_AT_MS = 95;
+    let eq2chBankSwapSeq = 0;
+    let eq2chBankSwapApplyTimer = null;
+    let eq2chBankSwapCleanupTimer = null;
+    let eq2chBankSwapAnimEndFn = null;
+    let clearEq2chBankSwapAnimation = () => {
+        if (eq2chBankSwapApplyTimer !== null) {
+            clearTimeout(eq2chBankSwapApplyTimer);
+            eq2chBankSwapApplyTimer = null;
+        }
+        if (eq2chBankSwapCleanupTimer !== null) {
+            clearTimeout(eq2chBankSwapCleanupTimer);
+            eq2chBankSwapCleanupTimer = null;
+        }
+        if (filtersContainer && eq2chBankSwapAnimEndFn) {
+            filtersContainer.removeEventListener("animationend", eq2chBankSwapAnimEndFn);
+            eq2chBankSwapAnimEndFn = null;
+        }
+        if (filtersContainer) {
+            filtersContainer.classList.remove("eq-2ch-bank-filters-swap-anim");
+        }
+    };
+    let isEqTwoChannelSupportEnabled = () =>
+        !!(eq2chConstraintToggle && eq2chConstraintToggle.checked);
+    let eq2chDefaultEmptyRow = () => ({
+        disabled: false,
+        type: "PK",
+        freq: 0,
+        q: 0,
+        gain: 0
+    });
+    let eq2chPadBankToEqBands = (arr) => {
+        let filtersCopy = (arr || []).map((f) => ({ ...f }));
+        while (filtersCopy.length < eqBands) {
+            filtersCopy.push(eq2chDefaultEmptyRow());
+        }
+        if (filtersCopy.length > eqBands) {
+            filtersCopy.length = eqBands;
+        }
+        return filtersCopy;
+    };
+    let eq2chFlushDomToActiveBankCore = () => {
+        eq2chBankData[eq2chActiveBank] = elemToFilters(true).map((f) => ({
+            disabled: !!f.disabled,
+            type: f.type,
+            freq: f.freq,
+            q: f.q,
+            gain: f.gain
+        }));
+    };
+    let eq2chFlushDomToActiveBank = () => {
+        if (!isEqTwoChannelSupportEnabled()) {
+            return;
+        }
+        eq2chFlushDomToActiveBankCore();
+    };
+    let eq2chRowsToApplySpecs = (rows) => {
+        let clamped = elemToFiltersClampedRowsForEqualizerApply(eq2chPadBankToEqBands(rows), true);
+        return clamped.filter((f) => !f.disabled && f.type && f.freq && f.q && f.gain)
+            .map((f) => ({ type: f.type, freq: f.freq, q: f.q, gain: f.gain }));
+    };
+    let eq2chMergedSpecsForChannelIndex = (chIdx) => {
+        let bothS = eq2chRowsToApplySpecs(eq2chBankData.both);
+        if (!LR || !LR.length) {
+            return bothS;
+        }
+        let lab = LR[Math.min(chIdx, LR.length - 1)];
+        let out = bothS.slice();
+        if (lab === "L") {
+            out.push(...eq2chRowsToApplySpecs(eq2chBankData.L));
+        } else if (lab === "R") {
+            out.push(...eq2chRowsToApplySpecs(eq2chBankData.R));
+        }
+        return out;
+    };
+    let eq2chGraphPreviewChannelIndex = () => {
+        if (!isEqTwoChannelSupportEnabled()) {
+            return 0;
+        }
+        if (eq2chActiveBank === "R") {
+            let ix = LR.indexOf("R");
+            return ix >= 0 ? ix : 1;
+        }
+        if (eq2chActiveBank === "L") {
+            let ixL = LR.indexOf("L");
+            return ixL >= 0 ? ixL : 0;
+        }
+        return 0;
+    };
+    let eq2chSyncBankTabStyles = () => {
+        if (!eq2chBankTabsEl) {
+            return;
+        }
+        let pos = eq2chActiveBank === "L" ? "0" : eq2chActiveBank === "R" ? "2" : "1";
+        let track = eq2chBankTabsEl.querySelector(".eq-2ch-bank-seg-track");
+        if (track) {
+            track.setAttribute("data-eq-2ch-pos", pos);
+        }
+        eq2chBankTabsEl.querySelectorAll(".eq-2ch-bank-seg-btn").forEach((btn) => {
+            let b = btn.getAttribute("data-eq-2ch-bank");
+            let on = b === eq2chActiveBank;
+            btn.setAttribute("aria-selected", on ? "true" : "false");
+            btn.tabIndex = on ? 0 : -1;
+        });
+    };
+    let eq2chSwitchBank = (next) => {
+        if (!isEqTwoChannelSupportEnabled() || (next !== "both" && next !== "L" && next !== "R")) {
+            return;
+        }
+        if (next === eq2chActiveBank) {
+            return;
+        }
+        let finishBankSwitch = () => {
+            eq2chFlushDomToActiveBank();
+            eq2chActiveBank = next;
+            filtersToElem(eq2chPadBankToEqBands(eq2chBankData[eq2chActiveBank]));
+            eq2chSyncBankTabStyles();
+            cancelDeferredApplyEQ();
+            applyEQExec();
+            scheduleLiveEqSync();
+        };
+        let prefersReducedMotion = typeof window.matchMedia === "function"
+            && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (!filtersContainer || prefersReducedMotion) {
+            finishBankSwitch();
+            return;
+        }
+        clearEq2chBankSwapAnimation();
+        let mySeq = ++eq2chBankSwapSeq;
+        let animClass = "eq-2ch-bank-filters-swap-anim";
+        void filtersContainer.offsetWidth;
+        filtersContainer.classList.add(animClass);
+        eq2chBankSwapAnimEndFn = (e) => {
+            if (e.target !== filtersContainer || e.animationName !== "eq2chBankFiltersSwap") {
+                return;
+            }
+            if (mySeq !== eq2chBankSwapSeq) {
+                return;
+            }
+            filtersContainer.removeEventListener("animationend", eq2chBankSwapAnimEndFn);
+            eq2chBankSwapAnimEndFn = null;
+            filtersContainer.classList.remove(animClass);
+        };
+        filtersContainer.addEventListener("animationend", eq2chBankSwapAnimEndFn);
+        eq2chBankSwapApplyTimer = setTimeout(() => {
+            eq2chBankSwapApplyTimer = null;
+            if (mySeq !== eq2chBankSwapSeq) {
+                return;
+            }
+            finishBankSwitch();
+        }, EQ_2CH_BANK_SWAP_APPLY_AT_MS);
+        eq2chBankSwapCleanupTimer = setTimeout(() => {
+            eq2chBankSwapCleanupTimer = null;
+            if (mySeq !== eq2chBankSwapSeq) {
+                return;
+            }
+            if (filtersContainer && eq2chBankSwapAnimEndFn) {
+                filtersContainer.removeEventListener("animationend", eq2chBankSwapAnimEndFn);
+                eq2chBankSwapAnimEndFn = null;
+            }
+            if (filtersContainer) {
+                filtersContainer.classList.remove(animClass);
+            }
+        }, EQ_2CH_BANK_SWAP_ANIM_MS + 80);
+    };
+    let eq2chInitBanksFromCurrentDom = () => {
+        let base = elemToFilters(true).map((f) => ({
+            disabled: !!f.disabled,
+            type: f.type,
+            freq: f.freq,
+            q: f.q,
+            gain: f.gain
+        }));
+        if (!base.length) {
+            base.push(eq2chDefaultEmptyRow());
+        }
+        eq2chBankData.both = base.slice();
+        eq2chBankData.L = eq2chPadBankToEqBands([eq2chDefaultEmptyRow()]);
+        eq2chBankData.R = eq2chPadBankToEqBands([eq2chDefaultEmptyRow()]);
+        eq2chActiveBank = "both";
+    };
+    let eq2chSetTabsVisibility = (show) => {
+        if (eq2chBankTabsEl) {
+            eq2chBankTabsEl.hidden = !show;
+        }
+        if (show) {
+            eq2chSyncBankTabStyles();
+        }
+    };
+    let eq2chOnConstraintToggleChange = () => {
+        if (isEqTwoChannelSupportEnabled()) {
+            eq2chInitBanksFromCurrentDom();
+            eq2chSetTabsVisibility(true);
+            filtersToElem(eq2chPadBankToEqBands(eq2chBankData.both));
+        } else {
+            eq2chFlushDomToActiveBank();
+            if (eq2chActiveBank !== "both") {
+                eq2chActiveBank = "both";
+            }
+            eq2chBankData.L = [];
+            eq2chBankData.R = [];
+            filtersToElem(eq2chPadBankToEqBands(eq2chBankData.both));
+            eq2chSetTabsVisibility(false);
+        }
+        eq2chSyncBankTabStyles();
+        cancelDeferredApplyEQ();
+        applyEQExec();
+        scheduleLiveEqSync();
+    };
+    let eq2chResetAllBanksToDefaultRow = () => {
+        eq2chBankData.both = [eq2chDefaultEmptyRow()];
+        eq2chBankData.L = [eq2chDefaultEmptyRow()];
+        eq2chBankData.R = [eq2chDefaultEmptyRow()];
+        eq2chActiveBank = "both";
+        eq2chSetTabsVisibility(isEqTwoChannelSupportEnabled());
+        eq2chSyncBankTabStyles();
+    };
+    if (eq2chBankTabsEl) {
+        eq2chBankTabsEl.addEventListener("click", (e) => {
+            let btn = e.target && e.target.closest && e.target.closest("button.eq-2ch-bank-seg-btn");
+            if (!btn || !eq2chBankTabsEl.contains(btn)) {
+                return;
+            }
+            let bank = btn.getAttribute("data-eq-2ch-bank");
+            eq2chSwitchBank(bank);
+        });
+    }
+    if (eq2chConstraintToggle) {
+        eq2chConstraintToggle.addEventListener("change", eq2chOnConstraintToggleChange);
+    }
     /* Graphic auto-rows: Q max "0"/blank = unlimited (config hi 10); use nominal Q 1 unless min Q forces higher. */
     let eqGraphicModeTemplateQHz = () => {
         let qMaxEl = document.querySelector("div.extra-eq input[name='eq-constraint-q-max']");
@@ -4532,20 +4806,29 @@ function addExtra() {
             return null;
         }
         let eqPhone = phoneObj.eq;
-        let eqCh = eqPhone && firstPresentChannel(eqPhone.rawChannels);
+        let chIx = eq2chGraphPreviewChannelIndex();
+        let eqCh = eqPhone && eqPhone.rawChannels && eqPhone.rawChannels[chIx]
+            ? eqPhone.rawChannels[chIx]
+            : (eqPhone && firstPresentChannel(eqPhone.rawChannels));
         if (eqCh) {
             return { tracePhone: eqPhone, traceCh: eqCh, strokePhone: eqPhone };
         }
-        let filters = elemToFiltersClampedForEqualizerApply(false);
+        let chPv = chIx;
+        let rawChUse = (phoneObj.rawChannels && phoneObj.rawChannels[chPv])
+            ? phoneObj.rawChannels[chPv]
+            : rawCh;
+        let filters = isEqTwoChannelSupportEnabled()
+            ? eq2chMergedSpecsForChannelIndex(chPv)
+            : elemToFiltersClampedForEqualizerApply(false);
         if (filters.length && typeof Equalizer !== "undefined" && Equalizer.apply) {
             try {
-                let fr = Equalizer.apply(rawCh, filters);
+                let fr = Equalizer.apply(rawChUse, filters);
                 if (fr) {
                     return { tracePhone: phoneObj, traceCh: fr, strokePhone: phoneObj };
                 }
             } catch (err) { /* noop */ }
         }
-        return { tracePhone: phoneObj, traceCh: rawCh, strokePhone: phoneObj };
+        return { tracePhone: phoneObj, traceCh: rawChUse, strokePhone: phoneObj };
     };
     let computeEqNodePreviewAtMouse = (m) => {
         if (!m || m.length < 2) {
@@ -4653,7 +4936,10 @@ function addExtra() {
         let pts = baseline.fn(traceCh);
         let yOff = y(getOffset(tracePhone)) - y(0);
         let strokeCol = getCurveColor(strokePhone.id, 0);
-        let phoneRaw0 = firstPresentChannel(phoneObj.rawChannels);
+        let pvCh = eq2chGraphPreviewChannelIndex();
+        let phoneRaw0 = (phoneObj.rawChannels && phoneObj.rawChannels[pvCh])
+            ? phoneObj.rawChannels[pvCh]
+            : firstPresentChannel(phoneObj.rawChannels);
         let rows = [];
         let maxA = getEffectiveEqMaxBands();
         for (let i = 0; i < eqBands; i++) {
@@ -4850,11 +5136,18 @@ function addExtra() {
     let applyEQExec = (execOpt) => {
         execOpt = execOpt || {};
         refreshEqFilterConstraintViolationStyles();
+        eq2chFlushDomToActiveBank();
         // Create and show phone with eq applied
         let activeElem = document.activeElement;
         let phoneSelected = eqPhoneSelect.value;
         let filters = elemToFiltersClampedForEqualizerApply();
-        if (filters.length && !phoneSelected) {
+        let hasEqSpecs = filters.length > 0;
+        if (isEqTwoChannelSupportEnabled()) {
+            hasEqSpecs = eq2chRowsToApplySpecs(eq2chBankData.both).length > 0
+                || eq2chRowsToApplySpecs(eq2chBankData.L).length > 0
+                || eq2chRowsToApplySpecs(eq2chBankData.R).length > 0;
+        }
+        if (hasEqSpecs && !phoneSelected) {
             let firstPhone = eqPhoneSelect.querySelectorAll("option")[1];
             if (firstPhone) {
                 phoneSelected = eqPhoneSelect.value = firstPhone.value;
@@ -4863,12 +5156,23 @@ function addExtra() {
         }
         let phoneObj = phoneSelected && activePhones.filter(
             p => p.fullName == phoneSelected)[0];
-        if (!phoneObj || (!filters.length && !phoneObj.eq)) {
+        if (!phoneObj || (!hasEqSpecs && !phoneObj.eq)) {
             updateEqFilterMarkers();
             return; // Allow empty filters if eq is applied before
         }
-        let nextEqChannels = phoneObj.rawChannels.map(
-            (c) => (c ? Equalizer.apply(c, filters) : null));
+        let nextEqChannels;
+        if (isEqTwoChannelSupportEnabled()) {
+            nextEqChannels = phoneObj.rawChannels.map((c, chIdx) => {
+                if (!c) {
+                    return null;
+                }
+                let merged = eq2chMergedSpecsForChannelIndex(chIdx);
+                return Equalizer.apply(c, merged);
+            });
+        } else {
+            nextEqChannels = phoneObj.rawChannels.map(
+                (c) => (c ? Equalizer.apply(c, filters) : null));
+        }
         let liveGraphEqDrag = Boolean(execOpt.liveGraphEqDrag && eqGraphPointerState
             && eqGraphPointerState.mode === "eq");
         if (liveGraphEqDrag && phoneObj.eq && activePhones.indexOf(phoneObj.eq) !== -1) {
@@ -5154,6 +5458,7 @@ function addExtra() {
     };
     window.eqResetParametricAfterBaseModelRemoved = () => {
         eqFiltersUserHasEdited = false;
+        eq2chResetAllBanksToDefaultRow();
         filtersToElem([{ disabled: false, type: "PK", freq: 0, q: 0, gain: 0 }]);
         eqFiltersUserHasEdited = false;
         if (eqPhoneSelect) {
@@ -5181,6 +5486,7 @@ function addExtra() {
                 removePhone(eqP);
             }
             eqFiltersUserHasEdited = false;
+            eq2chResetAllBanksToDefaultRow();
             filtersToElem([{ disabled: false, type: "PK", freq: 0, q: 0, gain: 0 }]);
             eqFiltersUserHasEdited = false;
         }
@@ -5269,6 +5575,11 @@ function addExtra() {
             }
             syncEqConstraintDomToEqualizerConfig();
         }
+        if (eq2chConstraintToggle) {
+            eq2chConstraintToggle.checked = false;
+        }
+        eq2chResetAllBanksToDefaultRow();
+        eq2chSetTabsVisibility(false);
         commitEqMaxBandsFromInput({ writeBackDom: true });
     };
     document.querySelector("div.extra-eq button.extra-eq-reset-btn").addEventListener("click", () => {
@@ -5351,33 +5662,75 @@ function addExtra() {
         }
         let reader = new FileReader();
         reader.onload = (e) => {
-            let settings = e.target.result;
-            let filters = settings.split("\n").map(l => {
-                let r = String(l == null ? "" : l).match(/Filter\s*\d+:\s*(\S+)\s*(\S+)\s*Fc\s*(\S+)\s*Hz\s*Gain\s*(\S+)\s*dB(\s*Q\s*(\S+))?/);
-                if (!r) { return undefined; }
-                let disabled = (r[1] !== "ON");
-                let type = r[2];
-                let freq = parseInt(r[3]) || 0;
-                let gain = parseFloat(r[4]) || 0;
-                let q = parseFloat(r[6]) || 0;
-                if (type === "LS" || type === "HS") {
-                    type += "Q";
-                    q = q || 0.707;
-                } else if (type === "LSC" || type === "HSC") {
-                    // Equalizer APO use LSC/HSC instead of LSQ/HSQ
-                    type = type.substr(0, 2) + "Q";
+            let settings = String(e.target.result || "");
+            let parseFilterLineObjects = (blob) => {
+                let filters = blob.split("\n").map(l => {
+                    let r = String(l == null ? "" : l).match(/Filter\s*\d+:\s*(\S+)\s*(\S+)\s*Fc\s*(\S+)\s*Hz\s*Gain\s*(\S+)\s*dB(\s*Q\s*(\S+))?/);
+                    if (!r) { return undefined; }
+                    let disabled = (r[1] !== "ON");
+                    let type = r[2];
+                    let freq = parseInt(r[3]) || 0;
+                    let gain = parseFloat(r[4]) || 0;
+                    let q = parseFloat(r[6]) || 0;
+                    if (type === "LS" || type === "HS") {
+                        type += "Q";
+                        q = q || 0.707;
+                    } else if (type === "LSC" || type === "HSC") {
+                        type = type.substr(0, 2) + "Q";
+                    }
+                    return { disabled, type, freq, q, gain };
+                }).filter(f => f);
+                while (filters.length > 0) {
+                    let lastFilter = filters[filters.length - 1];
+                    if (!lastFilter.freq && !lastFilter.q && !lastFilter.gain) {
+                        filters.pop();
+                    } else {
+                        break;
+                    }
                 }
-                return { disabled, type, freq, q, gain };
-            }).filter(f => f);
-            while (filters.length > 0) {
-                // Remove empty tail filters
-                let lastFilter = filters[filters.length-1];
-                if (!lastFilter.freq && !lastFilter.q && !lastFilter.gain) {
-                    filters.pop(); 
-                } else {
-                    break;
+                return filters;
+            };
+            if (isEqTwoChannelSupportEnabled() && /^\s*Channel:\s*[LR]/im.test(settings)) {
+                let curKey = null;
+                let buf = [];
+                let flush = (key) => {
+                    if (!key) {
+                        return;
+                    }
+                    let filters = parseFilterLineObjects(buf.join("\n"));
+                    if (key === "L") {
+                        eq2chBankData.L = filters.length ? filters : [eq2chDefaultEmptyRow()];
+                    } else if (key === "R") {
+                        eq2chBankData.R = filters.length ? filters : [eq2chDefaultEmptyRow()];
+                    }
+                    buf = [];
+                };
+                settings.split(/\r?\n/).forEach((line) => {
+                    let chm = line.match(/^\s*Channel:\s*([LR])\s*$/i);
+                    if (chm) {
+                        flush(curKey);
+                        curKey = chm[1].toUpperCase();
+                        return;
+                    }
+                    buf.push(line);
+                });
+                flush(curKey);
+                eq2chBankData.both = [eq2chDefaultEmptyRow()];
+                if (!eq2chBankData.L || !eq2chBankData.L.length) {
+                    eq2chBankData.L = [eq2chDefaultEmptyRow()];
                 }
+                if (!eq2chBankData.R || !eq2chBankData.R.length) {
+                    eq2chBankData.R = [eq2chDefaultEmptyRow()];
+                }
+                eq2chBankData.L = eq2chPadBankToEqBands(eq2chBankData.L);
+                eq2chBankData.R = eq2chPadBankToEqBands(eq2chBankData.R);
+                eq2chActiveBank = "both";
+                filtersToElem(eq2chPadBankToEqBands(eq2chBankData.both));
+                applyEQ();
+                scheduleLiveEqSync();
+                return;
             }
+            let filters = parseFilterLineObjects(settings);
             if (filters.length > 0) {
                 filtersToElem(filters);
                 applyEQ();
@@ -5392,31 +5745,79 @@ function addExtra() {
     document.querySelector("div.extra-eq button.export-filters").addEventListener("click", () => {
         let phoneSelected = eqPhoneSelect.value;
         let phoneObj = phoneSelected && activePhones.filter(
-            p => p.fullName == phoneSelected && p.eq)[0];
-        let filters = elemToFiltersClampedForEqualizerApply(true);
-        if (!phoneObj || !filters.length) {
+            p => p.fullName == phoneSelected)[0];
+        if (!phoneObj) {
             alert("Please select model and add atleast one filter before export.");
             return;
         }
-        let preamp = Equalizer.calc_preamp(
-            phoneObj.rawChannels.filter(c => c)[0],
-            phoneObj.eq.rawChannels.filter(c => c)[0]);
-        let settings = "Preamp: " + preamp.toFixed(1) + " dB\r\n";
-        filters.forEach((f, i) => {
-            let filterValid = f.freq != 0 && f.q != 0 && f.gain != 0 ? true : false;
-            
-            if (filterValid) {
+        eq2chFlushDomToActiveBank();
+        let appendExportFilterLines = (settings, filtersArr) => {
+            let fi = 0;
+            filtersArr.forEach((f) => {
+                let filterValid = f.freq != 0 && f.q != 0 && f.gain != 0;
+                if (!filterValid) {
+                    return;
+                }
+                fi++;
                 let on = (!f.disabled && f.type && f.freq && f.gain && f.q) ? "ON" : "OFF";
                 let type = f.type;
                 if (type === "LSQ" || type === "HSQ") {
-                    // Equalizer APO use LSC/HSC instead of LSQ/HSQ
                     type = type.substr(0, 2) + "C";
                 }
-                settings += ("Filter " + (i+1) + ": " + on + " " + type + " Fc " +
+                settings += ("Filter " + fi + ": " + on + " " + type + " Fc " +
                     f.freq.toFixed(0) + " Hz Gain " + f.gain.toFixed(1) + " dB Q " +
                     f.q.toFixed(3) + "\r\n");
+            });
+            return settings;
+        };
+        let settings;
+        if (isEqTwoChannelSupportEnabled()) {
+            let has2 = eq2chRowsToApplySpecs(eq2chBankData.both).length > 0
+                || eq2chRowsToApplySpecs(eq2chBankData.L).length > 0
+                || eq2chRowsToApplySpecs(eq2chBankData.R).length > 0;
+            if (!has2) {
+                alert("Please add atleast one filter before export.");
+                return;
             }
-        });
+            settings = "";
+            for (let ci = 0; ci < LR.length && ci < phoneObj.rawChannels.length; ci++) {
+                let raw = phoneObj.rawChannels[ci];
+                if (!raw) {
+                    continue;
+                }
+                let lab = LR[ci] || ("Ch" + (ci + 1));
+                let specs = eq2chMergedSpecsForChannelIndex(ci);
+                let eqCh = Equalizer.apply(raw, specs);
+                let preamp = Equalizer.calc_preamp(raw, eqCh);
+                let rowsForFile = elemToFiltersClampedRowsForEqualizerApply(
+                    specs.map((s) => ({
+                        disabled: false,
+                        type: s.type,
+                        freq: s.freq,
+                        q: s.q,
+                        gain: s.gain
+                    })), true);
+                settings += "Channel: " + lab + "\r\n";
+                settings += "Preamp: " + preamp.toFixed(1) + " dB\r\n";
+                settings = appendExportFilterLines(settings, rowsForFile);
+                settings += "\r\n";
+            }
+            if (!String(settings).trim()) {
+                alert("Please select model with at least one measured channel before export.");
+                return;
+            }
+        } else {
+            let filters = elemToFiltersClampedForEqualizerApply(true);
+            if (!phoneObj.eq || !filters.length) {
+                alert("Please select model and add atleast one filter before export.");
+                return;
+            }
+            let preamp = Equalizer.calc_preamp(
+                phoneObj.rawChannels.filter(c => c)[0],
+                phoneObj.eq.rawChannels.filter(c => c)[0]);
+            settings = "Preamp: " + preamp.toFixed(1) + " dB\r\n";
+            settings = appendExportFilterLines(settings, filters);
+        }
         let exportElem = document.querySelector("#file-filters-export");
         exportElem.href && URL.revokeObjectURL(exportElem.href);
         exportElem.href = URL.createObjectURL(new Blob([settings]));
@@ -5428,7 +5829,13 @@ function addExtra() {
         let phoneSelected = eqPhoneSelect.value;
         let phoneObj = phoneSelected && activePhones.filter(
             p => p.fullName == phoneSelected && p.eq)[0] || { fullName: "Unnamed" };
-        let filters = elemToFiltersClampedForEqualizerApply();
+        eq2chFlushDomToActiveBank();
+        let filters;
+        if (isEqTwoChannelSupportEnabled()) {
+            filters = eq2chMergedSpecsForChannelIndex(0);
+        } else {
+            filters = elemToFiltersClampedForEqualizerApply();
+        }
         if (!filters.length) {
             alert("Please add atleast one filter before export.");
             return;
@@ -5549,6 +5956,7 @@ function addExtra() {
         if (!pkEl || !lsqEl || !hsqEl || !mb || !fMin || !fMax || !gMin || !gMax || !qMinEl || !qMaxEl) {
             return;
         }
+        let prevTwoCh = isEqTwoChannelSupportEnabled();
         let strOrNum = (val, def) => {
             if (val === undefined || val === null) {
                 return def;
@@ -5590,11 +5998,30 @@ function addExtra() {
         gMax.value = strOrNum(preset.gainMax, "0");
         qMinEl.value = strOrNum(preset.qMin, "0");
         qMaxEl.value = strOrNum(preset.qMax, "0");
+        if (eq2chConstraintToggle) {
+            eq2chConstraintToggle.checked = preset.twoChannelSupport === true;
+        }
         syncEqConstraintDomToEqualizerConfig();
         let mbDoc = document.querySelector("div.extra-eq input[name='eq-constraint-max-bands']");
         if (mbDoc && !mbDoc.disabled) {
             commitEqMaxBandsFromInput({ writeBackDom: true });
         }
+        if (isEqTwoChannelSupportEnabled()) {
+            if (!eq2chBankData.both.length) {
+                eq2chInitBanksFromCurrentDom();
+            }
+            eq2chSetTabsVisibility(true);
+        } else {
+            if (prevTwoCh) {
+                eq2chFlushDomToActiveBankCore();
+            }
+            eq2chActiveBank = "both";
+            eq2chBankData.L = [];
+            eq2chBankData.R = [];
+            eq2chSetTabsVisibility(false);
+            filtersToElem(eq2chPadBankToEqBands(eq2chBankData.both));
+        }
+        eq2chSyncBankTabStyles();
     };
     let readUserEqConstraintPresetsFromStorage = () => {
         try {
@@ -5695,6 +6122,8 @@ function addExtra() {
         if (graphic && gList && String(gList.value || "").trim()) {
             o.freqGraphicList = String(gList.value || "").trim();
         }
+        let ch2 = cRoot.querySelector("input.eq-constraint-2ch-toggle");
+        o.twoChannelSupport = !!(ch2 && ch2.checked);
         return o;
     };
     let eqConstraintPresetDisplayPrefix = "Constraints: ";
@@ -6524,11 +6953,27 @@ function addExtra() {
     let pinkNoiseAnalyser = null;
     let pinkNoiseBiquads = [];
     let pinkNoiseBandFilters = [];
+    let pinkNoiseBiquadsLeft = [];
+    let pinkNoiseBiquadsRight = [];
+    let pinkNoiseBandFiltersLeft = [];
+    let pinkNoiseBandFiltersRight = [];
+    let pinkNoiseMerger = null;
     let toneGeneratorBiquads = [];
+    let toneGeneratorBiquadsLeft = [];
+    let toneGeneratorBiquadsRight = [];
+    let toneGeneratorBandFiltersLeft = [];
+    let toneGeneratorBandFiltersRight = [];
+    let toneGeneratorMerger = null;
     let toneGeneratorMasterGain = null;
     let toneGeneratorAnalyser = null;
     let musicBiquads = [];
     let musicBandFilters = [];
+    let musicBiquadsLeft = [];
+    let musicBiquadsRight = [];
+    let musicBandFiltersLeft = [];
+    let musicBandFiltersRight = [];
+    let musicStereoSplitter = null;
+    let musicStereoMerger = null;
     let musicContext = null;
     let musicAudio = null;
     let musicMediaSourceNode = null;
@@ -6678,26 +7123,77 @@ function addExtra() {
         (t === "LSQ" ? "lowshelf" : t === "HSQ" ? "highshelf" : "peaking");
     /* Same bands as live biquads; independent of the Apply EQ toggle (used for
        preamp + A/B level match when EQ is bypassed). */
-    let elemToLiveEqSpecsClamped = () =>
-        elemToFilters().map((f) => ({
+    let elemToLiveEqSpecsClamped = () => {
+        let rows;
+        if (isEqTwoChannelSupportEnabled()) {
+            eq2chFlushDomToActiveBank();
+            rows = elemToFiltersClampedRowsForEqualizerApply(
+                eq2chPadBankToEqBands(eq2chBankData.both), false).filter(
+                (f) => !f.disabled && f.type && f.freq && f.q && f.gain);
+        } else {
+            rows = elemToFilters();
+        }
+        return rows.map((f) => ({
             type: f.type,
             freq: Math.min(20000, Math.max(20, f.freq)),
             q: Math.max(1e-4, Math.min(1000, f.q)),
             gain: Math.max(-40, Math.min(40, f.gain)),
         }));
+    };
     let computeLiveEqSpecs = () => {
         if (!isLivePlaybackEqEnabled()) {
             return [];
         }
         return elemToLiveEqSpecsClamped();
     };
-    let getLiveMusicEqFrAnalysis = (sampleRate) => {
-        let specs = elemToLiveEqSpecsClamped();
-        if (!specs.length) {
-            return null;
+    let liveStereoEqActive = () =>
+        isEqTwoChannelSupportEnabled() && isLivePlaybackEqEnabled();
+    let liveStereoEqChannelIndices = () => {
+        let li = LR.indexOf("L");
+        let ri = LR.indexOf("R");
+        if (li < 0) {
+            li = 0;
         }
+        if (ri < 0) {
+            ri = LR.length > 1 ? 1 : 0;
+        }
+        return { li, ri };
+    };
+    let computeLiveEqSpecsForStereoPaths = () => {
+        eq2chFlushDomToActiveBank();
+        let { li, ri } = liveStereoEqChannelIndices();
+        return {
+            specL: eq2chMergedSpecsForChannelIndex(li),
+            specR: eq2chMergedSpecsForChannelIndex(ri)
+        };
+    };
+    let getLiveMusicEqFrAnalysis = (sampleRate) => {
         let phoneObj = resolveEqGraphPhoneObj();
         if (!phoneObj || !phoneObj.rawChannels) {
+            return null;
+        }
+        if (liveStereoEqActive()) {
+            let { specL, specR } = computeLiveEqSpecsForStereoPaths();
+            if (!specL.length && !specR.length) {
+                return null;
+            }
+            let { li, ri } = liveStereoEqChannelIndices();
+            let rawL = phoneObj.rawChannels[li];
+            let rawR = phoneObj.rawChannels[ri];
+            if (!rawL || !rawL.length) {
+                return null;
+            }
+            let frEqL = specL.length ? Equalizer.apply(rawL, specL, sampleRate) : rawL;
+            let preL = specL.length ? Equalizer.calc_preamp(rawL, frEqL) : 0;
+            let preR = preL;
+            if (rawR && rawR.length && specR.length) {
+                let frEqR = Equalizer.apply(rawR, specR, sampleRate);
+                preR = Equalizer.calc_preamp(rawR, frEqR);
+            }
+            return { raw: rawL, frEq: frEqL, preDb: (preL + preR) / 2 };
+        }
+        let specs = elemToLiveEqSpecsClamped();
+        if (!specs.length) {
             return null;
         }
         let raw = phoneObj.rawChannels.filter(Boolean)[0];
@@ -6794,12 +7290,46 @@ function addExtra() {
             try { b.disconnect(); } catch (e) { /* noop */ }
         });
         pinkNoiseBandFilters.length = 0;
+        pinkNoiseBandFiltersLeft.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        pinkNoiseBandFiltersLeft.length = 0;
+        pinkNoiseBandFiltersRight.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        pinkNoiseBandFiltersRight.length = 0;
+        if (pinkNoiseMerger) {
+            try {
+                pinkNoiseMerger.disconnect();
+            } catch (e) { /* noop */ }
+            pinkNoiseMerger = null;
+        }
     };
     let disconnectMusicBandFilters = () => {
         musicBandFilters.forEach((b) => {
             try { b.disconnect(); } catch (e) { /* noop */ }
         });
         musicBandFilters.length = 0;
+        musicBandFiltersLeft.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        musicBandFiltersLeft.length = 0;
+        musicBandFiltersRight.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        musicBandFiltersRight.length = 0;
+        if (musicStereoMerger) {
+            try {
+                musicStereoMerger.disconnect();
+            } catch (e) { /* noop */ }
+            musicStereoMerger = null;
+        }
+        if (musicStereoSplitter) {
+            try {
+                musicStereoSplitter.disconnect();
+            } catch (e) { /* noop */ }
+            musicStereoSplitter = null;
+        }
     };
     let rebuildLiveEqChain = (sourceNode, audioContext, masterGain, biquadsArr) => {
         let specs = computeLiveEqSpecs();
@@ -6824,7 +7354,61 @@ function addExtra() {
         }
         last.connect(masterGain);
     };
-    let rebuildPinkNoiseEqChain = () => {
+    let rebuildPinkNoiseEqChainStereo = () => {
+        if (!pinkNoisePlaying || !pinkNoiseContext || !pinkNoiseProcessor || !pinkNoiseMasterGain) {
+            return;
+        }
+        let { fromHz, toHz } = readLiveSoundBandEdgeHz();
+        let { specL, specR } = computeLiveEqSpecsForStereoPaths();
+        if (pinkNoiseBandFiltersLeft.length === 2 && pinkNoiseBandFiltersRight.length === 2
+                && specL.length === pinkNoiseBiquadsLeft.length
+                && specR.length === pinkNoiseBiquadsRight.length
+                && syncBandShelfFiltersInPlace(pinkNoiseContext, pinkNoiseBandFiltersLeft, fromHz, toHz)
+                && syncBandShelfFiltersInPlace(pinkNoiseContext, pinkNoiseBandFiltersRight, fromHz, toHz)) {
+            if ((specL.length === 0 || syncEqBiquadsInPlace(pinkNoiseContext, pinkNoiseBiquadsLeft, specL))
+                    && (specR.length === 0 || syncEqBiquadsInPlace(pinkNoiseContext, pinkNoiseBiquadsRight, specR))) {
+                return;
+            }
+        }
+        pinkNoiseProcessor.disconnect();
+        disconnectEqBiquads(pinkNoiseBiquads);
+        disconnectEqBiquads(pinkNoiseBiquadsLeft);
+        disconnectEqBiquads(pinkNoiseBiquadsRight);
+        disconnectPinkBandFilters();
+        pinkNoiseMerger = pinkNoiseContext.createChannelMerger(2);
+        let wireSide = (specs, bandArr, bqArr, mergerCh) => {
+            let last = pinkNoiseProcessor;
+            let hp = pinkNoiseContext.createBiquadFilter();
+            hp.type = "highpass";
+            hp.frequency.value = fromHz;
+            hp.Q.value = 0.707;
+            last.connect(hp);
+            last = hp;
+            bandArr.push(hp);
+            let lp = pinkNoiseContext.createBiquadFilter();
+            lp.type = "lowpass";
+            lp.frequency.value = toHz;
+            lp.Q.value = 0.707;
+            last.connect(lp);
+            last = lp;
+            bandArr.push(lp);
+            specs.forEach((s) => {
+                let bf = pinkNoiseContext.createBiquadFilter();
+                bf.type = mapFilterTypeToBiquad(s.type);
+                bf.frequency.value = s.freq;
+                bf.Q.value = s.q;
+                bf.gain.value = s.gain;
+                last.connect(bf);
+                last = bf;
+                bqArr.push(bf);
+            });
+            last.connect(pinkNoiseMerger, 0, mergerCh);
+        };
+        wireSide(specL, pinkNoiseBandFiltersLeft, pinkNoiseBiquadsLeft, 0);
+        wireSide(specR, pinkNoiseBandFiltersRight, pinkNoiseBiquadsRight, 1);
+        pinkNoiseMerger.connect(pinkNoiseMasterGain);
+    };
+    let rebuildPinkNoiseEqChainMono = () => {
         if (!pinkNoisePlaying || !pinkNoiseContext || !pinkNoiseProcessor || !pinkNoiseMasterGain) {
             return;
         }
@@ -6839,6 +7423,8 @@ function addExtra() {
         }
         pinkNoiseProcessor.disconnect();
         disconnectEqBiquads(pinkNoiseBiquads);
+        disconnectEqBiquads(pinkNoiseBiquadsLeft);
+        disconnectEqBiquads(pinkNoiseBiquadsRight);
         disconnectPinkBandFilters();
         let last = pinkNoiseProcessor;
         let hp = pinkNoiseContext.createBiquadFilter();
@@ -6867,13 +7453,173 @@ function addExtra() {
         });
         last.connect(pinkNoiseMasterGain);
     };
-    let rebuildToneGeneratorEqChain = () => {
+    let rebuildPinkNoiseEqChain = () => {
+        if (!pinkNoisePlaying || !pinkNoiseContext || !pinkNoiseProcessor || !pinkNoiseMasterGain) {
+            return;
+        }
+        if (liveStereoEqActive()) {
+            rebuildPinkNoiseEqChainStereo();
+        } else {
+            rebuildPinkNoiseEqChainMono();
+        }
+    };
+    let rebuildToneGeneratorEqChainStereo = () => {
+        if (!toneGeneratorOsc || !toneGeneratorContext || !toneGeneratorMasterGain) {
+            return;
+        }
+        let { fromHz, toHz } = readLiveSoundBandEdgeHz();
+        let { specL, specR } = computeLiveEqSpecsForStereoPaths();
+        if (toneGeneratorBandFiltersLeft.length === 2 && toneGeneratorBandFiltersRight.length === 2
+                && specL.length === toneGeneratorBiquadsLeft.length
+                && specR.length === toneGeneratorBiquadsRight.length
+                && syncBandShelfFiltersInPlace(toneGeneratorContext, toneGeneratorBandFiltersLeft, fromHz, toHz)
+                && syncBandShelfFiltersInPlace(toneGeneratorContext, toneGeneratorBandFiltersRight, fromHz, toHz)) {
+            if ((specL.length === 0 || syncEqBiquadsInPlace(toneGeneratorContext, toneGeneratorBiquadsLeft, specL))
+                    && (specR.length === 0 || syncEqBiquadsInPlace(toneGeneratorContext, toneGeneratorBiquadsRight, specR))) {
+                return;
+            }
+        }
+        toneGeneratorOsc.disconnect();
+        disconnectEqBiquads(toneGeneratorBiquads);
+        disconnectEqBiquads(toneGeneratorBiquadsLeft);
+        disconnectEqBiquads(toneGeneratorBiquadsRight);
+        toneGeneratorBandFiltersLeft.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        toneGeneratorBandFiltersLeft.length = 0;
+        toneGeneratorBandFiltersRight.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        toneGeneratorBandFiltersRight.length = 0;
+        if (toneGeneratorMerger) {
+            try {
+                toneGeneratorMerger.disconnect();
+            } catch (e) { /* noop */ }
+            toneGeneratorMerger = null;
+        }
+        toneGeneratorMerger = toneGeneratorContext.createChannelMerger(2);
+        let wireSide = (specs, bandArr, bqArr, mergerCh) => {
+            let last = toneGeneratorOsc;
+            let hp = toneGeneratorContext.createBiquadFilter();
+            hp.type = "highpass";
+            hp.frequency.value = fromHz;
+            hp.Q.value = 0.707;
+            last.connect(hp);
+            last = hp;
+            bandArr.push(hp);
+            let lp = toneGeneratorContext.createBiquadFilter();
+            lp.type = "lowpass";
+            lp.frequency.value = toHz;
+            lp.Q.value = 0.707;
+            last.connect(lp);
+            last = lp;
+            bandArr.push(lp);
+            specs.forEach((s) => {
+                let bf = toneGeneratorContext.createBiquadFilter();
+                bf.type = mapFilterTypeToBiquad(s.type);
+                bf.frequency.value = s.freq;
+                bf.Q.value = s.q;
+                bf.gain.value = s.gain;
+                last.connect(bf);
+                last = bf;
+                bqArr.push(bf);
+            });
+            last.connect(toneGeneratorMerger, 0, mergerCh);
+        };
+        wireSide(specL, toneGeneratorBandFiltersLeft, toneGeneratorBiquadsLeft, 0);
+        wireSide(specR, toneGeneratorBandFiltersRight, toneGeneratorBiquadsRight, 1);
+        toneGeneratorMerger.connect(toneGeneratorMasterGain);
+    };
+    let rebuildToneGeneratorEqChainMono = () => {
         if (!toneGeneratorOsc || !toneGeneratorContext || !toneGeneratorMasterGain) {
             return;
         }
         rebuildLiveEqChain(toneGeneratorOsc, toneGeneratorContext, toneGeneratorMasterGain, toneGeneratorBiquads);
     };
-    let rebuildMusicEqChain = () => {
+    let rebuildToneGeneratorEqChain = () => {
+        if (!toneGeneratorOsc || !toneGeneratorContext || !toneGeneratorMasterGain) {
+            return;
+        }
+        if (liveStereoEqActive()) {
+            rebuildToneGeneratorEqChainStereo();
+        } else {
+            disconnectEqBiquads(toneGeneratorBiquadsLeft);
+            disconnectEqBiquads(toneGeneratorBiquadsRight);
+            toneGeneratorBandFiltersLeft.forEach((b) => {
+                try { b.disconnect(); } catch (e) { /* noop */ }
+            });
+            toneGeneratorBandFiltersLeft.length = 0;
+            toneGeneratorBandFiltersRight.forEach((b) => {
+                try { b.disconnect(); } catch (e) { /* noop */ }
+            });
+            toneGeneratorBandFiltersRight.length = 0;
+            if (toneGeneratorMerger) {
+                try {
+                    toneGeneratorMerger.disconnect();
+                } catch (e) { /* noop */ }
+                toneGeneratorMerger = null;
+            }
+            rebuildToneGeneratorEqChainMono();
+        }
+    };
+    let rebuildMusicEqChainStereo = () => {
+        if (!musicMediaSourceNode || !musicContext || !musicMasterGain) {
+            return;
+        }
+        let { fromHz, toHz } = readLiveSoundBandEdgeHz();
+        let { specL, specR } = computeLiveEqSpecsForStereoPaths();
+        if (musicBandFiltersLeft.length === 2 && musicBandFiltersRight.length === 2
+                && specL.length === musicBiquadsLeft.length
+                && specR.length === musicBiquadsRight.length
+                && syncBandShelfFiltersInPlace(musicContext, musicBandFiltersLeft, fromHz, toHz)
+                && syncBandShelfFiltersInPlace(musicContext, musicBandFiltersRight, fromHz, toHz)) {
+            if ((specL.length === 0 || syncEqBiquadsInPlace(musicContext, musicBiquadsLeft, specL))
+                    && (specR.length === 0 || syncEqBiquadsInPlace(musicContext, musicBiquadsRight, specR))) {
+                syncMusicOutputGain(musicContext);
+                return;
+            }
+        }
+        musicMediaSourceNode.disconnect();
+        disconnectEqBiquads(musicBiquads);
+        disconnectEqBiquads(musicBiquadsLeft);
+        disconnectEqBiquads(musicBiquadsRight);
+        disconnectMusicBandFilters();
+        musicStereoSplitter = musicContext.createChannelSplitter(2);
+        musicStereoMerger = musicContext.createChannelMerger(2);
+        musicMediaSourceNode.connect(musicStereoSplitter);
+        let wireSide = (splitOut, specs, bandArr, bqArr, mergerCh) => {
+            let hp = musicContext.createBiquadFilter();
+            hp.type = "highpass";
+            hp.frequency.value = fromHz;
+            hp.Q.value = 0.707;
+            musicStereoSplitter.connect(hp, splitOut);
+            let last = hp;
+            bandArr.push(hp);
+            let lp = musicContext.createBiquadFilter();
+            lp.type = "lowpass";
+            lp.frequency.value = toHz;
+            lp.Q.value = 0.707;
+            last.connect(lp);
+            last = lp;
+            bandArr.push(lp);
+            specs.forEach((s) => {
+                let bf = musicContext.createBiquadFilter();
+                bf.type = mapFilterTypeToBiquad(s.type);
+                bf.frequency.value = s.freq;
+                bf.Q.value = s.q;
+                bf.gain.value = s.gain;
+                last.connect(bf);
+                last = bf;
+                bqArr.push(bf);
+            });
+            last.connect(musicStereoMerger, 0, mergerCh);
+        };
+        wireSide(0, specL, musicBandFiltersLeft, musicBiquadsLeft, 0);
+        wireSide(1, specR, musicBandFiltersRight, musicBiquadsRight, 1);
+        musicStereoMerger.connect(musicMasterGain);
+        syncMusicOutputGain(musicContext);
+    };
+    let rebuildMusicEqChainMono = () => {
         if (!musicMediaSourceNode || !musicContext || !musicMasterGain) {
             return;
         }
@@ -6889,6 +7635,8 @@ function addExtra() {
         }
         musicMediaSourceNode.disconnect();
         disconnectEqBiquads(musicBiquads);
+        disconnectEqBiquads(musicBiquadsLeft);
+        disconnectEqBiquads(musicBiquadsRight);
         disconnectMusicBandFilters();
         let last = musicMediaSourceNode;
         let hp = musicContext.createBiquadFilter();
@@ -6917,6 +7665,16 @@ function addExtra() {
         });
         last.connect(musicMasterGain);
         syncMusicOutputGain(musicContext);
+    };
+    let rebuildMusicEqChain = () => {
+        if (!musicMediaSourceNode || !musicContext || !musicMasterGain) {
+            return;
+        }
+        if (liveStereoEqActive()) {
+            rebuildMusicEqChainStereo();
+        } else {
+            rebuildMusicEqChainMono();
+        }
     };
     let scheduleLiveEqSync = () => {
         if (!pinkNoisePlaying && !toneGeneratorOsc && !musicMediaSourceNode) {
@@ -7026,6 +7784,8 @@ function addExtra() {
             pinkNoiseProcessor = null;
         }
         disconnectEqBiquads(pinkNoiseBiquads);
+        disconnectEqBiquads(pinkNoiseBiquadsLeft);
+        disconnectEqBiquads(pinkNoiseBiquadsRight);
         disconnectPinkBandFilters();
         if (pinkNoiseMasterGain) {
             pinkNoiseMasterGain.disconnect();
@@ -7335,6 +8095,22 @@ function addExtra() {
     };
     let toneGeneratorGraphTeardown = () => {
         disconnectEqBiquads(toneGeneratorBiquads);
+        disconnectEqBiquads(toneGeneratorBiquadsLeft);
+        disconnectEqBiquads(toneGeneratorBiquadsRight);
+        toneGeneratorBandFiltersLeft.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        toneGeneratorBandFiltersLeft.length = 0;
+        toneGeneratorBandFiltersRight.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        toneGeneratorBandFiltersRight.length = 0;
+        if (toneGeneratorMerger) {
+            try {
+                toneGeneratorMerger.disconnect();
+            } catch (e) { /* noop */ }
+            toneGeneratorMerger = null;
+        }
         if (toneGeneratorMasterGain) {
             try {
                 toneGeneratorMasterGain.disconnect();
@@ -8497,6 +9273,8 @@ function addExtra() {
             musicFileInput.value = "";
         }
         disconnectEqBiquads(musicBiquads);
+        disconnectEqBiquads(musicBiquadsLeft);
+        disconnectEqBiquads(musicBiquadsRight);
         disconnectMusicBandFilters();
         if (musicMediaSourceNode) {
             try {

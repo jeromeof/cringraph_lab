@@ -1436,6 +1436,38 @@ div.extra-panel div.settings-row {
     margin: 0 0 0.5em 0;
 }
 
+/* 2ch bank tabs: dim filter rows, swap bank data mid-hold, fade back (~200ms of the return leg) */
+div.extra-panel > div.extra-eq > div.filters.eq-2ch-bank-filters-swap-anim {
+    pointer-events: none;
+    animation: eq2chBankFiltersSwap 0.3s ease-in-out forwards;
+}
+
+@keyframes eq2chBankFiltersSwap {
+    0% {
+        opacity: 1;
+        filter: grayscale(0);
+    }
+    30% {
+        opacity: 0.36;
+        filter: grayscale(1) brightness(0.88);
+    }
+    38% {
+        opacity: 0.36;
+        filter: grayscale(1) brightness(0.88);
+    }
+    100% {
+        opacity: 1;
+        filter: grayscale(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    div.extra-panel > div.extra-eq > div.filters.eq-2ch-bank-filters-swap-anim {
+        animation: none;
+        pointer-events: auto;
+    }
+}
+
 /* Constraints: outer only animates max-height + opacity (+ margin) like Music’s panel shell;
    card padding/background live on .extra-eq-constraints-inner so they aren’t stripped mid-transition */
 div.extra-panel > div.extra-eq > div.extra-eq-constraints {
@@ -1608,6 +1640,143 @@ div.extra-panel > div.extra-eq .eq-constraint-top-stack {
     gap: 8px;
     width: 100%;
     min-width: 0;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-2ch-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    padding-top: 2px;
+}
+
+div.extra-panel > div.extra-eq .eq-constraint-2ch-toggle-label {
+    width: 100%;
+    justify-content: space-between;
+}
+
+div.extra-panel > div.extra-eq .select-eq-phone-model-target .eq-2ch-bank-tabs {
+    width: 100%;
+    min-width: 0;
+    margin-top: 8px;
+    margin-bottom: 2px;
+}
+
+/* Full-width three-position bank switch (L | L + R | R), same pill/track vocabulary as EQ constraint toggles.
+   Fixed track height so the sliding thumb always gets a real vertical size (avoids squashed / odd shapes). */
+div.extra-panel > div.extra-eq .eq-2ch-bank-seg-track {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--eq-switch-track-h);
+    min-height: var(--eq-switch-track-h);
+    max-height: var(--eq-switch-track-h);
+    padding: var(--eq-switch-gap);
+    border: var(--eq-switch-border) solid var(--background-color-contrast);
+    border-radius: 9999px;
+    background-color: var(--background-color-inputs);
+    transition: background-color 200ms ease;
+}
+
+div.extra-panel > div.extra-eq .eq-2ch-bank-seg-thumb {
+    position: absolute;
+    left: var(--eq-switch-gap);
+    top: var(--eq-switch-gap);
+    width: calc((100% - 2 * var(--eq-switch-gap)) / 3);
+    height: calc(var(--eq-switch-track-h) - 2 * var(--eq-switch-border) - 2 * var(--eq-switch-gap));
+    box-sizing: border-box;
+    border-radius: 9999px;
+    background-color: var(--accent-color);
+    z-index: 1;
+    pointer-events: none;
+    transform: translate3d(0, 0, 0);
+    transform-origin: left center;
+    transition: transform 200ms ease, background-color 200ms ease;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+}
+
+div.extra-panel > div.extra-eq .eq-2ch-bank-seg-track[data-eq-2ch-pos="0"] .eq-2ch-bank-seg-thumb {
+    transform: translate3d(0, 0, 0);
+}
+
+div.extra-panel > div.extra-eq .eq-2ch-bank-seg-track[data-eq-2ch-pos="1"] .eq-2ch-bank-seg-thumb {
+    transform: translate3d(100%, 0, 0);
+}
+
+div.extra-panel > div.extra-eq .eq-2ch-bank-seg-track[data-eq-2ch-pos="2"] .eq-2ch-bank-seg-thumb {
+    transform: translate3d(200%, 0, 0);
+}
+
+div.extra-panel > div.extra-eq .eq-2ch-bank-seg-slot {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+}
+
+div.extra-panel > div.extra-eq .eq-2ch-bank-seg-label {
+    position: relative;
+    z-index: 4;
+    pointer-events: none;
+    box-sizing: border-box;
+    display: inline-block;
+    max-width: 100%;
+    font-family: var(--font-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: 0.02em;
+    color: var(--background-color-contrast-more);
+    transition: color 200ms ease, text-shadow 200ms ease;
+}
+
+div.extra-panel > div.extra-eq .eq-2ch-bank-seg-track[data-eq-2ch-pos="0"] .eq-2ch-bank-seg-slot[data-slot="L"] .eq-2ch-bank-seg-label,
+div.extra-panel > div.extra-eq .eq-2ch-bank-seg-track[data-eq-2ch-pos="1"] .eq-2ch-bank-seg-slot[data-slot="both"] .eq-2ch-bank-seg-label,
+div.extra-panel > div.extra-eq .eq-2ch-bank-seg-track[data-eq-2ch-pos="2"] .eq-2ch-bank-seg-slot[data-slot="R"] .eq-2ch-bank-seg-label {
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+/* Invisible hit targets: div.extra-panel button uses !important bg/border/padding — must override here. */
+div.extra-panel > div.extra-eq .eq-2ch-bank-seg-track button.eq-2ch-bank-seg-btn {
+    position: absolute;
+    inset: 0;
+    order: 0;
+    flex: none;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    color: transparent;
+    font-size: 0;
+    line-height: 0;
+    text-transform: none;
+    white-space: normal;
+    cursor: pointer;
+    z-index: 3;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+div.extra-panel > div.extra-eq .eq-2ch-bank-seg-track button.eq-2ch-bank-seg-btn:focus {
+    outline: none;
+}
+
+div.extra-panel > div.extra-eq .eq-2ch-bank-seg-track:has(.eq-2ch-bank-seg-btn:focus-visible) {
+    box-shadow: 0 0 0 2px var(--background-color-graph), 0 0 0 4px var(--accent-color-contrast);
 }
 
 div.extra-panel > div.extra-eq .eq-constraint-top-headings,
@@ -2148,12 +2317,14 @@ div.extra-panel .live-sound-eq-switch-track {
 }
 
 div.extra-panel .live-sound-eq-switch-track:has(.live-sound-eq-toggle:checked),
-div.extra-panel .live-sound-eq-switch-track:has(.eq-constraint-type-toggle:checked) {
+div.extra-panel .live-sound-eq-switch-track:has(.eq-constraint-type-toggle:checked),
+div.extra-panel .live-sound-eq-switch-track:has(.eq-constraint-2ch-toggle:checked) {
     background-color: var(--background-color-inputs);
 }
 
 div.extra-panel .live-sound-eq-toggle,
-div.extra-panel .eq-constraint-type-toggle {
+div.extra-panel .eq-constraint-type-toggle,
+div.extra-panel .eq-constraint-2ch-toggle {
     grid-column: 1;
     grid-row: 1;
     z-index: 2;
@@ -2171,18 +2342,23 @@ div.extra-panel .eq-constraint-type-toggle {
 }
 
 div.extra-panel .live-sound-eq-toggle:focus,
-div.extra-panel .eq-constraint-type-toggle:focus {
+div.extra-panel .eq-constraint-type-toggle:focus,
+div.extra-panel .eq-constraint-2ch-toggle:focus {
     outline: none;
 }
 
 div.extra-panel .live-sound-eq-switch-track:has(.live-sound-eq-toggle:focus-visible),
-div.extra-panel .live-sound-eq-switch-track:has(.eq-constraint-type-toggle:focus-visible) {
+div.extra-panel .live-sound-eq-switch-track:has(.eq-constraint-type-toggle:focus-visible),
+div.extra-panel .live-sound-eq-switch-track:has(.eq-constraint-2ch-toggle:focus-visible) {
     box-shadow: 0 0 0 2px var(--background-color-graph), 0 0 0 4px var(--accent-color-contrast);
 }
 
 @media (prefers-reduced-motion: reduce) {
     div.extra-panel .live-sound-eq-switch-track,
-    div.extra-panel .live-sound-eq-switch-thumb {
+    div.extra-panel .live-sound-eq-switch-thumb,
+    div.extra-panel > div.extra-eq .eq-2ch-bank-seg-track,
+    div.extra-panel > div.extra-eq .eq-2ch-bank-seg-thumb,
+    div.extra-panel > div.extra-eq .eq-2ch-bank-seg-label {
         transition: none;
     }
 }
@@ -2201,7 +2377,8 @@ div.extra-panel .live-sound-eq-switch-thumb {
 }
 
 div.extra-panel .live-sound-eq-toggle:checked + .live-sound-eq-switch-thumb,
-div.extra-panel .eq-constraint-type-toggle:checked + .live-sound-eq-switch-thumb {
+div.extra-panel .eq-constraint-type-toggle:checked + .live-sound-eq-switch-thumb,
+div.extra-panel .eq-constraint-2ch-toggle:checked + .live-sound-eq-switch-thumb {
     transform: translateX(var(--eq-switch-travel));
     background-color: var(--accent-color);
 }
@@ -2746,7 +2923,8 @@ body.theme-contrast div.extra-panel .live-sound-tools .extra-music .music-play-r
 }
 
 body.theme-contrast div.extra-panel .live-sound-tools .live-sound-eq-switch-track,
-body.theme-contrast div.extra-panel > div.extra-eq .live-sound-eq-switch-track {
+body.theme-contrast div.extra-panel > div.extra-eq .live-sound-eq-switch-track,
+body.theme-contrast div.extra-panel > div.extra-eq .eq-2ch-bank-seg-track {
     border-color: var(--background-color-contrast);
 }
 
