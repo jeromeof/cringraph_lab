@@ -1116,6 +1116,41 @@ function reorderActivePhonesByInitOrder() {
         return orig.get(a) - orig.get(b);
     });
 }
+/** Targets first, then non-targets; relative order preserved within each group (table + graph). */
+function phonesClusteredTargetsFirst(list) {
+    return list.filter((p) => p && p.isTarget).concat(list.filter((p) => p && !p.isTarget));
+}
+/** Curve draw order: targets first in DOM so they paint under IEM traces (SVG paint = document order). */
+function curvesTargetsFirstForPaint(curves) {
+    let t = [],
+        o = [];
+    (curves || []).forEach((c) => {
+        if (c && c.p && c.p.isTarget) {
+            t.push(c);
+        } else {
+            o.push(c);
+        }
+    });
+    return t.concat(o);
+}
+/** IEMs first (for pointer hit-tests so ties pick the measurement over a target). */
+function curvesPhonesFirstForPointer(curves) {
+    let t = [],
+        o = [];
+    (curves || []).forEach((c) => {
+        if (c && c.p && c.p.isTarget) {
+            t.push(c);
+        } else {
+            o.push(c);
+        }
+    });
+    return o.concat(t);
+}
+function clusterTargetsFirstInActivePhones() {
+    let next = phonesClusteredTargetsFirst(activePhones);
+    activePhones.length = 0;
+    activePhones.push(...next);
+}
 let phoneManageIdentityMap = new WeakMap(),
     phoneManageIdentitySeq = 1;
 function phoneManageIdentity(p) {
@@ -1172,38 +1207,55 @@ const TARGET_TRACE_DOT_SPECS = [
     { dash: "8 3 2 3", w: 1.4, cap: "round" },
     { dash: "4 2 1 2 8 2", w: 1.7, cap: "round" },
 ];
-/** Stable slot per target identity: first time a target key is graphed it keeps that pattern forever (session). */
-let targetLinePatternNextSlot = 0;
-let targetLinePatternSlotByKey = new Map();
-function targetLinePatternKeyForPhone(phone) {
-    if (!phone) {
-        return "";
-    }
-    /* Do not allocate a dash-style slot — visible “real” targets stay on slot 0, 1, … */
-    if (phone.isTarget && isCompensationTargetNameMatch(phone)) {
-        return "";
-    }
-    let fn = String(phone.fileName || "").trim();
-    if (fn) {
-        return "f:" + fn;
-    }
-    let nm = String(phone.fullName || "").trim();
-    if (nm) {
-        return "n:" + nm;
-    }
-    return "";
+/** Dash styles follow list position: 1st non–comp-target in `activePhones` = slot 0, 2nd = slot 1, … */
+function refreshTargetStyleSlots() {
+    activePhones.forEach((q) => {
+        if (q && q.isTarget) {
+            delete q._targetStyleSlotCache;
+        }
+    });
+    let n = 0;
+    activePhones.forEach((q) => {
+        if (q && q.isTarget && !isCompensationTargetNameMatch(q)) {
+            q._targetStyleSlotCache = n++;
+        }
+    });
+    activePhones.forEach((q) => {
+        if (q && q.isTarget && isCompensationTargetNameMatch(q)) {
+            q._targetStyleSlotCache = 0;
+        }
+    });
 }
-function targetTraceDotSpecSlotForPhone(phone) {
-    let key = targetLinePatternKeyForPhone(phone);
-    if (!key) {
+/** Graph-only stroke fade for 2nd+ targets (table/key colors unchanged). Tweak here to taste. */
+const TARGET_TRACE_OPACITY_SECOND = 0.52;
+const TARGET_TRACE_OPACITY_REST = 0.38;
+function graphPathOpacityForCurve(c) {
+    if (!c || !c.p) {
+        return null;
+    }
+    if (c.p.hide) {
         return 0;
     }
-    if (targetLinePatternSlotByKey.has(key)) {
-        return targetLinePatternSlotByKey.get(key);
+    if (!c.p.isTarget) {
+        return null;
     }
-    let slot = targetLinePatternNextSlot++;
-    targetLinePatternSlotByKey.set(key, slot);
-    return slot;
+    let slot = c.p._targetStyleSlotCache;
+    if (!Number.isFinite(slot) || slot <= 0) {
+        return null;
+    }
+    if (slot === 1) {
+        return TARGET_TRACE_OPACITY_SECOND;
+    }
+    return TARGET_TRACE_OPACITY_REST;
+}
+function targetTraceDotSpecSlotForPhone(phone) {
+    if (!phone || !phone.isTarget) {
+        return 0;
+    }
+    if (phone._targetStyleSlotCache != null && Number.isFinite(phone._targetStyleSlotCache)) {
+        return phone._targetStyleSlotCache;
+    }
+    return 0;
 }
 function targetTraceDotSpecForPhone(phone) {
     if (!phone) {
@@ -1732,13 +1784,19 @@ function setModeEmbed() {
 }
 
 function updatePaths(trigger) {
+    reorderActivePhonesByInitOrder();
+    clusterTargetsFirstInActivePhones();
+    refreshTargetStyleSlots();
     clearLabels();
-    let c = d3.merge(activePhones.map(p => p.activeCurves || [])),
+    let c = curvesTargetsFirstForPaint(d3.merge(activePhones.map(p => p.activeCurves || []))),
         p = gpath.selectAll("path").data(c, d=>d.id);
-    let t = p.join("path").attr("opacity", c=>c.p.hide?0:null)
+    let joined = p.join("path").attr("opacity", (c) => graphPathOpacityForCurve(c) ?? (c.p.hide ? 0 : null))
         .classed("sample", c=>c.p.samp)
-        .attr("stroke", getColor_AC).call(redrawLine)
-        .filter(c=>c.p.isTarget)
+        .attr("stroke", getColor_AC).call(redrawLine);
+    if (typeof joined.order === "function") {
+        joined.order();
+    }
+    let t = joined.filter(c=>c.p.isTarget)
         .attr("data-phone-name", c=>c.p.fullName)
         .attr("class", "target");
     resetGraphPathStrokesToBase();
@@ -1772,6 +1830,7 @@ function manageTableRows() {
         seenP.add(c.p);
         phoneOrder.push(c.p);
     });
+    phoneOrder = phonesClusteredTargetsFirst(phoneOrder);
     let rows = [];
     phoneOrder.forEach(p => {
         let pid = phoneManageIdentity(p),
@@ -2356,7 +2415,6 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
         p.active = true;
         setCurves(p, avg);
     }
-    reorderActivePhonesByInitOrder();
     updatePaths(trigger);
     updatePhoneTable(trigger);
     d3.selectAll("#phones .phone-item,.target")
@@ -2743,7 +2801,7 @@ let graphInteract = imm => function () {
     if (ev && typeof ev.clientX === "number" && typeof ev.clientY === "number") {
         lastGraphPlotPointerClient = { x: ev.clientX, y: ev.clientY };
     }
-    let cs = d3.merge(activePhones.map(p=>p.hide?[]:(p.activeCurves||[])));
+    let cs = curvesPhonesFirstForPointer(d3.merge(activePhones.map(p=>p.hide?[]:(p.activeCurves||[]))));
     let m = d3.mouse(this);
     if (!cs.length) {
         syncEqHoverPreview(null);
@@ -3434,7 +3492,7 @@ function addExtra() {
                 }
                 return;
             }
-            el.attr("opacity", c.p.hide ? 0 : null);
+            el.attr("opacity", graphPathOpacityForCurve(c) ?? (c.p.hide ? 0 : null));
             /* Never paint the parametric EQ trace as the "target" line (gray); fallback targetP can equal eqP when the target dropdown is empty. */
             if (targetP && c.p === targetP && !c.p.isTarget && c.p !== eqP) {
                 el.classed("eq-graph-focus-target", true);
