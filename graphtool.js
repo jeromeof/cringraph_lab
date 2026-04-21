@@ -6870,16 +6870,124 @@ function addExtra() {
     const TONE_SWEEP_MIN_DURATION_SEC = 1;
     let lastToneSpaceKeydownTime = 0;
     let toneSpaceDoubleMs = 200;
-    /** While true, tone sweep restarts from range low when a pass completes (Space held, or play button 2nd mousedown of a double-click held). */
+    /** While true, tone sweep restarts from range low when a pass completes (Space held, or 2nd press held past TONE_PLAY_BTN_HOLD_MS on play). */
     let toneSweepLoopSpaceHeld = false;
     let toneSweepLoopPointerHeld = false;
     /** For touch double-press sweep: pointerdown does not get a meaningful UIEvent.detail (unlike mousedown). */
     let tonePlayBtnTouchPrevDownTs = 0;
     const TONE_PLAY_BTN_TOUCH_DOUBLE_MS = 450;
+    /** Second click of a double-click: wait this long before treating as "hold" → loop sweep; shorter = normal double-click sweep on mouseup (click detail 2). */
+    const TONE_PLAY_BTN_HOLD_MS = 100;
+    let tonePlayBtnHoldSweepTimer = null;
+    /** Skip mousedown hold-detect when touch just armed the same gesture (both fire on many devices). */
+    let tonePlayBtnTouchArmTs = 0;
+    /** Master-gain fade to avoid output discontinuities when starting/stopping the sine. */
+    const TONE_GEN_FADE_IN_SEC = 0.022;
+    const TONE_GEN_FADE_OUT_SEC = 0.042;
+    let toneGenFadeCleanupTimer = null;
     let toneSweepPointerHoldUp = () => {
         toneSweepLoopPointerHeld = false;
         document.removeEventListener("pointerup", toneSweepPointerHoldUp, true);
         document.removeEventListener("pointercancel", toneSweepPointerHoldUp, true);
+    };
+    let tonePlayBtnClearHoldSweepTimer = () => {
+        if (tonePlayBtnHoldSweepTimer !== null) {
+            clearTimeout(tonePlayBtnHoldSweepTimer);
+            tonePlayBtnHoldSweepTimer = null;
+        }
+    };
+    /**
+     * Second press of a double-click / double-tap: defer loop sweep until hold exceeds TONE_PLAY_BTN_HOLD_MS.
+     * Shorter press: cancel timer — mouse gets a normal click(detail=2) for sweep on mouseup; touch runs onEarlyTapSweep.
+     */
+    let tonePlayBtnArmLoopHoldAfterSecondPress = (onEarlyTapSweep) => {
+        tonePlayBtnClearHoldSweepTimer();
+        let settled = false;
+        let cancelEarlyUp = (ev) => {
+            if (ev.button !== 0) {
+                return;
+            }
+            if (settled) {
+                return;
+            }
+            settled = true;
+            document.removeEventListener("pointerup", cancelEarlyUp, true);
+            document.removeEventListener("pointercancel", cancelEarlyUp, true);
+            tonePlayBtnClearHoldSweepTimer();
+            if (typeof onEarlyTapSweep === "function") {
+                onEarlyTapSweep();
+            }
+        };
+        document.addEventListener("pointerup", cancelEarlyUp, true);
+        document.addEventListener("pointercancel", cancelEarlyUp, true);
+        tonePlayBtnHoldSweepTimer = setTimeout(() => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            tonePlayBtnHoldSweepTimer = null;
+            document.removeEventListener("pointerup", cancelEarlyUp, true);
+            document.removeEventListener("pointercancel", cancelEarlyUp, true);
+            toneSweepLoopPointerHeld = true;
+            document.addEventListener("pointerup", toneSweepPointerHoldUp, true);
+            document.addEventListener("pointercancel", toneSweepPointerHoldUp, true);
+            startToneGeneratorSweep();
+        }, TONE_PLAY_BTN_HOLD_MS);
+    };
+    let clearToneGenFadeCleanupTimer = () => {
+        if (toneGenFadeCleanupTimer !== null) {
+            clearTimeout(toneGenFadeCleanupTimer);
+            toneGenFadeCleanupTimer = null;
+        }
+    };
+    let toneGeneratorGraphTeardown = () => {
+        disconnectEqBiquads(toneGeneratorBiquads);
+        if (toneGeneratorMasterGain) {
+            try {
+                toneGeneratorMasterGain.disconnect();
+            } catch (e) { /* noop */ }
+            toneGeneratorMasterGain = null;
+        }
+        disconnectToneGeneratorAnalyser();
+    };
+    /** Ramp output gain to zero, stop the oscillator shortly after, then disconnect the graph after the ramp. */
+    let fadeStopToneGeneratorPlayback = () => {
+        if (!toneGeneratorOsc || !toneGeneratorContext || !toneGeneratorMasterGain) {
+            clearToneGenFadeCleanupTimer();
+            toneGeneratorGraphTeardown();
+            return;
+        }
+        if (toneSweepRafId !== null) {
+            cancelAnimationFrame(toneSweepRafId);
+            toneSweepRafId = null;
+        }
+        toneSweepPointerHoldUp();
+        let ctx = toneGeneratorContext;
+        let osc = toneGeneratorOsc;
+        let g = toneGeneratorMasterGain.gain;
+        let t = ctx.currentTime;
+        let rel = TONE_GEN_FADE_OUT_SEC;
+        g.cancelScheduledValues(t);
+        g.setValueAtTime(g.value, t);
+        g.linearRampToValueAtTime(0, t + rel);
+        let tStop = t + rel + 0.001;
+        try {
+            osc.stop(tStop);
+        } catch (e) {
+            try {
+                osc.stop();
+            } catch (e2) { /* noop */ }
+        }
+        toneGeneratorOsc = null;
+        toneGeneratorPlayButton.classList.remove("playback-active");
+        musicSpectrumViz.syncSpectrumViz();
+        updateEqTraceOpacity();
+        clearToneGenFadeCleanupTimer();
+        let ms = Math.ceil(rel * 1000) + 30;
+        toneGenFadeCleanupTimer = setTimeout(() => {
+            toneGenFadeCleanupTimer = null;
+            toneGeneratorGraphTeardown();
+        }, ms);
     };
     let filterRowIsAllZeros = (i) => {
         let f = parseInt(filterFreqInput[i].value, 10) || 0;
@@ -7651,20 +7759,7 @@ function addExtra() {
             return;
         }
         if (toneGeneratorOsc) {
-            if (toneSweepRafId !== null) {
-                cancelAnimationFrame(toneSweepRafId);
-                toneSweepRafId = null;
-            }
-            toneSweepPointerHoldUp();
-            toneGeneratorOsc.stop();
-            toneGeneratorOsc = null;
-            disconnectEqBiquads(toneGeneratorBiquads);
-            if (toneGeneratorMasterGain) {
-                toneGeneratorMasterGain.disconnect();
-                toneGeneratorMasterGain = null;
-            }
-            disconnectToneGeneratorAnalyser();
-            toneGeneratorPlayButton.classList.remove("playback-active");
+            fadeStopToneGeneratorPlayback();
         }
         pauseMusicForLiveSoundSwitch();
         pinkNoiseContext = pinkNoiseContext || new (window.AudioContext || window.webkitAudioContext)();
@@ -7717,6 +7812,10 @@ function addExtra() {
         if (toneGeneratorOsc) {
             return true;
         }
+        clearToneGenFadeCleanupTimer();
+        if (toneGeneratorMasterGain || toneGeneratorBiquads.length) {
+            toneGeneratorGraphTeardown();
+        }
         stopPinkNoisePlayback();
         pauseMusicForLiveSoundSwitch();
         if (!toneGeneratorContext) {
@@ -7726,18 +7825,20 @@ function addExtra() {
             }
             toneGeneratorContext = new (window.AudioContext || window.webkitAudioContext)();
         }
+        let tA = toneGeneratorContext.currentTime;
         toneGeneratorOsc = toneGeneratorContext.createOscillator();
         toneGeneratorOsc.type = "sine";
         toneGeneratorOsc.frequency.value = parseInt(toneGeneratorText.innerText, 10) || TONE_GENERATOR_DEFAULT_HZ;
         toneGeneratorMasterGain = toneGeneratorContext.createGain();
-        toneGeneratorMasterGain.gain.value = liveToneGeneratorPlaybackGain;
+        toneGeneratorMasterGain.gain.setValueAtTime(0, tA);
         rebuildToneGeneratorEqChain();
         toneGeneratorAnalyser = toneGeneratorAnalyser || toneGeneratorContext.createAnalyser();
         configureLiveSpectrumAnalyser(toneGeneratorAnalyser);
         toneGeneratorMasterGain.disconnect();
         toneGeneratorMasterGain.connect(toneGeneratorAnalyser);
         toneGeneratorAnalyser.connect(toneGeneratorContext.destination);
-        toneGeneratorOsc.start();
+        toneGeneratorOsc.start(tA);
+        toneGeneratorMasterGain.gain.linearRampToValueAtTime(liveToneGeneratorPlaybackGain, tA + TONE_GEN_FADE_IN_SEC);
         toneGeneratorPlayButton.classList.add("playback-active");
         lastEqPlaybackSource = "tone";
         if (toneGeneratorContext.state !== "running") {
@@ -7779,13 +7880,69 @@ function addExtra() {
         void toneGeneratorContext.resume();
         let t0 = toneGeneratorContext.currentTime;
         toneGeneratorOsc.frequency.cancelScheduledValues(t0);
-        toneGeneratorOsc.frequency.setValueAtTime(fromHz, t0);
+        let curF = toneGeneratorOsc.frequency.value;
+        let leadInSec = 0;
         if (fromHz !== toHz) {
+            let cross = TONE_GEN_FADE_IN_SEC;
+            if (Math.abs(curF - fromHz) > 0.5) {
+                leadInSec = cross;
+                toneGeneratorOsc.frequency.setValueAtTime(Math.max(20, curF), t0);
+                toneGeneratorOsc.frequency.exponentialRampToValueAtTime(fromHz, t0 + cross);
+                t0 += cross;
+            } else {
+                toneGeneratorOsc.frequency.setValueAtTime(fromHz, t0);
+            }
             toneGeneratorOsc.frequency.exponentialRampToValueAtTime(toHz, t0 + sweepDurationSec);
+        } else {
+            toneGeneratorOsc.frequency.setValueAtTime(fromHz, t0);
         }
+        /** Wall-clock span between loops: fade out (same as tone stop) + fade in (same as tone start), silent in between. */
+        const loopGapWallMs = (TONE_GEN_FADE_OUT_SEC + TONE_GEN_FADE_IN_SEC) * 1000;
+        let loopNextSweepPerfAnchorMs = null;
+        let scheduleLoopSilenceThenNextSweep = () => {
+            if (!toneGeneratorOsc || !toneGeneratorContext || !toneGeneratorMasterGain) {
+                return;
+            }
+            let t = toneGeneratorContext.currentTime;
+            let outSec = TONE_GEN_FADE_OUT_SEC;
+            let inSec = TONE_GEN_FADE_IN_SEC;
+            let tSilent = t + outSec;
+            let tSweepStart = tSilent + inSec;
+            let g = toneGeneratorMasterGain.gain;
+            g.cancelScheduledValues(t);
+            g.setValueAtTime(g.value, t);
+            g.linearRampToValueAtTime(0, tSilent);
+            g.setValueAtTime(0, tSilent);
+            g.linearRampToValueAtTime(liveToneGeneratorPlaybackGain, tSweepStart);
+            let f = toneGeneratorOsc.frequency;
+            f.cancelScheduledValues(tSilent);
+            f.setValueAtTime(fromHz, tSilent);
+            f.setValueAtTime(fromHz, tSweepStart);
+            f.exponentialRampToValueAtTime(toHz, tSweepStart + sweepDurationSec);
+            /* Approximate wall time when the next frequency ramp begins (audio clock ≈ real time). */
+            loopNextSweepPerfAnchorMs = performance.now() + (tSweepStart - t) * 1000;
+        };
         let sweepStartMs = performance.now();
-        let sweepDurationMs = sweepDurationSec * 1000;
+        let sweepDurationMs = (sweepDurationSec + leadInSec) * 1000;
+        let sweepPhase = "sweep";
         let sweepTick = () => {
+            if (sweepPhase === "gap") {
+                let uGap = Math.min(1, (performance.now() - sweepStartMs) / sweepDurationMs);
+                toneGeneratorSlider.value = "0";
+                toneGeneratorText.innerText = String(fromHz);
+                if (uGap < 1) {
+                    toneSweepRafId = requestAnimationFrame(sweepTick);
+                    return;
+                }
+                sweepPhase = "sweep";
+                sweepStartMs = loopNextSweepPerfAnchorMs != null
+                    ? loopNextSweepPerfAnchorMs
+                    : performance.now();
+                loopNextSweepPerfAnchorMs = null;
+                sweepDurationMs = sweepDurationSec * 1000;
+                toneSweepRafId = requestAnimationFrame(sweepTick);
+                return;
+            }
             let u = Math.min(1, (performance.now() - sweepStartMs) / sweepDurationMs);
             let freq = Math.round(Math.exp(
                 Math.log(fromHz) + (Math.log(toHz) - Math.log(fromHz)) * u));
@@ -7796,11 +7953,10 @@ function addExtra() {
             } else {
                 let loopHeld = toneSweepLoopSpaceHeld || toneSweepLoopPointerHeld;
                 if (loopHeld && fromHz !== toHz && toneGeneratorOsc && sweepDurationSec > 0) {
-                    let t = toneGeneratorContext.currentTime;
-                    toneGeneratorOsc.frequency.cancelScheduledValues(t);
-                    toneGeneratorOsc.frequency.setValueAtTime(fromHz, t);
-                    toneGeneratorOsc.frequency.exponentialRampToValueAtTime(toHz, t + sweepDurationSec);
+                    scheduleLoopSilenceThenNextSweep();
+                    sweepPhase = "gap";
                     sweepStartMs = performance.now();
+                    sweepDurationMs = loopGapWallMs;
                     toneGeneratorSlider.value = "0";
                     toneGeneratorText.innerText = String(fromHz);
                     toneSweepRafId = requestAnimationFrame(sweepTick);
@@ -7842,16 +7998,16 @@ function addExtra() {
         }
         toneSweepLoopSpaceHeld = false;
     }, true);
-    /* Second press of a double-click: use mousedown — UIEvent.detail is the click count (2 on 2nd down).
-       pointerdown.detail is not specified for click counting and is often 0, so the old pointerdown check never fired. */
+    /* Second mousedown of a double-click: UIEvent.detail === 2. Defer loop sweep by TONE_PLAY_BTN_HOLD_MS so a
+       normal double-click (release before then) still starts sweep on mouseup via click(detail=2). */
     toneGeneratorPlayButton.addEventListener("mousedown", (e) => {
         if (e.button !== 0 || e.detail !== 2) {
             return;
         }
-        toneSweepLoopPointerHeld = true;
-        document.addEventListener("pointerup", toneSweepPointerHoldUp, true);
-        document.addEventListener("pointercancel", toneSweepPointerHoldUp, true);
-        startToneGeneratorSweep();
+        if (performance.now() - tonePlayBtnTouchArmTs < 40) {
+            return;
+        }
+        tonePlayBtnArmLoopHoldAfterSecondPress(null);
     });
     toneGeneratorPlayButton.addEventListener("pointerdown", (e) => {
         if (e.button !== 0 || e.pointerType !== "touch") {
@@ -7865,10 +8021,13 @@ function addExtra() {
             return;
         }
         tonePlayBtnTouchPrevDownTs = 0;
-        toneSweepLoopPointerHeld = true;
-        document.addEventListener("pointerup", toneSweepPointerHoldUp, true);
-        document.addEventListener("pointercancel", toneSweepPointerHoldUp, true);
-        startToneGeneratorSweep();
+        tonePlayBtnTouchArmTs = now;
+        tonePlayBtnArmLoopHoldAfterSecondPress(() => {
+            if (toneSweepRafId !== null) {
+                return;
+            }
+            startToneGeneratorSweep();
+        });
     });
     toneGeneratorPlayButton.addEventListener("click", (e) => {
         if (e.detail === 2) {
@@ -7879,22 +8038,7 @@ function addExtra() {
             return;
         }
         if (toneGeneratorOsc) {
-            if (toneSweepRafId !== null) {
-                cancelAnimationFrame(toneSweepRafId);
-                toneSweepRafId = null;
-            }
-            toneSweepPointerHoldUp();
-            toneGeneratorOsc.stop();
-            toneGeneratorOsc = null;
-            disconnectEqBiquads(toneGeneratorBiquads);
-            if (toneGeneratorMasterGain) {
-                toneGeneratorMasterGain.disconnect();
-                toneGeneratorMasterGain = null;
-            }
-            disconnectToneGeneratorAnalyser();
-            toneGeneratorPlayButton.classList.remove("playback-active");
-            musicSpectrumViz.syncSpectrumViz();
-            updateEqTraceOpacity();
+            fadeStopToneGeneratorPlayback();
         } else {
             if (!startToneGeneratorOscillatorIfStopped()) {
                 return;
@@ -8008,20 +8152,7 @@ function addExtra() {
     let stopPinkAndToneForExclusiveMusic = () => {
         stopPinkNoisePlayback();
         if (toneGeneratorOsc) {
-            if (toneSweepRafId !== null) {
-                cancelAnimationFrame(toneSweepRafId);
-                toneSweepRafId = null;
-            }
-            toneSweepPointerHoldUp();
-            toneGeneratorOsc.stop();
-            toneGeneratorOsc = null;
-            disconnectEqBiquads(toneGeneratorBiquads);
-            if (toneGeneratorMasterGain) {
-                toneGeneratorMasterGain.disconnect();
-                toneGeneratorMasterGain = null;
-            }
-            disconnectToneGeneratorAnalyser();
-            toneGeneratorPlayButton.classList.remove("playback-active");
+            fadeStopToneGeneratorPlayback();
         }
     };
     musicSpectrumViz.isActive = function () {
