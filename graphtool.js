@@ -1148,6 +1148,17 @@ const EQ_GRAPH_TRACE_STROKE_SAMPLE = 1.9;
 const EQ_GRAPH_TRACE_STROKE_NORMAL = 2.3;
 const EQ_GRAPH_TRACE_STROKE_EMPH_MULT = 2;
 
+/** Baseline compensation targets (*Comp Target / *.txt); hidden from graph by default; omitted from EQ target picks. */
+function isCompensationTargetNameMatch(p) {
+    if (!p) {
+        return false;
+    }
+    let fn = String(p.fileName || "").trim(),
+        full = String(p.fullName || "").trim(),
+        re = /comp target(\.txt)?$/i;
+    return re.test(fn) || re.test(full);
+}
+
 /** Dash + stroke width per slot. `w` is the target trace stroke width in SVG user units (absolute, not added to NORMAL/SAMPLE). */
 const TARGET_TRACE_DOT_SPECS = [
     { dash: "6 3", w: 2.8, cap: "butt" },
@@ -1166,6 +1177,10 @@ let targetLinePatternNextSlot = 0;
 let targetLinePatternSlotByKey = new Map();
 function targetLinePatternKeyForPhone(phone) {
     if (!phone) {
+        return "";
+    }
+    /* Do not allocate a dash-style slot — visible “real” targets stay on slot 0, 1, … */
+    if (phone.isTarget && isCompensationTargetNameMatch(phone)) {
         return "";
     }
     let fn = String(phone.fileName || "").trim();
@@ -1877,6 +1892,9 @@ function updatePhoneTable(trigger) {
         gpath.selectAll("path").filter(c => c.p === p)
             .attr("opacity", h ? null : 0);
         p.hide = !h;
+        if (p.isTarget && isCompensationTargetNameMatch(p)) {
+            p.compTargetUserToggledHide = true;
+        }
         if (labelsShown) {
             clearLabels();
             drawLabels();
@@ -2315,6 +2333,9 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
     smoothPhone(p);
     if (p.id == null) { p.id = getPhoneNumber(); }
     normalizePhone(p); p.offset=p.offset||0;
+    if (p.isTarget && isCompensationTargetNameMatch(p) && !p.compTargetUserToggledHide) {
+        p.hide = true;
+    }
     if (exclusive) {
         activePhones = activePhones.filter(q => q.active = keep(q));
         if (baseline.p && !baseline.p.active) setBaseline(baseline0,1);
@@ -3350,17 +3371,6 @@ function addExtra() {
     // EQ Function
     let eqPhoneSelect = document.querySelector("div.extra-eq select[name='phone']");
     let eqPhoneTargetSelect = document.querySelector("div.extra-eq select[name='eq-target']");
-    /** EQ target list / implicit target: omit compensation targets ("…Comp Target" / "…Comp Target.txt"). */
-    let eqTargetExcludedCompTargetTrace = (p) => {
-        if (!p) {
-            return true;
-        }
-        let fn = String(p.fileName || "").trim();
-        let full = String(p.fullName || "").trim();
-        /* Built-in/uploaded targets often store basename without .txt (see fileFR upload). */
-        let re = /comp target(\.txt)?$/i;
-        return re.test(fn) || re.test(full);
-    };
     /** EQ model row: explicit model dropdown match, else first graphed IEM (not target, not "* EQ" child name). */
     let resolveEqModelPhone = () => {
         let sel = eqPhoneSelect && eqPhoneSelect.value;
@@ -3378,13 +3388,13 @@ function addExtra() {
         let fromSel = tsel
             ? activePhones.filter((p) => p.fullName === tsel)[0]
             : null;
-        if (fromSel && !eqTargetExcludedCompTargetTrace(fromSel)) {
+        if (fromSel && !isCompensationTargetNameMatch(fromSel)) {
             return fromSel;
         }
         let eqP = modelP.eq || null;
-        return activePhones.filter((p) => p.isTarget && !eqTargetExcludedCompTargetTrace(p))[0]
+        return activePhones.filter((p) => p.isTarget && !isCompensationTargetNameMatch(p))[0]
             || activePhones.filter((p) => p !== modelP && p !== eqP && !p.isTarget
-                && !eqTargetExcludedCompTargetTrace(p))[0] || null;
+                && !isCompensationTargetNameMatch(p))[0] || null;
     };
     let prevParametricFocusActive = false;
     applyParametricEqGraphTraceFocus = () => {
@@ -4877,10 +4887,10 @@ function addExtra() {
         }
         let phoneSelected = eqPhoneSelect.value;
         let targs = activePhones.filter((p) => p.isTarget && p.fullName && !p.fullName.match(/ EQ$/)
-            && !eqTargetExcludedCompTargetTrace(p));
+            && !isCompensationTargetNameMatch(p));
         let others = activePhones.filter((p) => !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/)
             && (!phoneSelected || p.fullName !== phoneSelected)
-            && !eqTargetExcludedCompTargetTrace(p));
+            && !isCompensationTargetNameMatch(p));
         let byName = (a, b) => String(a.fullName).localeCompare(String(b.fullName));
         targs.sort(byName);
         others.sort(byName);
