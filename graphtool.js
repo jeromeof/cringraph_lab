@@ -7042,12 +7042,10 @@ function addExtra() {
     };
     let createPinkNoiseProcessor = (audioContext) => {
         let bufferSize = 4096;
-        let processor;
-        try {
-            processor = audioContext.createScriptProcessor(bufferSize, 0, 1);
-        } catch (err) {
-            processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
-        }
+        /* WebKit/Safari: ScriptProcessor with 0 inputs often never runs onaudioprocess (silent output
+           while the node graph still looks "active" to the browser). One input channel fixes it;
+           we only write the output buffer and do not use the input. */
+        let processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
         let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
         processor.onaudioprocess = (e) => {
             let output = e.outputBuffer.getChannelData(0);
@@ -7831,7 +7829,11 @@ function addExtra() {
         if (interactInspect) {
             return;
         }
-        if (e.pointerType === "touch") {
+        /* Real touch devices: skip graph pointer path + suppress follow-up synthetic click (EQ add).
+           Safari desktop can report pointerType "touch" for trackpad; (pointer: coarse) keeps this
+           branch for phones/tablets only so Sound Tools / range drag still work on Mac Safari. */
+        if (e.pointerType === "touch" && typeof window.matchMedia === "function"
+                && window.matchMedia("(pointer: coarse)").matches) {
             eqGraphSuppressClickAddFromTouch = true;
             if (eqGraphTouchSuppressClearTimer) {
                 clearTimeout(eqGraphTouchSuppressClearTimer);
@@ -7840,9 +7842,6 @@ function addExtra() {
                 eqGraphTouchSuppressClearTimer = null;
                 eqGraphSuppressClickAddFromTouch = false;
             }, 600);
-            return;
-        }
-        if (e.pointerType && e.pointerType !== "mouse") {
             return;
         }
         if (e.pointerType === "mouse" && e.button !== 0) {
@@ -7953,7 +7952,11 @@ function addExtra() {
             svgScaleY: svgScaleY,
             pointerLockActive: false,
         };
-        e.preventDefault();
+        /* Sound Tools range drag: avoid preventDefault so Safari keeps default gesture handling;
+           EQ drag still uses it to block stray text selection. Selection lock is fine for both. */
+        if (!soundRangeSelect) {
+            e.preventDefault();
+        }
         eqGraphInstallDragSelectLock();
         svg.style.cursor = "grabbing";
         if (graphPlotHitRect && graphPlotHitRect.node()) {
