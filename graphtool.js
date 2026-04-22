@@ -4303,22 +4303,35 @@ function addExtra() {
         }
         return out;
     };
-    /** Parent `rawChannels` aligned one slot per side (`length === LR.length`): one FR curve shared
-        for 2ch EQ — average of every present side, or the only present trace (covers L-only / R-only / LR). */
+    /** One FR curve shared for 2ch EQ preview/apply: average across LR sides, each side optionally
+        averaged across multiple samples (raw layout [L1…Lk, R1…Rk, …] from loadFiles merge order). */
     let eq2chSharedMeasurementBaseRaw = (phoneObj) => {
         if (!phoneObj || !phoneObj.rawChannels || !LR || LR.length < 2) {
             return null;
         }
         let raws = phoneObj.rawChannels;
-        if (raws.length !== LR.length) {
+        if (!raws.length || raws.length % LR.length !== 0) {
             return null;
         }
-        let present = [];
-        for (let i = 0; i < LR.length; i++) {
-            if (raws[i]) {
-                present.push(raws[i]);
+        let nPerSide = raws.length / LR.length;
+        let sideCurves = [];
+        for (let li = 0; li < LR.length; li++) {
+            let bucket = [];
+            for (let s = 0; s < nPerSide; s++) {
+                let c = raws[li * nPerSide + s];
+                if (c) {
+                    bucket.push(c);
+                }
+            }
+            if (!bucket.length) {
+                sideCurves.push(null);
+            } else if (bucket.length === 1) {
+                sideCurves.push(bucket[0]);
+            } else {
+                sideCurves.push(avgCurves(bucket));
             }
         }
+        let present = sideCurves.filter(Boolean);
         if (!present.length) {
             return null;
         }
@@ -4891,7 +4904,7 @@ function addExtra() {
         }
         let chPv = chIx;
         let base2 = isEqTwoChannelSupportEnabled() ? eq2chSharedMeasurementBaseRaw(phoneObj) : null;
-        let rawChUse = (base2 && phoneObj.rawChannels && phoneObj.rawChannels.length === LR.length)
+        let rawChUse = base2
             ? base2
             : ((phoneObj.rawChannels && phoneObj.rawChannels[chPv])
                 ? phoneObj.rawChannels[chPv]
@@ -5243,15 +5256,21 @@ function addExtra() {
         if (isEqTwoChannelSupportEnabled()) {
             let raws = phoneObj.rawChannels || [];
             let base2 = eq2chSharedMeasurementBaseRaw(phoneObj);
-            if (base2 && raws.length === LR.length) {
-                nextEqChannels = raws.map((c, chIdx) =>
+            if (base2) {
+                nextEqChannels = LR.map((_, chIdx) =>
                     Equalizer.apply(base2, eq2chMergedSpecsForChannelIndex(chIdx)));
             } else {
+                let nPerSide = LR.length && raws.length % LR.length === 0
+                    ? raws.length / LR.length
+                    : 0;
                 nextEqChannels = raws.map((c, chIdx) => {
                     if (!c) {
                         return null;
                     }
-                    let merged = eq2chMergedSpecsForChannelIndex(chIdx);
+                    let lrIdx = nPerSide >= 1
+                        ? Math.min(LR.length - 1, Math.floor(chIdx / nPerSide))
+                        : Math.min(LR.length - 1, chIdx);
+                    let merged = eq2chMergedSpecsForChannelIndex(lrIdx);
                     return Equalizer.apply(c, merged);
                 });
             }
@@ -5821,7 +5840,7 @@ function addExtra() {
             }
             settings = "";
             let base2 = eq2chSharedMeasurementBaseRaw(phoneObj);
-            let useSharedBase = Boolean(base2 && phoneObj.rawChannels.length === LR.length);
+            let useSharedBase = Boolean(base2);
             for (let ci = 0; ci < LR.length && ci < phoneObj.rawChannels.length; ci++) {
                 let raw = useSharedBase ? base2 : phoneObj.rawChannels[ci];
                 if (!raw) {
@@ -7236,7 +7255,7 @@ function addExtra() {
             }
             let { li, ri } = liveStereoEqChannelIndices();
             let base2 = eq2chSharedMeasurementBaseRaw(phoneObj);
-            if (base2 && phoneObj.rawChannels.length === LR.length) {
+            if (base2) {
                 let frEqL = specL.length ? Equalizer.apply(base2, specL, sampleRate) : base2;
                 let frEqR = specR.length ? Equalizer.apply(base2, specR, sampleRate) : base2;
                 let preL = specL.length ? Equalizer.calc_preamp(base2, frEqL) : 0;
