@@ -4589,7 +4589,9 @@ function addExtra() {
             filterGainInput[i].value = "0";
         }
     };
-    let applyEqGraphicModeAuxUiAndBands = () => {
+    let applyEqGraphicModeAuxUiAndBands = (opts) => {
+        opts = opts || {};
+        let skipApply = !!opts.skipApply;
         let bands = Equalizer.config.EqGraphicBandFreqHz;
         let graphic = Array.isArray(bands) && bands.length >= 2;
         let maxBandsEl = document.querySelector("div.extra-eq input[name='eq-constraint-max-bands']");
@@ -4607,9 +4609,11 @@ function addExtra() {
             eqGraphicModeApplyAutoTemplateFromBands(bands);
             refreshEqFilterInactiveStateForMaxBands();
             applyEqConstraintAttributesToFilterInputs();
-            cancelDeferredApplyEQ();
-            applyEQExec();
-            scheduleLiveEqSync();
+            if (!skipApply) {
+                cancelDeferredApplyEQ();
+                applyEQExec();
+                scheduleLiveEqSync();
+            }
         } else {
             maxBandsEl.disabled = false;
             qMinEl.disabled = false;
@@ -4620,7 +4624,7 @@ function addExtra() {
                 syncEqMaxBandsFieldFromConfig();
             }
             refreshEqFilterInactiveStateForMaxBands();
-            if (hadGraphicMaxLock) {
+            if (hadGraphicMaxLock && !skipApply) {
                 cancelDeferredApplyEQ();
                 applyEQExec();
                 scheduleLiveEqSync();
@@ -5587,10 +5591,12 @@ function addExtra() {
         if (!filterFreqInput || !filterFreqInput.length) {
             return;
         }
+        let ch2 = isEqTwoChannelSupportEnabled();
         eqFiltersUserHasEdited = false;
         let bands = Equalizer.config.EqGraphicBandFreqHz;
         if (Array.isArray(bands) && bands.length >= 2) {
-            applyEqGraphicModeAuxUiAndBands();
+            /* applyEQExec flushes DOM to the active bank only; reset must sync all banks before apply. */
+            applyEqGraphicModeAuxUiAndBands(ch2 ? { skipApply: true } : undefined);
         } else {
             for (let i = 0; i < eqBands; i++) {
                 filterEnabledInput[i].checked = true;
@@ -5602,9 +5608,11 @@ function addExtra() {
             applyEqConstraintAttributesToFilterInputs();
             refreshEqFilterConstraintViolationStyles();
             refreshEqFilterInactiveStateForMaxBands();
-            cancelDeferredApplyEQ();
-            applyEQExec();
-            scheduleLiveEqSync();
+            if (!ch2) {
+                cancelDeferredApplyEQ();
+                applyEQExec();
+                scheduleLiveEqSync();
+            }
         }
         let snap = elemToFilters(true).map((f) => ({
             disabled: !!f.disabled,
@@ -5620,10 +5628,13 @@ function addExtra() {
             q: row.q,
             gain: row.gain
         }));
-        if (isEqTwoChannelSupportEnabled()) {
+        if (ch2) {
             eq2chBankData.both = bankCopy();
             eq2chBankData.L = bankCopy();
             eq2chBankData.R = bankCopy();
+            cancelDeferredApplyEQ();
+            applyEQExec();
+            scheduleLiveEqSync();
         } else if (snap.length) {
             eq2chBankData.both = snap;
         }
