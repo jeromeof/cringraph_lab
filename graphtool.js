@@ -5693,8 +5693,12 @@ function addExtra() {
             return;
         }
         let reader = new FileReader();
-        reader.onload = (e) => {
-            let settings = String(e.target.result || "");
+        reader.onerror = () => {
+            fileFiltersImport.value = "";
+        };
+        reader.onload = (re) => {
+            try {
+            let settings = String(re.target.result || "");
             let parseFilterLineObjects = (blob) => {
                 let filters = blob.split("\n").map(l => {
                     let r = String(l == null ? "" : l).match(/Filter\s*\d+:\s*(\S+)\s*(\S+)\s*Fc\s*(\S+)\s*Hz\s*Gain\s*(\S+)\s*dB(\s*Q\s*(\S+))?/);
@@ -5769,6 +5773,10 @@ function addExtra() {
                 scheduleLiveEqSync();
             } else {
                 alert("Parse filters file failed: no filter found.");
+            }
+            } finally {
+                /* Same path twice does not fire "change" unless value is cleared first. */
+                fileFiltersImport.value = "";
             }
         };
         reader.readAsText(file);
