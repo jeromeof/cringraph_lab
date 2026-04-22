@@ -19,6 +19,7 @@
       "id": "auto-eq",
       "kind": "system",
       "label": "Auto EQ",
+      "twoChannelSupport": false,
       "maxBands": 0,
       "allowPk": true,
       "allowLsq": true,
@@ -33,6 +34,7 @@
     {
       "id": "generic-10-band",
       "label": "Generic 10-band graphic EQ",
+      "twoChannelSupport": false,
       "maxBands": 10,
       "allowPk": true,
       "allowLsq": false,
@@ -46,6 +48,7 @@
     {
       "id": "fiio-eh11",
       "label": "Fiio EH11",
+      "twoChannelSupport": false,
       "maxBands": 10,
       "allowPk": true,
       "allowLsq": true,
@@ -60,6 +63,7 @@
     {
       "id": "sennheiser-hdb-630",
       "label": "Sennheiser HDB 630",
+      "twoChannelSupport": false,
       "maxBands": 5,
       "allowPk": true,
       "allowLsq": true,
@@ -74,6 +78,7 @@
     {
       "id": "sony-wh-1000xm6",
       "label": "Sony WH-1000XM6",
+      "twoChannelSupport": false,
       "maxBands": 10,
       "allowPk": true,
       "allowLsq": false,
