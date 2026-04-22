@@ -153,7 +153,8 @@ svg#fr-graph {
 }
 
 svg#fr-graph g.curves-g path {
-    transition: stroke-width 0.1s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: stroke-width 0.1s cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 0.2s ease;
 }
 
 rect.graphBackground {

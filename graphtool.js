@@ -249,7 +249,7 @@ doc.html(`
                   </div>
                   <button type="button" class="autoeq extra-eq-secondary-btn">Auto EQ</button>
                 </div>
-                <div id="eq-2ch-bank-tabs" class="eq-2ch-bank-tabs" role="tablist" aria-label="EQ filter bank" hidden>
+                <div id="eq-2ch-bank-tabs" class="eq-2ch-bank-tabs" role="tablist" aria-label="EQ filter bank (keyboard L, R, A = all when Extra tab is open)" title="Shortcuts: L = left bank, R = right bank, A = L + R (all channels; not while typing in text fields)" hidden>
                   <div class="eq-2ch-bank-seg-track" data-eq-2ch-pos="1">
                     <span class="eq-2ch-bank-seg-thumb" aria-hidden="true"></span>
                     <div class="eq-2ch-bank-seg-slot" data-slot="L">
@@ -258,7 +258,7 @@ doc.html(`
                     </div>
                     <div class="eq-2ch-bank-seg-slot" data-slot="both">
                       <span class="eq-2ch-bank-seg-label">L + R</span>
-                      <button type="button" role="tab" class="eq-2ch-bank-seg-btn" data-eq-2ch-bank="both" aria-selected="true" tabindex="0" aria-label="L + R — both channels (shared) filter bank"></button>
+                      <button type="button" role="tab" class="eq-2ch-bank-seg-btn" data-eq-2ch-bank="both" aria-selected="true" tabindex="0" aria-label="L + R — all channels (shared) filter bank"></button>
                     </div>
                     <div class="eq-2ch-bank-seg-slot" data-slot="R">
                       <span class="eq-2ch-bank-seg-label">R</span>
@@ -4303,6 +4303,27 @@ function addExtra() {
         }
         return out;
     };
+    /** Parent `rawChannels` aligned one slot per side (`length === LR.length`): one FR curve shared
+        for 2ch EQ — average of every present side, or the only present trace (covers L-only / R-only / LR). */
+    let eq2chSharedMeasurementBaseRaw = (phoneObj) => {
+        if (!phoneObj || !phoneObj.rawChannels || !LR || LR.length < 2) {
+            return null;
+        }
+        let raws = phoneObj.rawChannels;
+        if (raws.length !== LR.length) {
+            return null;
+        }
+        let present = [];
+        for (let i = 0; i < LR.length; i++) {
+            if (raws[i]) {
+                present.push(raws[i]);
+            }
+        }
+        if (!present.length) {
+            return null;
+        }
+        return present.length === 1 ? present[0] : avgCurves(present);
+    };
     let eq2chGraphPreviewChannelIndex = () => {
         if (!isEqTwoChannelSupportEnabled()) {
             return 0;
@@ -4455,6 +4476,61 @@ function addExtra() {
             eq2chSwitchBank(bank);
         });
     }
+    document.addEventListener("keydown", (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey) {
+            return;
+        }
+        if (!extraEnabled || !extraEQEnabled) {
+            return;
+        }
+        let tab = document.querySelector("div.select");
+        if (!tab || tab.getAttribute("data-selected") !== "extra") {
+            return;
+        }
+        if (!isEqTwoChannelSupportEnabled() || !eq2chBankTabsEl || eq2chBankTabsEl.hidden) {
+            return;
+        }
+        let code = e.code;
+        if (code !== "KeyL" && code !== "KeyR" && code !== "KeyA") {
+            return;
+        }
+        let t = e.target;
+        if (t && t.nodeType === 1) {
+            if (t.isContentEditable || (t.closest && t.closest("[contenteditable=\"true\"]"))) {
+                return;
+            }
+            let tag = t.tagName;
+            if (tag === "TEXTAREA" || tag === "SELECT") {
+                return;
+            }
+            if (tag === "INPUT") {
+                let typ = (t.getAttribute("type") || "").toLowerCase();
+                if (typ === "text" || typ === "search" || typ === "email" || typ === "url"
+                        || typ === "password" || typ === "") {
+                    return;
+                }
+            }
+        }
+        if (code === "KeyL") {
+            if (eq2chActiveBank === "L") {
+                return;
+            }
+            e.preventDefault();
+            eq2chSwitchBank("L");
+        } else if (code === "KeyR") {
+            if (eq2chActiveBank === "R") {
+                return;
+            }
+            e.preventDefault();
+            eq2chSwitchBank("R");
+        } else if (code === "KeyA") {
+            if (eq2chActiveBank === "both") {
+                return;
+            }
+            e.preventDefault();
+            eq2chSwitchBank("both");
+        }
+    });
     if (eq2chConstraintToggle) {
         eq2chConstraintToggle.addEventListener("change", eq2chOnConstraintToggleChange);
     }
@@ -4814,9 +4890,12 @@ function addExtra() {
             return { tracePhone: eqPhone, traceCh: eqCh, strokePhone: eqPhone };
         }
         let chPv = chIx;
-        let rawChUse = (phoneObj.rawChannels && phoneObj.rawChannels[chPv])
-            ? phoneObj.rawChannels[chPv]
-            : rawCh;
+        let base2 = isEqTwoChannelSupportEnabled() ? eq2chSharedMeasurementBaseRaw(phoneObj) : null;
+        let rawChUse = (base2 && phoneObj.rawChannels && phoneObj.rawChannels.length === LR.length)
+            ? base2
+            : ((phoneObj.rawChannels && phoneObj.rawChannels[chPv])
+                ? phoneObj.rawChannels[chPv]
+                : rawCh);
         let filters = isEqTwoChannelSupportEnabled()
             ? eq2chMergedSpecsForChannelIndex(chPv)
             : elemToFiltersClampedForEqualizerApply(false);
@@ -5162,13 +5241,20 @@ function addExtra() {
         }
         let nextEqChannels;
         if (isEqTwoChannelSupportEnabled()) {
-            nextEqChannels = phoneObj.rawChannels.map((c, chIdx) => {
-                if (!c) {
-                    return null;
-                }
-                let merged = eq2chMergedSpecsForChannelIndex(chIdx);
-                return Equalizer.apply(c, merged);
-            });
+            let raws = phoneObj.rawChannels || [];
+            let base2 = eq2chSharedMeasurementBaseRaw(phoneObj);
+            if (base2 && raws.length === LR.length) {
+                nextEqChannels = raws.map((c, chIdx) =>
+                    Equalizer.apply(base2, eq2chMergedSpecsForChannelIndex(chIdx)));
+            } else {
+                nextEqChannels = raws.map((c, chIdx) => {
+                    if (!c) {
+                        return null;
+                    }
+                    let merged = eq2chMergedSpecsForChannelIndex(chIdx);
+                    return Equalizer.apply(c, merged);
+                });
+            }
         } else {
             nextEqChannels = phoneObj.rawChannels.map(
                 (c) => (c ? Equalizer.apply(c, filters) : null));
@@ -5182,6 +5268,16 @@ function addExtra() {
             smoothPhone(eqP);
             normalizePhone(phoneObj);
             setCurves(eqP);
+            if (isEqTwoChannelSupportEnabled() && eqP.rawChannels
+                    && LR && LR.length > 1
+                    && eqP.rawChannels.length === LR.length
+                    && eqP.rawChannels.some(Boolean)) {
+                eqP.avg = false;
+                eqP.smooth = undefined;
+                smoothPhone(eqP);
+                setCurves(eqP, false);
+                normalizePhone(eqP);
+            }
             reorderActivePhonesByInitOrder();
             clusterTargetsFirstInActivePhones();
             refreshTargetStyleSlots();
@@ -5199,6 +5295,17 @@ function addExtra() {
         phoneObj.eq = phoneObjEQ;
         phoneObjEQ.eqParent = phoneObj;
         showPhone(phoneObjEQ, false, !!execOpt.skipRestoreFocus);
+        if (isEqTwoChannelSupportEnabled() && phoneObjEQ.rawChannels
+                && LR && LR.length > 1
+                && phoneObjEQ.rawChannels.length === LR.length
+                && phoneObjEQ.rawChannels.some(Boolean)) {
+            phoneObjEQ.avg = false;
+            phoneObjEQ.smooth = undefined;
+            smoothPhone(phoneObjEQ);
+            setCurves(phoneObjEQ, false);
+            normalizePhone(phoneObjEQ);
+            updatePaths(false);
+        }
         if (!execOpt.skipRestoreFocus) {
             activeElem.focus();
         }
@@ -5238,26 +5345,6 @@ function addExtra() {
         let base = eqFreqKeyboardGridStep(hz);
         return shift ? base * 10 : base;
     };
-    let eqFreqKeyboardRoundNearest = (hz) => {
-        let [fLo, fHi] = getEqConstraintFreqLoHi();
-        let f = Math.min(fHi, Math.max(fLo, hz));
-        let step = eqFreqKeyboardGridStep(f);
-        let r = Math.round(f / step) * step;
-        return Math.round(Math.min(fHi, Math.max(fLo, r)));
-    };
-    let eqQKeyboardRoundNearest = (q) => {
-        let [qLo, qHi] = getEqConstraintQLoHi();
-        let v = Math.min(qHi, Math.max(qLo, q));
-        if (v <= EQ_FILTER_KEYBOARD_Q_FINE_MAX) {
-            return Math.round(v * 100) / 100;
-        }
-        return Math.round(v * 10) / 10;
-    };
-    let eqGainKeyboardRoundNearest = (db) => {
-        let [gLo, gHi] = getEqConstraintGainLoHi();
-        let v = Math.min(gHi, Math.max(gLo, db));
-        return Math.round(v * 10) / 10;
-    };
     if (filtersContainer) {
         filtersContainer.addEventListener("keydown", (e) => {
             if (e.ctrlKey || e.metaKey || e.altKey) {
@@ -5276,32 +5363,6 @@ function addExtra() {
             if (rowEl && filtersContainer.contains(rowEl)) {
                 let rows = filtersContainer.querySelectorAll("div.filter");
                 rowIx = Array.prototype.indexOf.call(rows, rowEl);
-            }
-            if (e.code === "KeyR") {
-                e.preventDefault();
-                if (nm === "freq") {
-                    let v = parseFloat(t.value);
-                    if (!Number.isFinite(v)) {
-                        v = 20;
-                    }
-                    t.value = String(eqFreqKeyboardRoundNearest(v));
-                } else if (nm === "q") {
-                    let v = parseFloat(t.value);
-                    if (!Number.isFinite(v)) {
-                        v = 1;
-                    }
-                    let r = eqQKeyboardRoundNearest(v);
-                    t.value = r <= EQ_FILTER_KEYBOARD_Q_FINE_MAX
-                        ? r.toFixed(2) : String(r);
-                    if (rowIx >= 0) {
-                        eqGraphWheelQFloat[rowIx] = parseFloat(t.value);
-                    }
-                } else {
-                    t.value = String(eqGainKeyboardRoundNearest(parseFloat(t.value) || 0));
-                }
-                applyEQ();
-                scheduleLiveEqSync();
-                return;
             }
             if (e.code !== "ArrowUp" && e.code !== "ArrowDown") {
                 return;
@@ -5780,8 +5841,10 @@ function addExtra() {
                 return;
             }
             settings = "";
+            let base2 = eq2chSharedMeasurementBaseRaw(phoneObj);
+            let useSharedBase = Boolean(base2 && phoneObj.rawChannels.length === LR.length);
             for (let ci = 0; ci < LR.length && ci < phoneObj.rawChannels.length; ci++) {
-                let raw = phoneObj.rawChannels[ci];
+                let raw = useSharedBase ? base2 : phoneObj.rawChannels[ci];
                 if (!raw) {
                     continue;
                 }
@@ -5937,6 +6000,9 @@ function addExtra() {
         if (!preset || typeof preset !== "object") {
             return;
         }
+        /* filtersToElem (e.g. after default preset on load) sets this true; graphic presets must still
+           run eqGraphicModeApplyAutoTemplateFromBands, which skips entirely while the flag is set. */
+        eqFiltersUserHasEdited = false;
         zeroEqFilterBandRowInputsIfNotUserEdited();
         let cRoot = document.querySelector("div.extra-eq .extra-eq-constraints-inner");
         if (!cRoot) {
@@ -6019,6 +6085,18 @@ function addExtra() {
             eq2chBankData.L = [];
             eq2chBankData.R = [];
             eq2chSetTabsVisibility(false);
+            /* Bank "both" was often still [] on first load; padding would overwrite graphic EQ rows
+               filled moments earlier by applyEqGraphicModeAuxUiAndBands. Mirror DOM into both first. */
+            let fromDom = elemToFilters(true).map((f) => ({
+                disabled: !!f.disabled,
+                type: f.type,
+                freq: f.freq,
+                q: f.q,
+                gain: f.gain
+            }));
+            if (fromDom.length) {
+                eq2chBankData.both = fromDom;
+            }
             filtersToElem(eq2chPadBankToEqBands(eq2chBankData.both));
         }
         eq2chSyncBankTabStyles();
@@ -7178,6 +7256,14 @@ function addExtra() {
                 return null;
             }
             let { li, ri } = liveStereoEqChannelIndices();
+            let base2 = eq2chSharedMeasurementBaseRaw(phoneObj);
+            if (base2 && phoneObj.rawChannels.length === LR.length) {
+                let frEqL = specL.length ? Equalizer.apply(base2, specL, sampleRate) : base2;
+                let frEqR = specR.length ? Equalizer.apply(base2, specR, sampleRate) : base2;
+                let preL = specL.length ? Equalizer.calc_preamp(base2, frEqL) : 0;
+                let preR = specR.length ? Equalizer.calc_preamp(base2, frEqR) : 0;
+                return { raw: base2, frEq: frEqL, preDb: (preL + preR) / 2 };
+            }
             let rawL = phoneObj.rawChannels[li];
             let rawR = phoneObj.rawChannels[ri];
             if (!rawL || !rawL.length) {
@@ -7712,7 +7798,23 @@ function addExtra() {
             let isEqTrace = !!c.p.eqParent;
             let isParentTrace = !!c.p.eq;
             if (isEqTrace) {
-                el.attr("opacity", audioPlaying && !eqOn ? 0.5 : null);
+                let bankDim = 1;
+                if (isEqTwoChannelSupportEnabled()
+                        && eq2chActiveBank !== "both"
+                        && LR && LR.length > 1
+                        && c.p.activeCurves && c.p.activeCurves.length > 1) {
+                    let ix = c.p.activeCurves.indexOf(c);
+                    if (ix >= 0 && ix < LR.length) {
+                        let side = LR[ix];
+                        if ((eq2chActiveBank === "L" && side !== "L")
+                                || (eq2chActiveBank === "R" && side !== "R")) {
+                            bankDim = 0.5;
+                        }
+                    }
+                }
+                let aud = (audioPlaying && !eqOn) ? 0.5 : 1;
+                let op = bankDim * aud;
+                el.attr("opacity", op === 1 ? null : op);
                 if (stateChanged && audioPlaying && eqOn) emphTargets.push(this);
             } else if (isParentTrace) {
                 el.attr("opacity", audioPlaying && eqOn ? 0.5 : null);
