@@ -135,7 +135,7 @@ doc.html(`
                 <h5 class="extra-eq-panel-title">Parametric Equalizer</h5>
                 <div class="extra-eq-head-trailing">
                   <div class="extra-eq-reset-row">
-                    <button type="button" id="extra-eq-reset-btn" class="extra-eq-reset-btn" aria-label="Reset all EQ bands and parametric EQ settings to defaults">
+                    <button type="button" id="extra-eq-reset-btn" class="extra-eq-reset-btn" aria-label="Reset EQ band values (frequency, Q, gain) to flat; constraint presets and limits unchanged">
                       <span class="extra-eq-reset-label">Reset</span>
                       <span class="extra-eq-reset-icon" aria-hidden="true"></span>
                     </button>
@@ -150,33 +150,6 @@ doc.html(`
                     <div class="select-eq-phone eq-constraint-preset-stack">
                       <select id="eq-constraint-preset-display" class="eq-constraint-preset-display" tabindex="-1" aria-hidden="true"></select>
                       <select id="eq-constraint-preset-input" class="eq-constraint-preset-hit" name="eq-constraint-preset" aria-label="Constraint presets" title="Apply a constraint configuration from equalizer-constraints.json"></select>
-                    </div>
-                  </div>
-                  <div class="eq-constraint-ranges-block" role="group" aria-label="EQ frequency, gain, and Q limits">
-                    <div class="eq-constraint-range-row eq-constraint-range-row-header">
-                      <span class="eq-constraint-range-label-slot eq-constraint-ranges-head-cell">Ranges</span>
-                      <span class="eq-constraint-range-min-slot eq-constraint-ranges-head-cell">Min</span>
-                      <span class="eq-constraint-range-max-slot eq-constraint-ranges-head-cell">Max</span>
-                    </div>
-                    <div class="eq-constraint-range-row eq-constraint-freq-row">
-                      <span class="eq-constraint-range-label-slot eq-constraint-range-name">Frequency</span>
-                      <div class="eq-constraint-freq-parametric-cells">
-                        <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-freq-min" inputmode="decimal" type="text" value="0" aria-label="Minimum EQ frequency (0 = no limit); for graphic bands when max is unlimited use comma then space between Hz (e.g. 32, 64, 125)" title="0 = no limit. With max also 0, use comma + space between Hz (e.g. 32, 64, 125) for graphic EQ — not 2,000 (thousands)." onclick="this.focus();this.select()"></input></span>
-                        <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-hz"><input name="eq-constraint-freq-max" inputmode="decimal" type="text" value="0" aria-label="Maximum EQ frequency (0 = no limit); for graphic bands when min is unlimited use comma then space between Hz (e.g. 32, 64, 125)" title="0 = no limit. With min also 0, use comma + space between Hz (e.g. 32, 64, 125) for graphic EQ." onclick="this.focus();this.select()"></input></span>
-                      </div>
-                      <div class="eq-constraint-freq-graphic-full" hidden>
-                        <input name="eq-constraint-freq-graphic-list" type="text" class="eq-constraint-freq-graphic-list-input" inputmode="text" value="" autocomplete="off" spellcheck="false" aria-label="Graphic EQ band frequencies in Hz; use a comma then space between values (e.g. 32, 64, 125)" title="Hz with comma + space between bands (e.g. 32, 64, 125, 250). Clear to return to min/max limits." onclick="this.focus();this.select()"></input>
-                      </div>
-                    </div>
-                    <div class="eq-constraint-range-row">
-                      <span class="eq-constraint-range-label-slot eq-constraint-range-name">Gain</span>
-                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-gain-min" inputmode="decimal" type="number" min="-40" max="40" step="0.1" value="0" aria-label="Minimum gain dB (0 = no limit)" onclick="this.focus();this.select()"></input></span>
-                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-db"><input name="eq-constraint-gain-max" inputmode="decimal" type="number" min="-40" max="40" step="0.1" value="0" aria-label="Maximum gain dB (0 = no limit)" onclick="this.focus();this.select()"></input></span>
-                    </div>
-                    <div class="eq-constraint-range-row">
-                      <span class="eq-constraint-range-label-slot eq-constraint-range-name">Q</span>
-                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-q-min" inputmode="decimal" type="number" min="0" max="10" step="0.1" value="0" aria-label="Minimum Q (0 = no limit)" onclick="this.focus();this.select()"></input></span>
-                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell"><input name="eq-constraint-q-max" inputmode="decimal" type="number" min="0" max="10" step="0.1" value="0" aria-label="Maximum Q (0 = no limit)" onclick="this.focus();this.select()"></input></span>
                     </div>
                   </div>
                   <div class="eq-constraint-top-stack" role="group" aria-label="Filter count and allowed types">
@@ -220,6 +193,33 @@ doc.html(`
                       <div class="eq-constraint-top-control-cell eq-constraint-top-control-cell-max-filters">
                         <input name="eq-constraint-max-bands" class="eq-constraint-max-bands-input" inputmode="numeric" type="number" min="0" max="20" step="1" value="0" aria-label="Maximum active filters (0 = no cap; extra rows stay visible but inactive)" onclick="this.focus();this.select()"></input>
                       </div>
+                    </div>
+                  </div>
+                  <div class="eq-constraint-ranges-block" role="group" aria-label="EQ frequency, gain, and Q limits">
+                    <div class="eq-constraint-range-row eq-constraint-range-row-header">
+                      <span class="eq-constraint-range-label-slot eq-constraint-ranges-head-cell">Ranges</span>
+                      <span class="eq-constraint-range-min-slot eq-constraint-ranges-head-cell">Min</span>
+                      <span class="eq-constraint-range-max-slot eq-constraint-ranges-head-cell">Max</span>
+                    </div>
+                    <div class="eq-constraint-range-row eq-constraint-freq-row">
+                      <span class="eq-constraint-range-label-slot eq-constraint-range-name">Frequency</span>
+                      <div class="eq-constraint-freq-parametric-cells">
+                        <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-freq-min" inputmode="decimal" type="text" value="0" aria-label="Minimum EQ frequency (0 = no limit); for graphic bands when max is unlimited use comma then space between Hz (e.g. 32, 64, 125)" title="0 = no limit. With max also 0, use comma + space between Hz (e.g. 32, 64, 125) for graphic EQ — not 2,000 (thousands)." onclick="this.focus();this.select()"></input></span>
+                        <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-hz"><input name="eq-constraint-freq-max" inputmode="decimal" type="text" value="0" aria-label="Maximum EQ frequency (0 = no limit); for graphic bands when min is unlimited use comma then space between Hz (e.g. 32, 64, 125)" title="0 = no limit. With min also 0, use comma + space between Hz (e.g. 32, 64, 125) for graphic EQ." onclick="this.focus();this.select()"></input></span>
+                      </div>
+                      <div class="eq-constraint-freq-graphic-full" hidden>
+                        <input name="eq-constraint-freq-graphic-list" type="text" class="eq-constraint-freq-graphic-list-input" inputmode="text" value="" autocomplete="off" spellcheck="false" aria-label="Graphic EQ band frequencies in Hz; use a comma then space between values (e.g. 32, 64, 125)" title="Hz with comma + space between bands (e.g. 32, 64, 125, 250). Clear to return to min/max limits." onclick="this.focus();this.select()"></input>
+                      </div>
+                    </div>
+                    <div class="eq-constraint-range-row">
+                      <span class="eq-constraint-range-label-slot eq-constraint-range-name">Gain</span>
+                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-gain-min" inputmode="decimal" type="number" min="-40" max="40" step="0.1" value="0" aria-label="Minimum gain dB (0 = no limit)" onclick="this.focus();this.select()"></input></span>
+                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell eq-constraint-input-with-unit eq-constraint-unit-db"><input name="eq-constraint-gain-max" inputmode="decimal" type="number" min="-40" max="40" step="0.1" value="0" aria-label="Maximum gain dB (0 = no limit)" onclick="this.focus();this.select()"></input></span>
+                    </div>
+                    <div class="eq-constraint-range-row">
+                      <span class="eq-constraint-range-label-slot eq-constraint-range-name">Q</span>
+                      <span class="eq-constraint-range-min-slot eq-constraint-range-cell"><input name="eq-constraint-q-min" inputmode="decimal" type="number" min="0" max="10" step="0.1" value="0" aria-label="Minimum Q (0 = no limit)" onclick="this.focus();this.select()"></input></span>
+                      <span class="eq-constraint-range-max-slot eq-constraint-range-cell"><input name="eq-constraint-q-max" inputmode="decimal" type="number" min="0" max="10" step="0.1" value="0" aria-label="Maximum Q (0 = no limit)" onclick="this.focus();this.select()"></input></span>
                     </div>
                   </div>
                   <div class="eq-constraint-2ch-row" role="group" aria-label="Stereo EQ banks">
@@ -5564,90 +5564,61 @@ function addExtra() {
             updateEqTraceOpacity();
         });
     }
-    let resetParametricEqBandsAndConstraintsToDefaults = () => {
-        eqFiltersUserHasEdited = false;
-        let hit = document.getElementById("eq-constraint-preset-input");
-        let display = document.getElementById("eq-constraint-preset-display");
-        let row = document.getElementById("eq-constraint-preset-row");
-        if (hit && display && row && !row.hidden && eqConstraintDefaultPresetForUi) {
-            eqConstraintEphemeralCustomSection = false;
-            runEqConstraintPresetProgrammatic(() => {
-                applyEqConstraintPreset(eqConstraintDefaultPresetForUi);
-                if (eqConstraintDefaultOptionValueForUi != null) {
-                    hit.value = eqConstraintDefaultOptionValueForUi;
-                }
-                display.selectedIndex = hit.selectedIndex;
-                hit.dataset.eqPresetLastStable = hit.value;
-            });
-            syncEqConstraintCustomPresetOptgroup();
-            updateCustomActionDeleteDisabled(hit, display);
-            persistEqConstraintPresetSelectionToStorage();
-            commitEqMaxBandsFromInput({ writeBackDom: true });
+    let resetParametricEqFilterValuesOnly = () => {
+        if (!filterFreqInput || !filterFreqInput.length) {
             return;
         }
-        for (let i = 0; i < eqBands; i++) {
-            filterFreqInput[i].value = "0";
-            filterGainInput[i].value = "0";
-            filterQInput[i].value = "0";
-        }
-        if (hit && display && row && !row.hidden) {
-            eqConstraintEphemeralCustomSection = false;
-            runEqConstraintPresetProgrammatic(() => {
-                clearEqConstraintPresetSelection();
-                hit.value = "";
-                display.selectedIndex = hit.selectedIndex;
-                hit.dataset.eqPresetLastStable = "";
-            });
-            syncEqConstraintCustomPresetOptgroup();
-            updateCustomActionDeleteDisabled(hit, display);
-            persistEqConstraintPresetSelectionToStorage();
+        eqFiltersUserHasEdited = false;
+        let bands = Equalizer.config.EqGraphicBandFreqHz;
+        if (Array.isArray(bands) && bands.length >= 2) {
+            applyEqGraphicModeAuxUiAndBands();
         } else {
-            let cRoot = document.querySelector("div.extra-eq .extra-eq-constraints-inner");
-            if (cRoot) {
-                Equalizer.config.EqGraphicBandFreqHz = null;
-                let gList = cRoot.querySelector("input[name='eq-constraint-freq-graphic-list']");
-                if (gList) {
-                    gList.value = "";
-                }
-                applyEqConstraintFreqRowUiMode();
-                let mb = cRoot.querySelector("input[name='eq-constraint-max-bands']");
-                if (mb) {
-                    mb.value = "0";
-                }
-                ["eq-constraint-freq-min", "eq-constraint-freq-max", "eq-constraint-q-min", "eq-constraint-q-max",
-                    "eq-constraint-gain-min", "eq-constraint-gain-max"].forEach((nm) => {
-                    let inp = cRoot.querySelector(`input[name='${nm}']`);
-                    if (inp) {
-                        inp.value = "0";
-                    }
-                });
+            for (let i = 0; i < eqBands; i++) {
+                filterEnabledInput[i].checked = true;
+                filterTypeSelect[i].value = "PK";
+                filterFreqInput[i].value = "0";
+                filterGainInput[i].value = "0";
+                filterQInput[i].value = "0";
             }
-            let pkEl = document.querySelector("div.extra-eq input.eq-constraint-type-pk");
-            let lsqEl = document.querySelector("div.extra-eq input.eq-constraint-type-lsq");
-            let hsqEl = document.querySelector("div.extra-eq input.eq-constraint-type-hsq");
-            if (pkEl) {
-                pkEl.checked = true;
-            }
-            if (lsqEl) {
-                lsqEl.checked = true;
-            }
-            if (hsqEl) {
-                hsqEl.checked = true;
-            }
-            syncEqConstraintDomToEqualizerConfig();
+            applyEqConstraintAttributesToFilterInputs();
+            refreshEqFilterConstraintViolationStyles();
+            refreshEqFilterInactiveStateForMaxBands();
+            cancelDeferredApplyEQ();
+            applyEQExec();
+            scheduleLiveEqSync();
         }
-        if (eq2chConstraintToggle) {
-            eq2chConstraintToggle.checked = false;
+        let snap = elemToFilters(true).map((f) => ({
+            disabled: !!f.disabled,
+            type: f.type,
+            freq: f.freq,
+            q: f.q,
+            gain: f.gain
+        }));
+        let bankCopy = () => snap.map((row) => ({
+            disabled: !!row.disabled,
+            type: row.type,
+            freq: row.freq,
+            q: row.q,
+            gain: row.gain
+        }));
+        if (isEqTwoChannelSupportEnabled()) {
+            eq2chBankData.both = bankCopy();
+            eq2chBankData.L = bankCopy();
+            eq2chBankData.R = bankCopy();
+        } else if (snap.length) {
+            eq2chBankData.both = snap;
         }
-        eq2chResetAllBanksToDefaultRow();
-        eq2chSetTabsVisibility(false);
-        commitEqMaxBandsFromInput({ writeBackDom: true });
+        eqFiltersUserHasEdited = true;
+        setEqFilterSelectedRow(null);
+        applyParametricEqGraphTraceFocus();
+        updateEqTraceOpacity();
+        updateEqFilterMarkers();
     };
     document.querySelector("div.extra-eq button.extra-eq-reset-btn").addEventListener("click", () => {
-        if (!window.confirm("Reset all parametric EQ bands and settings (including constraints) to their defaults?")) {
+        if (!window.confirm("Reset all EQ band values (frequency, Q, and gain) to flat? Constraint presets and limits stay as they are.")) {
             return;
         }
-        resetParametricEqBandsAndConstraintsToDefaults();
+        resetParametricEqFilterValuesOnly();
     });
     // Add new filter
     document.querySelector("div.extra-eq button.add-filter").addEventListener("click", () => {

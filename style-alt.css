@@ -1432,7 +1432,9 @@ div.extra-panel > div.extra-eq > div.select-eq-phone-model-target > div.select-e
 div.extra-panel > div.extra-eq > div.select-eq-phone,
 div.extra-panel > div.extra-eq > div.filters,
 div.extra-panel > div.extra-eq .eq-constraint-preset-row,
+div.extra-panel > div.extra-eq .eq-constraint-top-stack,
 div.extra-panel > div.extra-eq .eq-constraint-ranges-block,
+div.extra-panel > div.extra-eq .eq-constraint-2ch-row,
 div.extra-panel div.settings-row {
     margin: 0 0 0.5em 0;
 }
