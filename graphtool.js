@@ -224,7 +224,7 @@ doc.html(`
                   </div>
                   <div class="eq-constraint-2ch-row" role="group" aria-label="Stereo EQ banks">
                     <label class="live-sound-eq-toggle-label eq-constraint-2ch-toggle-label"
-                        title="Both bank applies to L and R; L and R banks add channel-specific filters on top. With Apply EQ on, live playback runs separate L/R chains (mono sources are duplicated to each side).">
+                        title="Both bank applies to L and R; L and R banks add channel-specific filters on top. With Compare on (live EQ / B), live playback runs separate L/R chains (mono sources are duplicated to each side).">
                       <span class="live-sound-eq-toggle-text">2-Channel Support</span>
                       <span class="live-sound-eq-switch">
                         <span class="live-sound-eq-switch-track">
@@ -307,11 +307,13 @@ doc.html(`
               <div class="live-sound-tools-head">
                 <h5 class="live-sound-tools-title">Sound Tools</h5>
                 <label class="live-sound-eq-toggle-label">
-                  <span class="live-sound-eq-toggle-text">Apply EQ</span>
+                  <span class="live-sound-eq-toggle-text">Compare</span>
                   <span class="live-sound-eq-switch">
-                    <span class="live-sound-eq-switch-track">
-                      <input type="checkbox" class="live-sound-eq-toggle" checked aria-label="Apply parametric EQ to live playback" />
-                      <span class="live-sound-eq-switch-thumb" aria-hidden="true"></span>
+                    <span class="live-sound-eq-switch-track live-sound-eq-switch-track--compare">
+                      <input type="checkbox" class="live-sound-eq-toggle" checked aria-label="Compare: when on (B), live playback uses parametric EQ; when off (A), reference path" />
+                      <span class="live-sound-eq-switch-thumb live-sound-eq-switch-thumb--compare" aria-hidden="true"><span class="live-sound-eq-switch-thumb-letter live-sound-eq-switch-thumb-letter--a">A</span><span class="live-sound-eq-switch-thumb-letter live-sound-eq-switch-thumb-letter--b">B</span></span>
+                      <span class="live-sound-eq-switch-ab-placeholder live-sound-eq-switch-ab-placeholder--a" aria-hidden="true"><span class="live-sound-eq-switch-ab-placeholder-ring"><span class="live-sound-eq-switch-ab-placeholder-letter">A</span></span></span>
+                      <span class="live-sound-eq-switch-ab-placeholder live-sound-eq-switch-ab-placeholder--b" aria-hidden="true"><span class="live-sound-eq-switch-ab-placeholder-ring"><span class="live-sound-eq-switch-ab-placeholder-letter">B</span></span></span>
                     </span>
                   </span>
                 </label>
@@ -3479,6 +3481,7 @@ function addExtra() {
         }
         applyParametricEqGraphTraceFocus();
         updateEqTraceOpacity();
+        updateEqFilterMarkers();
         eqSoundRangeUiHooks.syncBrushFromInputs();
     };
     extraButton.addEventListener("click", showExtraPanel);
@@ -4353,6 +4356,8 @@ function addExtra() {
     let eqHistoryLastCommitAt = 0;
     let eqHistoryTimeTicker = null;
     let eqHistoryListClickBound = false;
+    /** Pinned change-history body (one at a time); ghost trace on graph. Cleared on EQ model switch. */
+    let eqPinnedSnapshotBody = null;
     let eqHistoryPendingPreEditSnap = null;
     let eqHistoryInitBaselineSnap = null;
     const EQ_HISTORY_CAP = 100;
@@ -4463,6 +4468,39 @@ function addExtra() {
                 eqHistoryRowsEqualArr(a.banks[k] || [], b.banks[k] || []));
         }
         return eqHistoryRowsEqualArr(a.rows || [], b.rows || []);
+    };
+    /* Same as eqHistorySnapDataEqual but ignores historyEntry (for pin vs chain row). */
+    let eqHistorySnapshotBodyEqual = (a, b) => {
+        if (!a || !b) {
+            return false;
+        }
+        if (a.bandCount !== b.bandCount || !!a.twoCh !== !!b.twoCh) {
+            return false;
+        }
+        if (a.activeBank !== b.activeBank) {
+            return false;
+        }
+        if (a.twoCh && b.twoCh && a.banks && b.banks) {
+            return ["both", "L", "R"].every((k) =>
+                eqHistoryRowsEqualArr(a.banks[k] || [], b.banks[k] || []));
+        }
+        return eqHistoryRowsEqualArr(a.rows || [], b.rows || []);
+    };
+    let eqHistoryCloneSnapshotBody = (snap) => {
+        if (!snap) {
+            return null;
+        }
+        return {
+            bandCount: snap.bandCount,
+            twoCh: !!snap.twoCh,
+            activeBank: snap.activeBank,
+            rows: eqHistoryCloneBank(snap.rows || []),
+            banks: snap.banks ? {
+                both: eqHistoryCloneBank(snap.banks.both || []),
+                L: eqHistoryCloneBank(snap.banks.L || []),
+                R: eqHistoryCloneBank(snap.banks.R || [])
+            } : null
+        };
     };
     let eqHistoryRowEmpty = (r) => {
         let x = r || eqHistoryEmptyRow();
@@ -4730,9 +4768,23 @@ function addExtra() {
             if (!Number.isFinite(ix) || ix < 0 || ix >= eqHistoryChain.length) {
                 return;
             }
+            if (e.target.closest(".extra-eq-change-history-col-pin")) {
+                let body = eqHistoryCloneSnapshotBody(eqHistoryChain[ix]);
+                if (eqPinnedSnapshotBody && eqHistorySnapshotBodyEqual(eqPinnedSnapshotBody, body)) {
+                    eqPinnedSnapshotBody = null;
+                } else {
+                    eqPinnedSnapshotBody = body;
+                }
+                eqHistoryRenderLog();
+                updateEqFilterMarkers();
+                scheduleLiveEqSync();
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
             eqHistoryHead = ix;
             eqHistoryRestore(eqHistoryChain[ix]);
-        });
+        }, true);
     };
     let eqHistoryRenderLog = () => {
         let list = document.getElementById("extra-eq-change-history-list");
@@ -4761,8 +4813,31 @@ function addExtra() {
                 : (i < eqHistoryHead ? "extra-eq-change-history-row--past"
                     : "extra-eq-change-history-row--future");
             row.className = "extra-eq-change-history-row " + stateClass;
+            let pinBody = eqHistoryCloneSnapshotBody(snap);
+            let isCurrent = i === eqHistoryHead;
+            let rowPinned = !!(eqPinnedSnapshotBody && eqHistorySnapshotBodyEqual(eqPinnedSnapshotBody, pinBody));
+            if (rowPinned) {
+                row.className += " extra-eq-change-history-row--pinned";
+            }
+            let showPinSlot = isCurrent || rowPinned;
             row.setAttribute("data-eq-history-idx", String(i));
             row.setAttribute("role", "listitem");
+            let pinCol = document.createElement("span");
+            pinCol.className = "extra-eq-change-history-col";
+            if (showPinSlot) {
+                pinCol.className += " extra-eq-change-history-col-pin";
+                if (rowPinned) {
+                    pinCol.innerHTML = "<span class=\"extra-eq-change-history-pin-ab extra-eq-change-history-pin-ab--filled\" aria-hidden=\"true\"><span class=\"extra-eq-change-history-pin-ab-letter\">A</span></span>";
+                    pinCol.title = "Unpin";
+                } else {
+                    pinCol.classList.add("extra-eq-change-history-col-pin--outline");
+                    pinCol.innerHTML = "<span class=\"extra-eq-change-history-pin-ab extra-eq-change-history-pin-ab--outline\" aria-hidden=\"true\"><span class=\"extra-eq-change-history-pin-ab-letter\">A</span></span>";
+                    pinCol.title = "Pin this state (unequalized trace shows this EQ)";
+                }
+            } else {
+                pinCol.className += " extra-eq-change-history-col-pin-reserved";
+                pinCol.setAttribute("aria-hidden", "true");
+            }
             let freqEl = document.createElement("span");
             freqEl.className = "extra-eq-change-history-col extra-eq-change-history-col-freq";
             freqEl.textContent = desc.startFreq;
@@ -4780,6 +4855,7 @@ function addExtra() {
             } else {
                 timeEl.textContent = "—";
             }
+            row.appendChild(pinCol);
             row.appendChild(freqEl);
             row.appendChild(iconWrap);
             row.appendChild(midEl);
@@ -5826,7 +5902,203 @@ function addExtra() {
         }
         return best;
     };
+    let eq2chPadPinnedBankRowsForGhost = (arr, bandCount) => {
+        let filtersCopy = (arr || []).map((f) => ({
+            disabled: !!f.disabled,
+            type: f.type,
+            freq: f.freq,
+            q: f.q,
+            gain: f.gain
+        }));
+        let bc = Math.max(1, bandCount || 1);
+        while (filtersCopy.length < bc) {
+            filtersCopy.push(eq2chDefaultEmptyRow());
+        }
+        if (filtersCopy.length > bc) {
+            filtersCopy.length = bc;
+        }
+        return filtersCopy;
+    };
+    let pinnedBankRowsToApplySpecs = (bankRows, bandCount) => {
+        let padded = eq2chPadPinnedBankRowsForGhost(bankRows, bandCount);
+        let clamped = elemToFiltersClampedRowsForEqualizerApply(padded, true);
+        return clamped.filter((f) => !f.disabled && f.type && f.freq && f.q && f.gain)
+            .map((f) => ({ type: f.type, freq: f.freq, q: f.q, gain: f.gain }));
+    };
+    let eq2chMergedPinnedSpecs = (banks, chIdx, bandCount) => {
+        let bothS = pinnedBankRowsToApplySpecs(banks.both || [], bandCount);
+        if (!LR || !LR.length) {
+            return bothS;
+        }
+        let lab = LR[Math.min(chIdx, LR.length - 1)];
+        let out = bothS.slice();
+        if (lab === "L") {
+            out.push(...pinnedBankRowsToApplySpecs(banks.L || [], bandCount));
+        } else if (lab === "R") {
+            out.push(...pinnedBankRowsToApplySpecs(banks.R || [], bandCount));
+        }
+        return out;
+    };
+    /* Biquad specs from the pinned history snapshot (for live A/B when Compare is off / A). */
+    let elemToPinnedLivePlaybackSpecs = () => {
+        if (!eqPinnedSnapshotBody || !extraEnabled || !extraEQEnabled) {
+            return [];
+        }
+        if (!resolveEqGraphPhoneObj()) {
+            return [];
+        }
+        let pin = eqPinnedSnapshotBody;
+        let pinBc = pin.bandCount || 0;
+        let rows;
+        if (isEqTwoChannelSupportEnabled() && pin.twoCh && pin.banks) {
+            rows = eq2chPadBankToEqBands(eq2chPadPinnedBankRowsForGhost(pin.banks.both || [], pinBc));
+        } else {
+            rows = eqHistoryPadSnapRows({ rows: pin.rows || [], bandCount: pinBc }, pinBc);
+        }
+        return elemToFiltersClampedRowsForEqualizerApply(rows, false)
+            .filter((f) => !f.disabled && f.type && f.freq && f.q && f.gain)
+            .map((f) => ({
+                type: f.type,
+                freq: Math.min(20000, Math.max(20, f.freq)),
+                q: Math.max(1e-4, Math.min(1000, f.q)),
+                gain: Math.max(-40, Math.min(40, f.gain)),
+            }));
+    };
+    let eqGhostRawForSide = (phoneObj, sideLi) => {
+        let raws = phoneObj.rawChannels;
+        if (!raws || !LR || !LR.length || raws.length % LR.length !== 0) {
+            return firstPresentChannel(raws);
+        }
+        let nPerSide = raws.length / LR.length;
+        let bucket = [];
+        for (let s = 0; s < nPerSide; s++) {
+            let c = raws[sideLi * nPerSide + s];
+            if (c) {
+                bucket.push(c);
+            }
+        }
+        if (!bucket.length) {
+            return null;
+        }
+        return bucket.length === 1 ? bucket[0] : avgCurves(bucket);
+    };
+    let cloneEqFrPoints = (fr) => (fr && fr.length ? fr.map((pt) => [pt[0], pt[1]]) : null);
+    let computePinnedEqFrForModel = (modelP, pin) => {
+        if (!modelP || !pin || typeof Equalizer === "undefined" || !Equalizer.apply) {
+            return { ok: false };
+        }
+        let pinBc = pin.bandCount || 0;
+        let tryPinnedRowsOnRaw = (raw) => {
+            if (!raw) {
+                return null;
+            }
+            let padRows = eqHistoryPadSnapRows({ rows: pin.rows || [], bandCount: pinBc }, pinBc);
+            let specs = elemToFiltersClampedRowsForEqualizerApply(padRows.map((r) => ({
+                disabled: !!r.disabled,
+                type: r.type,
+                freq: r.freq,
+                q: r.q,
+                gain: r.gain
+            })), true).filter((f) => !f.disabled && f.type && f.freq && f.q && f.gain)
+                .map((f) => ({ type: f.type, freq: f.freq, q: f.q, gain: f.gain }));
+            if (!specs.length) {
+                return null;
+            }
+            return Equalizer.apply(raw, specs);
+        };
+        let frBySide = null;
+        let frSingle = null;
+        try {
+            if (isEqTwoChannelSupportEnabled() && pin.twoCh && pin.banks && LR && LR.length >= 2
+                    && modelP.rawChannels && modelP.rawChannels.length % LR.length === 0) {
+                frBySide = [];
+                for (let li = 0; li < LR.length; li++) {
+                    let rawSide = eqGhostRawForSide(modelP, li);
+                    let specs = eq2chMergedPinnedSpecs(pin.banks, li, pinBc);
+                    frBySide[li] = (rawSide && specs.length) ? Equalizer.apply(rawSide, specs) : null;
+                }
+                let curves = frBySide.filter(Boolean);
+                if (curves.length >= 2) {
+                    frSingle = avgCurves(curves);
+                } else if (curves.length === 1) {
+                    frSingle = curves[0];
+                }
+            }
+            if (!frSingle) {
+                let raw = eq2chSharedMeasurementBaseRaw(modelP) || firstPresentChannel(modelP.rawChannels);
+                frSingle = tryPinnedRowsOnRaw(raw);
+            }
+        } catch (err) {
+            return { ok: false };
+        }
+        if (!frSingle) {
+            return { ok: false };
+        }
+        let usableSides = frBySide && frBySide.some(Boolean);
+        return { ok: true, frSingle, frBySide: usableSides ? frBySide : null };
+    };
+    let syncEqPinnedParentTrace = () => {
+        let pinGloballyActive = !!(extraEnabled && extraEQEnabled && eqPinnedSnapshotBody);
+        let modelP = resolveEqGraphPhoneObj();
+        let didRestore = false;
+        activePhones.forEach((p) => {
+            if (p.isTarget || !p._eqPinParentOverride) {
+                return;
+            }
+            let keep = pinGloballyActive && modelP && !modelP.isTarget && p === modelP;
+            if (!keep) {
+                p._eqPinParentOverride = false;
+                setCurves(p, p.avg, undefined, p.ssamp);
+                normalizePhone(p);
+                didRestore = true;
+            }
+        });
+        if (didRestore) {
+            rebindGraphPathSelectionAndRedraw();
+        }
+        if (!pinGloballyActive || !modelP || modelP.isTarget) {
+            return;
+        }
+        let frPack = computePinnedEqFrForModel(modelP, eqPinnedSnapshotBody);
+        if (!frPack.ok) {
+            return;
+        }
+        let ac = modelP.activeCurves;
+        if (!ac || !ac.length) {
+            return;
+        }
+        modelP._eqPinParentOverride = true;
+        if (modelP.avg && ac.length === 1) {
+            let c0 = cloneEqFrPoints(frPack.frSingle);
+            if (c0) {
+                ac[0].l = c0;
+            }
+        } else if (!modelP.avg && frPack.frBySide && LR && LR.length) {
+            ac.forEach((curve) => {
+                let sideFr = typeof curve.o === "number" ? frPack.frBySide[curve.o] : null;
+                let src = sideFr || frPack.frSingle;
+                let cpy = cloneEqFrPoints(src);
+                if (cpy) {
+                    curve.l = cpy;
+                }
+            });
+        } else {
+            ac.forEach((curve) => {
+                let cpy = cloneEqFrPoints(frPack.frSingle);
+                if (cpy) {
+                    curve.l = cpy;
+                }
+            });
+        }
+        normalizePhone(modelP);
+        if (baseline.p === modelP) {
+            baseline = getBaseline(modelP);
+            updateYCenter();
+        }
+        gpath.selectAll("path").call(redrawLine);
+    };
     updateEqFilterMarkers = () => {
+        syncEqPinnedParentTrace();
         let layout = buildEqGraphMarkerLayout();
         if (!layout || !layout.rows.length) {
             gEqFilterMarkers.selectAll("circle.eq-filter-marker").remove();
@@ -6298,6 +6570,7 @@ function addExtra() {
         eq2chResetAllBanksToDefaultRow();
         filtersToElem([{ disabled: false, type: "PK", freq: 0, q: 0, gain: 0 }]);
         eqFiltersUserHasEdited = false;
+        eqPinnedSnapshotBody = null;
         if (eqPhoneSelect) {
             eqPhoneSelect.dataset.eqLastModel = eqPhoneSelect.value || "";
         }
@@ -6308,6 +6581,7 @@ function addExtra() {
         applyParametricEqGraphTraceFocus();
         updateEqTraceOpacity();
         updateEqFilterMarkers();
+        eqHistoryRenderLog();
     };
     updateFilterElements();
     updateEqFilterMarkers();
@@ -6326,6 +6600,8 @@ function addExtra() {
             eq2chResetAllBanksToDefaultRow();
             filtersToElem([{ disabled: false, type: "PK", freq: 0, q: 0, gain: 0 }]);
             eqFiltersUserHasEdited = false;
+            eqPinnedSnapshotBody = null;
+            eqHistoryRenderLog();
         }
         eqPhoneSelect.dataset.eqLastModel = next;
         setEqFilterSelectedRow(null);
@@ -7989,7 +8265,7 @@ function addExtra() {
         !livePlaybackEqToggle || livePlaybackEqToggle.checked;
     let mapFilterTypeToBiquad = (t) =>
         (t === "LSQ" ? "lowshelf" : t === "HSQ" ? "highshelf" : "peaking");
-    /* Same bands as live biquads; independent of the Apply EQ toggle (used for
+    /* Same bands as live biquads; independent of the Compare toggle (used for
        preamp + A/B level match when EQ is bypassed). */
     let elemToLiveEqSpecsClamped = () => {
         let rows;
@@ -8010,7 +8286,7 @@ function addExtra() {
     };
     let computeLiveEqSpecs = () => {
         if (!isLivePlaybackEqEnabled()) {
-            return [];
+            return elemToPinnedLivePlaybackSpecs();
         }
         return elemToLiveEqSpecsClamped();
     };
@@ -8068,7 +8344,9 @@ function addExtra() {
             }
             return { raw: rawL, frEq: frEqL, preDb: (preL + preR) / 2 };
         }
-        let specs = elemToLiveEqSpecsClamped();
+        let specs = isLivePlaybackEqEnabled()
+            ? elemToLiveEqSpecsClamped()
+            : elemToPinnedLivePlaybackSpecs();
         if (!specs.length) {
             return null;
         }

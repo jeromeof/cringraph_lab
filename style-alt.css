@@ -1141,7 +1141,7 @@ div.miscTools button#theme:active {
 div.extra-panel {
     flex-direction: column;
     overflow: auto;
-    /* Apply EQ + constraint type toggles (shared track / thumb) */
+    /* Compare (live EQ) + constraint type toggles (shared track / thumb) */
     --eq-switch-track-w: 54px;
     --eq-switch-track-h: 24px;
     --eq-switch-thumb: 14px;
@@ -1251,7 +1251,7 @@ div.extra-eq-change-history-list {
 div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row {
     display: grid !important;
     /* Fixed tracks: "20000Hz" (no commas), time compact (e.g. 9999h); middle flexes */
-    grid-template-columns: 10ch 14px minmax(0, 1fr) 6ch;
+    grid-template-columns: 16px 9ch 14px minmax(0, 1fr) 4.2ch;
     align-items: center;
     column-gap: 8px;
     flex: none !important;
@@ -1289,6 +1289,16 @@ div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-
     background-color: var(--background-color-inputs) !important;
     border: none !important;
     color: var(--background-color-contrast-more) !important;
+}
+
+div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row--pinned.extra-eq-change-history-row--past,
+div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row--pinned.extra-eq-change-history-row--current,
+div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row--pinned.extra-eq-change-history-row--future {
+    color: var(--font-color-primary) !important;
+}
+
+div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row--pinned .extra-eq-change-history-col-time {
+    color: var(--font-color-primary) !important;
 }
 
 .extra-eq-change-history-col {
@@ -1352,10 +1362,84 @@ div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-
     text-align: right;
     font-size: 12px;
     justify-self: stretch;
+    min-width: 0;
+    max-width: 4.2ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row .extra-eq-change-history-col-time {
     color: var(--background-color-contrast-more) !important;
+}
+
+.extra-eq-change-history-col-pin-reserved {
+    min-width: 16px;
+    width: 16px;
+    pointer-events: none;
+}
+
+.extra-eq-change-history-col-pin {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    cursor: pointer;
+}
+
+/* 14px circle + “A”: same letter styling as .eq-2ch-bank-seg-label (font-secondary 11px bold). */
+div.extra-panel .extra-eq-change-history-pin-ab {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    min-width: 14px;
+    min-height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+div.extra-panel .extra-eq-change-history-pin-ab--outline {
+    border: var(--eq-switch-border) solid var(--background-color-contrast-more);
+    background-color: transparent;
+}
+
+div.extra-panel .extra-eq-change-history-pin-ab--filled {
+    border: var(--eq-switch-border) solid transparent;
+    background-color: var(--font-color-primary);
+}
+
+div.extra-panel .extra-eq-change-history-pin-ab-letter,
+div.extra-panel .live-sound-eq-switch-thumb--compare .live-sound-eq-switch-thumb-letter,
+div.extra-panel .live-sound-eq-switch-ab-placeholder-letter {
+    font-family: var(--font-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: 0.02em;
+    transition: color 200ms ease, text-shadow 200ms ease;
+}
+
+div.extra-panel .live-sound-eq-switch-thumb--compare .live-sound-eq-switch-thumb-letter {
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+div.extra-panel .live-sound-eq-switch-ab-placeholder-letter {
+    color: var(--background-color-contrast-more);
+    text-shadow: none;
+}
+
+/* Beat row `span { color: inherit !important }` for pin “A” colors */
+div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row .extra-eq-change-history-pin-ab--outline .extra-eq-change-history-pin-ab-letter {
+    color: var(--background-color-contrast-more) !important;
+    text-shadow: none !important;
+}
+
+div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row .extra-eq-change-history-pin-ab--filled .extra-eq-change-history-pin-ab-letter {
+    color: var(--background-color) !important;
+    text-shadow: none !important;
 }
 
 .extra-eq-change-history-svg {
@@ -2527,6 +2611,7 @@ div.extra-panel .live-sound-eq-switch-track:has(.eq-constraint-2ch-toggle:focus-
 @media (prefers-reduced-motion: reduce) {
     div.extra-panel .live-sound-eq-switch-track,
     div.extra-panel .live-sound-eq-switch-thumb,
+    div.extra-panel .live-sound-eq-switch-ab-placeholder,
     div.extra-panel > div.extra-eq .eq-2ch-bank-seg-track,
     div.extra-panel > div.extra-eq .eq-2ch-bank-seg-thumb,
     div.extra-panel > div.extra-eq .eq-2ch-bank-seg-label {
@@ -2547,11 +2632,84 @@ div.extra-panel .live-sound-eq-switch-thumb {
     pointer-events: none;
 }
 
-div.extra-panel .live-sound-eq-toggle:checked + .live-sound-eq-switch-thumb,
+div.extra-panel .live-sound-eq-switch-thumb--compare {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+div.extra-panel .live-sound-eq-switch-track--compare:has(input.live-sound-eq-toggle:not(:checked)) .live-sound-eq-switch-thumb--compare .live-sound-eq-switch-thumb-letter--b {
+    display: none;
+}
+
+div.extra-panel .live-sound-eq-switch-track--compare:has(input.live-sound-eq-toggle:checked) .live-sound-eq-switch-thumb--compare .live-sound-eq-switch-thumb-letter--a {
+    display: none;
+}
+
 div.extra-panel .eq-constraint-type-toggle:checked + .live-sound-eq-switch-thumb,
 div.extra-panel .eq-constraint-2ch-toggle:checked + .live-sound-eq-switch-thumb {
     transform: translateX(var(--eq-switch-travel));
     background-color: var(--accent-color);
+}
+
+div.extra-panel .live-sound-eq-switch-track--compare:has(input.live-sound-eq-toggle:checked) .live-sound-eq-switch-thumb--compare {
+    transform: translateX(var(--eq-switch-travel));
+    background-color: var(--accent-color);
+}
+
+div.extra-panel .live-sound-eq-switch-track--compare:not(:has(input.live-sound-eq-toggle:checked)) .live-sound-eq-switch-thumb--compare {
+    background-color: var(--font-color-primary);
+}
+
+div.extra-panel .live-sound-eq-switch-track--compare:not(:has(input.live-sound-eq-toggle:checked)) .live-sound-eq-switch-thumb--compare .live-sound-eq-switch-thumb-letter--a {
+    color: var(--background-color);
+    text-shadow: none;
+}
+
+/* Outline A/B at idle end of Compare track (same ring as history pin outline; track is already position: relative). */
+div.extra-panel .live-sound-eq-switch-ab-placeholder {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 0;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 150ms ease;
+}
+
+div.extra-panel .live-sound-eq-switch-ab-placeholder--a {
+    left: var(--eq-switch-gap);
+}
+
+div.extra-panel .live-sound-eq-switch-ab-placeholder--b {
+    right: var(--eq-switch-gap);
+}
+
+div.extra-panel .live-sound-eq-switch-ab-placeholder-ring {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    min-width: 14px;
+    min-height: 14px;
+    border-radius: 50%;
+    border: none;
+    background-color: transparent;
+}
+
+div.extra-panel .live-sound-eq-switch-track--compare:has(input.live-sound-eq-toggle:checked) .live-sound-eq-switch-ab-placeholder--a {
+    opacity: 1;
+}
+
+div.extra-panel .live-sound-eq-switch-track--compare:not(:has(input.live-sound-eq-toggle:checked)) .live-sound-eq-switch-ab-placeholder--b {
+    opacity: 1;
 }
 
 div.extra-panel .live-sound-band {
