@@ -1251,7 +1251,7 @@ div.extra-eq-change-history-list {
 div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row {
     display: grid !important;
     /* Fixed tracks: "20000Hz" (no commas), time compact (e.g. 9999h); middle flexes */
-    grid-template-columns: 10ch 22px minmax(0, 1fr) 6ch 22px;
+    grid-template-columns: 10ch 14px minmax(0, 1fr) 6ch;
     align-items: center;
     column-gap: 8px;
     flex: none !important;
@@ -1318,6 +1318,29 @@ div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-
     line-height: 0;
 }
 
+/* Same --icon-plus mask as add-filter / phone list (not the small stroke SVGs) */
+.extra-eq-change-history-icon-plus-mask {
+    display: block;
+    box-sizing: border-box;
+    width: 10px;
+    height: 10px;
+    flex-shrink: 0;
+    background-color: currentColor;
+    mask: var(--icon-plus);
+    -webkit-mask: var(--icon-plus);
+    mask-size: 10px;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-size: 10px;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+}
+
+.extra-eq-change-history-icon-plus-mask.extra-eq-change-history-icon-plus-mask--rot45 {
+    transform: rotate(45deg);
+    transform-origin: center;
+}
+
 .extra-eq-change-history-col-delta {
     word-break: break-word;
     font-size: 13px;
@@ -1331,11 +1354,8 @@ div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-
     justify-self: stretch;
 }
 
-.extra-eq-change-history-col-bookmark {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    line-height: 0;
+div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row .extra-eq-change-history-col-time {
+    color: var(--background-color-contrast-more) !important;
 }
 
 .extra-eq-change-history-svg {
@@ -1346,12 +1366,6 @@ div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-
 
 .extra-eq-change-history-svg-stroke {
     fill: none;
-}
-
-.extra-eq-change-history-icon-rotate {
-    display: flex;
-    transform: rotate(45deg);
-    transform-origin: center;
 }
 
 div.extra-panel span {

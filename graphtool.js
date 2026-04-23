@@ -402,7 +402,7 @@ doc.html(`
             <div class="extra-eq-change-history" id="extra-eq-change-history" hidden>
               <div class="extra-eq-change-history-head">
                 <h5 class="extra-eq-change-history-title">Change History</h5>
-                <p class="extra-eq-change-history-hint">⌘Z / ⌘⇧Z or ⌘Y to undo / redo. Rows update after a short pause while editing.</p>
+                <p class="extra-eq-change-history-hint">Undo: Ctrl+Z / ⌘Z, Redo: Shift+Ctrl+Z / Shift+⌘Z</p>
               </div>
               <div class="extra-eq-change-history-list" id="extra-eq-change-history-list" role="list"></div>
             </div>
@@ -4416,6 +4416,9 @@ function addExtra() {
         };
         if (meta && meta.historyEntry && meta.historyEntry.kind) {
             out.historyEntry = { kind: String(meta.historyEntry.kind) };
+            if (meta.historyEntry.removeFreq != null && Number.isFinite(+meta.historyEntry.removeFreq)) {
+                out.historyEntry.removeFreq = +meta.historyEntry.removeFreq;
+            }
         }
         return out;
     };
@@ -4509,6 +4512,14 @@ function addExtra() {
             return {
                 iconKind: "autoeq",
                 startFreq: "Auto",
+                middle: ""
+            };
+        }
+        if (next.historyEntry && next.historyEntry.kind === "removeBand") {
+            let rf = next.historyEntry.removeFreq;
+            return {
+                iconKind: "delete",
+                startFreq: eqHistoryFormatHz(rf),
                 middle: ""
             };
         }
@@ -4618,14 +4629,6 @@ function addExtra() {
         + "<path d=\"M15 8l4 4\" />"
         + "</svg>"
     );
-    let eqHistorySvgPlus = () => (
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"extra-eq-change-history-svg extra-eq-change-history-svg-stroke\" aria-hidden=\"true\">"
-        + "<path stroke=\"none\" d=\"M0 0h24v24H0z\" fill=\"none\" />"
-        + "<path d=\"M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0\" />"
-        + "<path d=\"M9 12h6\" />"
-        + "<path d=\"M12 9v6\" />"
-        + "</svg>"
-    );
     let eqHistorySvgReset = () => (
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"extra-eq-change-history-svg extra-eq-change-history-svg-stroke\" aria-hidden=\"true\">"
         + "<path stroke=\"none\" d=\"M0 0h24v24H0z\" fill=\"none\" />"
@@ -4640,18 +4643,12 @@ function addExtra() {
         + "<path d=\"M3 14a21 21 0 0 0 1.652 -.532c2.542 -.953 3.853 -2.238 4.816 -4.806a20 20 0 0 0 .532 -1.662a20 20 0 0 0 .532 1.662c.963 2.567 2.275 3.853 4.816 4.806q .75 .28 1.652 .532a21 21 0 0 0 -1.652 .532c-2.542 .953 -3.854 2.238 -4.816 4.806a20 20 0 0 0 -.532 1.662a20 20 0 0 0 -.532 -1.662c-.963 -2.568 -2.275 -3.853 -4.816 -4.806a21 21 0 0 0 -1.652 -.532\" />"
         + "</svg>"
     );
-    let eqHistorySvgBookmark = () => (
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"extra-eq-change-history-svg extra-eq-change-history-svg-stroke\" aria-hidden=\"true\">"
-        + "<path stroke=\"none\" d=\"M0 0h24v24H0z\" fill=\"none\" />"
-        + "<path d=\"M18 7v14l-6 -4l-6 4v-14a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4\" />"
-        + "</svg>"
-    );
     let eqHistoryRowIconHtml = (iconKind) => {
         if (iconKind === "plus") {
-            return eqHistorySvgPlus();
+            return "<span class=\"extra-eq-change-history-icon-plus-mask\" aria-hidden=\"true\"></span>";
         }
         if (iconKind === "delete") {
-            return "<span class=\"extra-eq-change-history-icon-rotate\">" + eqHistorySvgPlus() + "</span>";
+            return "<span class=\"extra-eq-change-history-icon-plus-mask extra-eq-change-history-icon-plus-mask--rot45\" aria-hidden=\"true\"></span>";
         }
         if (iconKind === "reset") {
             return eqHistorySvgReset();
@@ -4783,14 +4780,10 @@ function addExtra() {
             } else {
                 timeEl.textContent = "—";
             }
-            let bmEl = document.createElement("span");
-            bmEl.className = "extra-eq-change-history-col extra-eq-change-history-col-bookmark";
-            bmEl.innerHTML = eqHistorySvgBookmark();
             row.appendChild(freqEl);
             row.appendChild(iconWrap);
             row.appendChild(midEl);
             row.appendChild(timeEl);
-            row.appendChild(bmEl);
             list.appendChild(row);
         }
     };
@@ -5962,9 +5955,18 @@ function addExtra() {
                 hasFiltersContainer: !!filtersContainer
             });
         }
+        /* Do not log type/enable-only here when band count changed vs head — e.g. delete band shifts
+           rows and changes the sig, but the real step is eqHistoryCommitTransaction(removeBand). */
+        let headSnapForBandCount = (eqHistoryChain.length > 0 && eqHistoryHead >= 0
+                && eqHistoryHead < eqHistoryChain.length)
+            ? eqHistoryChain[eqHistoryHead]
+            : null;
+        let bandCountMatchesHead = !headSnapForBandCount
+            || (headSnapForBandCount.bandCount === eqBands);
         if (typeEnableSigNow != null && eqHistoryLastApplyTypeEnableSig !== null
                 && typeEnableSigNow !== eqHistoryLastApplyTypeEnableSig
-                && !eqHistoryRestoring && extraEQEnabled && filtersContainer) {
+                && !eqHistoryRestoring && extraEQEnabled && filtersContainer
+                && bandCountMatchesHead) {
             eqHistoryClearTimers();
             eqHistoryPushSnapshot(eqHistoryTakeSnapshot(), { fromDebounced: true, bypassSnapEqual: true });
         } else if (typeEnableSigNow != null && eqHistoryLastApplyTypeEnableSig !== null
@@ -6416,13 +6418,27 @@ function addExtra() {
     // Remove last filter
     document.querySelector("div.extra-eq button.remove-filter").addEventListener("click", () => {
         eqFiltersUserHasEdited = true;
+        let all = elemToFilters(true);
+        let removeHist = null;
+        if (eqBands > 1 && all.length) {
+            removeHist = { historyEntry: {
+                kind: "removeBand",
+                removeFreq: +all[all.length - 1].freq || 0
+            } };
+        }
         eqBands = Math.max(eqBands - 1, 1);
         updateFilterElements();
         applyEQ(); // May removed effective filter
         scheduleLiveEqSync();
-        eqHistoryCommitTransaction();
+        eqHistoryCommitTransaction(undefined, removeHist);
     });
     let resolveEqFilterRowIndexForShortcut = () => {
+        /* Prefer graph / row-highlight selection. Focus can stay in another band's input after
+           clicking a marker, which used to make ⌘/Alt+Backspace delete the wrong row. */
+        if (eqFilterSelectedRow !== null && eqFilterSelectedRow >= 0
+                && eqFilterSelectedRow < eqBands) {
+            return eqFilterSelectedRow;
+        }
         let el = document.activeElement;
         if (el && filtersContainer && filtersContainer.contains(el)) {
             let rowEl = el.closest("div.filter");
@@ -6434,10 +6450,6 @@ function addExtra() {
                 }
             }
         }
-        if (eqFilterSelectedRow !== null && eqFilterSelectedRow >= 0
-                && eqFilterSelectedRow < eqBands) {
-            return eqFilterSelectedRow;
-        }
         return null;
     };
     let deleteSelectedEqFilterRow = (rowIx) => {
@@ -6446,7 +6458,12 @@ function addExtra() {
             return;
         }
         let all = elemToFilters(true);
+        let removeHist = null;
         if (eqBands > 1) {
+            removeHist = { historyEntry: {
+                kind: "removeBand",
+                removeFreq: +all[ix].freq || 0
+            } };
             all.splice(ix, 1);
             eqBands = all.length;
             updateFilterElements();
@@ -6459,7 +6476,7 @@ function addExtra() {
         cancelDeferredApplyEQ();
         applyEQExec();
         scheduleLiveEqSync();
-        eqHistoryCommitTransaction();
+        eqHistoryCommitTransaction(undefined, removeHist);
     };
     // Sort filters by frequency
     document.querySelector("div.extra-eq button.sort-filters").addEventListener("click", () => {
@@ -10796,10 +10813,10 @@ function addExtra() {
             return;
         }
         /* ⌘/Ctrl+Backspace or Alt+Backspace: remove/clear selected EQ band (see deleteSelectedEqFilterRow). */
-        if (!e.metaKey && !e.altKey) {
+        if (e.code !== "Backspace") {
             return;
         }
-        if (e.code !== "Backspace") {
+        if (!e.metaKey && !e.altKey && !e.ctrlKey) {
             return;
         }
         let tab = document.querySelector("div.select");
