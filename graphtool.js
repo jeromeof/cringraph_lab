@@ -6213,10 +6213,44 @@ function addExtra() {
             applyEQRafId = null;
         }
     };
+    let filterRowIsAllZeros = (i) => {
+        let f = parseInt(filterFreqInput[i].value, 10) || 0;
+        let q = parseFloat(filterQInput[i].value) || 0;
+        let g = parseFloat(filterGainInput[i].value) || 0;
+        return f === 0 && q === 0 && g === 0;
+    };
+    /** When every visible row has freq/q/gain set, append one blank row (capped like graph add-filter). */
+    let maybeAutoGrowEqBandsForTrailingBlank = (execOpt) => {
+        if (!filtersContainer || !filterFreqInput || !filterFreqInput.length
+                || !extraEQEnabled || eqHistoryRestoring) {
+            return;
+        }
+        if (execOpt && execOpt.liveGraphEqDrag) {
+            return;
+        }
+        let maxCap = getEffectiveEqMaxBands();
+        if (eqBands >= maxCap) {
+            return;
+        }
+        for (let i = 0; i < eqBands; i++) {
+            if (filterRowIsAllZeros(i)) {
+                return;
+            }
+        }
+        eqFiltersUserHasEdited = true;
+        eqBands = Math.min(eqBands + 1, maxCap);
+        updateFilterElements();
+        if (isEqTwoChannelSupportEnabled()) {
+            eq2chFlushDomToActiveBank();
+        }
+        scheduleLiveEqSync();
+        eqHistoryNotifyChange();
+    };
     let applyEQExec = (execOpt) => {
         execOpt = execOpt || {};
-        refreshEqFilterConstraintViolationStyles();
         eq2chFlushDomToActiveBank();
+        maybeAutoGrowEqBandsForTrailingBlank(execOpt);
+        refreshEqFilterConstraintViolationStyles();
         let typeEnableSigNow = eqHistoryCaptureTypeEnableSigFromDom();
         if (typeEnableSigNow != null && eqHistoryLastApplyTypeEnableSig !== null
                 && typeEnableSigNow !== eqHistoryLastApplyTypeEnableSig) {
@@ -9328,12 +9362,6 @@ function addExtra() {
             toneGenFadeCleanupTimer = null;
             toneGeneratorGraphTeardown();
         }, ms);
-    };
-    let filterRowIsAllZeros = (i) => {
-        let f = parseInt(filterFreqInput[i].value, 10) || 0;
-        let q = parseFloat(filterQInput[i].value) || 0;
-        let g = parseFloat(filterGainInput[i].value) || 0;
-        return f === 0 && q === 0 && g === 0;
     };
     const EQ_GRAPH_BASE_GAIN = 0.1;
     /* Movement past this (px) starts a drag; first motion picks freq-only vs gain-only by |dx| vs |dy|. */
