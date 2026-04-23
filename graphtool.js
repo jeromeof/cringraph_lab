@@ -10107,7 +10107,7 @@ function addExtra() {
     }, true);
     toneGeneratorAddFilterButton.addEventListener("click", () => {
         let hz = parseInt(toneGeneratorText.innerText, 10) || 0;
-        addPeakingFilterFromHz(hz);
+        addPeakingFilterFromHz(hz, EQ_GRAPH_BASE_GAIN);
     });
     pinkNoisePlayButton.addEventListener("click", () => {
         if (pinkNoisePlaying) {
