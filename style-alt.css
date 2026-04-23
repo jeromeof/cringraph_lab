@@ -1170,34 +1170,188 @@ div.extra-panel h5 {
     color: var(--accent-color-contrast);
 }
 
-div.extra-upload {
+/* Same panel-section shell as extra-eq / live-sound-tools: direct child of div.extra-panel gets margin from div.extra-panel > div */
+div.extra-upload,
+div.extra-eq-change-history {
     display: flex;
     flex-wrap: wrap;
 }
 
-div.extra-upload h5 {
-    flex: 100% 0 0;
+div.extra-upload-head,
+div.extra-eq-change-history-head {
+    flex: 0 0 100%;
+    width: 100%;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
 }
 
-div.extra-upload button {
-    flex: calc(50% - 2px) 1 1;
+/* Full-width titles; vertical margin from div.extra-panel h5 (do not zero — Change History must match Upload Data) */
+h5.extra-upload-data-title,
+div.extra-eq-change-history-head h5.extra-eq-change-history-title {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 100%;
 }
 
-div.extra-upload button + button {
-    margin-left: 4px;
+div.extra-upload-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
-div.extra-upload span {
-    order: 0;
-    flex: 100% 0 0;
+div.extra-panel div.extra-upload-actions button {
+    flex: calc(50% - 2px) 1 1 !important;
+    min-width: 0;
+}
+
+div.extra-panel div.extra-upload-actions button + button {
+    margin-left: 0;
+}
+
+div.extra-upload-head .extra-upload-note,
+div.extra-eq-change-history-head .extra-eq-change-history-hint {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 100%;
     margin: 0 0 8px 0;
-}
-
-div.extra-upload span.extra-upload-note {
+    padding: 0;
     font-family: var(--font-primary);
     font-size: 12px;
     line-height: 1.35;
     font-weight: 400;
+    color: var(--background-color-contrast-more);
+}
+
+div.extra-eq-change-history-list {
+    flex: 0 0 100%;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.extra-eq-change-history-empty {
+    font-family: var(--font-primary);
+    font-size: 12px;
+    line-height: 1.35;
+    font-weight: 400;
+    color: var(--background-color-contrast-more);
+    padding: 12px;
+}
+
+/* EQ history rows: override div.extra-panel button (flex, padding, bg !important, border, capitalize). */
+div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row {
+    display: grid !important;
+    /* Fixed tracks: "20000Hz" (no commas), time compact (e.g. 9999h); middle flexes */
+    grid-template-columns: 10ch 22px minmax(0, 1fr) 6ch 22px;
+    align-items: center;
+    column-gap: 8px;
+    flex: none !important;
+    order: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 12px !important;
+    text-align: left;
+    font-family: var(--font-primary);
+    line-height: 1.2 !important;
+    font-size: 13px;
+    font-weight: 400 !important;
+    text-transform: none !important;
+    white-space: normal !important;
+    border-radius: 0;
+    cursor: pointer;
+    box-sizing: border-box;
+    outline: none;
+}
+
+div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row--past {
+    background-color: var(--background-color-inputs) !important;
+    border: none !important;
+    color: var(--font-color-primary) !important;
+}
+
+div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row--current {
+    background-color: var(--background-color-contrast) !important;
+    border: none !important;
+    color: var(--font-color-primary) !important;
+}
+
+div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row--future {
+    background-color: var(--background-color-inputs) !important;
+    border: none !important;
+    color: var(--background-color-contrast-more) !important;
+}
+
+.extra-eq-change-history-col {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+}
+
+div.extra-panel div.extra-eq-change-history-list button.extra-eq-change-history-row span {
+    margin: 0 !important;
+    padding: 0 !important;
+    color: inherit !important;
+}
+
+.extra-eq-change-history-col-freq {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    font-size: 13px;
+    text-align: right;
+    justify-self: stretch;
+}
+
+.extra-eq-change-history-col-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+}
+
+.extra-eq-change-history-col-delta {
+    word-break: break-word;
+    font-size: 13px;
+}
+
+.extra-eq-change-history-col-time {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    text-align: right;
+    font-size: 12px;
+    justify-self: stretch;
+}
+
+.extra-eq-change-history-col-bookmark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+}
+
+.extra-eq-change-history-svg {
+    display: block;
+    width: 16px;
+    height: 16px;
+}
+
+.extra-eq-change-history-svg-stroke {
+    fill: none;
+}
+
+.extra-eq-change-history-icon-rotate {
+    display: flex;
+    transform: rotate(45deg);
+    transform-origin: center;
 }
 
 div.extra-panel span {

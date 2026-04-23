@@ -389,12 +389,22 @@ doc.html(`
               </div>
             </div>
             <div class="extra-upload">
-              <h5>Upload Data</h2>
-              <button class="upload-fr">Upload FR</button>
-              <button class="upload-target">Upload Target</button>
-              <br />
-              <span class="extra-upload-note">Warning: Measurements from another rig are not compatible with measurements or targets in this database.</span>
+              <div class="extra-upload-head">
+                <h5 class="extra-upload-data-title">Upload Data</h5>
+                <span class="extra-upload-note">Warning: Measurements from another rig are not compatible with measurements or targets in this database.</span>
+                <div class="extra-upload-actions">
+                  <button type="button" class="upload-fr">Upload FR</button>
+                  <button type="button" class="upload-target">Upload Target</button>
+                </div>
+              </div>
               <form style="display:none"><input type="file" id="file-fr" accept=".csv,.txt" /></form>
+            </div>
+            <div class="extra-eq-change-history" id="extra-eq-change-history" hidden>
+              <div class="extra-eq-change-history-head">
+                <h5 class="extra-eq-change-history-title">Change History</h5>
+                <p class="extra-eq-change-history-hint">⌘Z / ⌘⇧Z or ⌘Y to undo / redo. Rows update after a short pause while editing.</p>
+              </div>
+              <div class="extra-eq-change-history-list" id="extra-eq-change-history-list" role="list"></div>
             </div>
           </div>
         </div>
@@ -3443,6 +3453,11 @@ function addExtra() {
     }
     if (!extraEQEnabled) {
         document.querySelector("div.extra-panel > div.extra-eq").style["display"] = "none";
+    } else {
+        let eqHistWrap = document.getElementById("extra-eq-change-history");
+        if (eqHistWrap) {
+            eqHistWrap.hidden = false;
+        }
     }
     if (!extraToneGeneratorEnabled) {
         document.querySelector("div.extra-panel div.extra-tone-generator").style["display"] = "none";
@@ -3470,11 +3485,11 @@ function addExtra() {
     // Upload function
     let uploadType = null;
     let fileFR = document.querySelector("#file-fr");
-    document.querySelector("div.extra-upload > button.upload-fr").addEventListener("click", () => {
+    document.querySelector("div.extra-upload button.upload-fr").addEventListener("click", () => {
         uploadType = "fr";
         fileFR.click();
     });
-    document.querySelector("div.extra-upload > button.upload-target").addEventListener("click", () => {
+    document.querySelector("div.extra-upload button.upload-target").addEventListener("click", () => {
         uploadType = "target";
         fileFR.click();
     });
@@ -3643,18 +3658,61 @@ function addExtra() {
     /* Until the user edits filter rows or drags graph nodes, graphic EQ may auto-sync rows from constraints. */
     let eqFiltersUserHasEdited = false;
     let eqFilterSelectedRow = null;
+    /* Skip debounced history only for freq/gain/Q inputs while an EQ graph drag is active — those
+       update continuously from the pointer; type / enable changes must still notify. */
+    let eqHistorySkipNotifyForLiveGraphFilterInput = (t) => {
+        let stPtr = eqGraphPointerState;
+        return !!(stPtr && stPtr.mode === "eq" && stPtr.dragging && t && t.matches
+            && t.matches("input[name='freq'], input[name='q'], input[name='gain']"));
+    };
     if (filtersContainer) {
         filtersContainer.addEventListener("input", (e) => {
             let t = e.target;
             if (t && t.closest && filtersContainer.contains(t) && t.closest("div.filter")) {
                 eqFiltersUserHasEdited = true;
+                /* Type / band-enable use discrete history on `change` only; debounced notify here would
+                   double-commit or coalesce with freq edits after MIN_GAP deferral. */
+                if (t.matches && (t.matches("select[name='type']") || t.matches("input[name='enabled']"))) {
+                    return;
+                }
+                if (!eqHistorySkipNotifyForLiveGraphFilterInput(t)) {
+                    eqHistoryNotifyChange();
+                }
             }
         }, true);
         filtersContainer.addEventListener("change", (e) => {
             let t = e.target;
             if (t && t.closest && filtersContainer.contains(t) && t.closest("div.filter")) {
                 eqFiltersUserHasEdited = true;
+                if (t.matches && (t.matches("select[name='type']") || t.matches("input[name='enabled']"))) {
+                    if (t.matches("select[name='type']")) {
+                        eqHistoryDebugLog("filtersContainer change (capture) type select", {
+                            value: t.value,
+                            activeEl: document.activeElement && document.activeElement.getAttribute
+                                ? document.activeElement.getAttribute("name")
+                                : null
+                        });
+                    }
+                    /* History for type/enable is recorded from applyEQExec (runs after applyEQ), not here. */
+                    return;
+                }
+                if (!eqHistorySkipNotifyForLiveGraphFilterInput(t)) {
+                    eqHistoryNotifyChange();
+                }
             }
+        }, true);
+        filtersContainer.addEventListener("focusin", (e) => {
+            let t = e.target;
+            if (!t || !t.matches || !t.matches("input[name='freq'], input[name='q'], input[name='gain'], select[name='type']")) {
+                return;
+            }
+            if (!t.closest || !t.closest("div.filter") || !filtersContainer.contains(t.closest("div.filter"))) {
+                return;
+            }
+            if (eqHistoryRestoring || eqHistoryChain.length > 0 || eqHistoryPendingPreEditSnap) {
+                return;
+            }
+            eqHistoryPendingPreEditSnap = eqHistoryTakeSnapshot();
         }, true);
     }
     let updateEqFilterRowSelectionStyles = () => {
@@ -4132,9 +4190,11 @@ function addExtra() {
         filterFreqInput = filtersContainer.querySelectorAll("input[name='freq']");
         filterQInput = filtersContainer.querySelectorAll("input[name='q']");
         filterGainInput = filtersContainer.querySelectorAll("input[name='gain']");
-        filtersContainer.querySelectorAll("input,select").forEach(el => {
+        filtersContainer.querySelectorAll("input,select").forEach((el) => {
             el.removeEventListener("input", applyEQ);
+            el.removeEventListener("change", applyEQ);
             el.addEventListener("input", applyEQ);
+            el.addEventListener("change", applyEQ);
         });
         if (eqFilterSelectedRow !== null
                 && eqFilterSelectedRow >= filtersContainer.querySelectorAll("div.filter").length) {
@@ -4284,6 +4344,663 @@ function addExtra() {
         }
         eq2chFlushDomToActiveBankCore();
     };
+    /* --- EQ undo / redo history (Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z, Cmd/Ctrl+Y) --- */
+    let eqHistoryChain = [];
+    let eqHistoryHead = -1;
+    let eqHistoryRestoring = false;
+    let eqHistoryDebounceTimer = null;
+    let eqHistoryGapWaitTimer = null;
+    let eqHistoryLastCommitAt = 0;
+    let eqHistoryTimeTicker = null;
+    let eqHistoryListClickBound = false;
+    let eqHistoryPendingPreEditSnap = null;
+    let eqHistoryInitBaselineSnap = null;
+    const EQ_HISTORY_CAP = 100;
+    const EQ_HISTORY_DEBOUNCE_MS = 500;
+    const EQ_HISTORY_MIN_GAP_MS = 1000;
+    /* Set `window.__EQ_HISTORY_DEBUG = true` in the console to trace EQ change history (filter type, push, skips). */
+    let eqHistoryDebugLog = (...a) => {
+        if (typeof window !== "undefined" && window.__EQ_HISTORY_DEBUG) {
+            console.log("[EQ hist]", ...a);
+        }
+    };
+    /* applyEQExec compares this to DOM so filter type / band-enable edits always log even if <select>
+       change events never reach our listeners (iframes, shadow roots, UA quirks). */
+    let eqHistoryLastApplyTypeEnableSig = null;
+    let eqHistoryCaptureTypeEnableSigFromDom = () => {
+        if (!filterTypeSelect || !filterTypeSelect.length || !filterEnabledInput || !filterEnabledInput.length) {
+            return null;
+        }
+        let parts = [];
+        for (let i = 0; i < eqBands; i++) {
+            let cb = filterEnabledInput[i];
+            let sel = filterTypeSelect[i];
+            if (!cb || !sel) {
+                parts.push("?:?");
+                continue;
+            }
+            parts.push((cb.checked ? 1 : 0) + ":" + String(sel.value || ""));
+        }
+        return parts.join("|");
+    };
+    let eqHistoryEmptyRow = () => ({
+        disabled: false,
+        type: "PK",
+        freq: 0,
+        q: 0,
+        gain: 0
+    });
+    let eqHistoryCloneRow = (r) => ({
+        disabled: !!r.disabled,
+        type: r.type,
+        freq: +r.freq || 0,
+        q: +r.q || 0,
+        gain: +r.gain || 0
+    });
+    let eqHistoryCloneBank = (arr) => (arr || []).map(eqHistoryCloneRow);
+    let eqHistoryTakeSnapshot = (meta) => {
+        eq2chFlushDomToActiveBank();
+        let rows = elemToFilters(true).map(eqHistoryCloneRow);
+        let banks = isEqTwoChannelSupportEnabled() ? {
+            both: eqHistoryCloneBank(eq2chBankData.both),
+            L: eqHistoryCloneBank(eq2chBankData.L),
+            R: eqHistoryCloneBank(eq2chBankData.R)
+        } : null;
+        let out = {
+            bandCount: eqBands,
+            twoCh: isEqTwoChannelSupportEnabled(),
+            activeBank: eq2chActiveBank,
+            banks,
+            rows,
+            savedAt: Date.now()
+        };
+        if (meta && meta.historyEntry && meta.historyEntry.kind) {
+            out.historyEntry = { kind: String(meta.historyEntry.kind) };
+        }
+        return out;
+    };
+    let eqHistoryRowEqual = (a, b) => !!a && !!b
+        && !!a.disabled === !!b.disabled
+        && a.type === b.type
+        && (+a.freq || 0) === (+b.freq || 0)
+        && Math.abs((+a.q || 0) - (+b.q || 0)) < 1e-6
+        && Math.abs((+a.gain || 0) - (+b.gain || 0)) < 1e-6;
+    let eqHistoryRowsEqualArr = (ra, rb) => {
+        let n = Math.max(ra.length, rb.length);
+        for (let i = 0; i < n; i++) {
+            let a = ra[i] || eqHistoryEmptyRow();
+            let b = rb[i] || eqHistoryEmptyRow();
+            if (!eqHistoryRowEqual(a, b)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    let eqHistoryEntryKey = (s) => {
+        if (!s || !s.historyEntry || !s.historyEntry.kind) {
+            return "";
+        }
+        return String(s.historyEntry.kind);
+    };
+    let eqHistorySnapDataEqual = (a, b) => {
+        if (!a || !b) {
+            return false;
+        }
+        if (eqHistoryEntryKey(a) !== eqHistoryEntryKey(b)) {
+            return false;
+        }
+        if (a.bandCount !== b.bandCount || !!a.twoCh !== !!b.twoCh) {
+            return false;
+        }
+        if (a.activeBank !== b.activeBank) {
+            return false;
+        }
+        if (a.twoCh && b.twoCh && a.banks && b.banks) {
+            return ["both", "L", "R"].every((k) =>
+                eqHistoryRowsEqualArr(a.banks[k] || [], b.banks[k] || []));
+        }
+        return eqHistoryRowsEqualArr(a.rows || [], b.rows || []);
+    };
+    let eqHistoryRowEmpty = (r) => {
+        let x = r || eqHistoryEmptyRow();
+        return !(+x.freq || 0) && !(+x.q || 0) && !(+x.gain || 0);
+    };
+    let eqHistoryPadSnapRows = (snap, minLen) => {
+        let rows = (snap.rows || []).map(eqHistoryCloneRow);
+        let n = Math.max(minLen || 0, snap.bandCount || 0, rows.length);
+        let out = [];
+        for (let i = 0; i < n; i++) {
+            out.push(rows[i] ? eqHistoryCloneRow(rows[i]) : eqHistoryEmptyRow());
+        }
+        return out;
+    };
+    let eqHistoryFormatHz = (hz) => {
+        let n = Math.round(+hz || 0);
+        if (!n) {
+            return "—";
+        }
+        return `${n}Hz`;
+    };
+    let eqHistoryFormatGain = (g) => {
+        let v = Math.round((+g || 0) * 10) / 10;
+        return `${v}dB`;
+    };
+    let eqHistoryFormatQ = (q) => {
+        let v = Math.round((+q || 0) * 100) / 100;
+        return `${v} Q`;
+    };
+    /** One row in the history log: prev → next (snapshots); baseline when prev is null. */
+    let eqHistoryDescribeTransition = (prev, next) => {
+        if (!next) {
+            return {
+                iconKind: "plus",
+                startFreq: "—",
+                middle: ""
+            };
+        }
+        if (next.historyEntry && next.historyEntry.kind === "reset") {
+            return {
+                iconKind: "reset",
+                startFreq: "Reset",
+                middle: ""
+            };
+        }
+        if (next.historyEntry && next.historyEntry.kind === "autoeq") {
+            return {
+                iconKind: "autoeq",
+                startFreq: "Auto",
+                middle: ""
+            };
+        }
+        if (!prev) {
+            let rows = eqHistoryPadSnapRows(next, next.bandCount || 0);
+            let firstHz = 0;
+            for (let i = 0; i < rows.length; i++) {
+                if (+rows[i].freq > 0) {
+                    firstHz = +rows[i].freq;
+                    break;
+                }
+            }
+            return {
+                iconKind: "plus",
+                startFreq: eqHistoryFormatHz(firstHz),
+                middle: ""
+            };
+        }
+        let n = Math.max(
+            prev.bandCount || 0,
+            next.bandCount || 0,
+            (prev.rows || []).length,
+            (next.rows || []).length
+        );
+        let pr = eqHistoryPadSnapRows(prev, n);
+        let nx = eqHistoryPadSnapRows(next, n);
+        let pick = null;
+        for (let i = 0; i < n; i++) {
+            let a = pr[i];
+            let b = nx[i];
+            let aE = eqHistoryRowEmpty(a);
+            let bE = eqHistoryRowEmpty(b);
+            if (aE && bE) {
+                if (eqHistoryRowEqual(a, b)) {
+                    continue;
+                }
+                pick = { kind: "change", i, a, b };
+                break;
+            }
+            if (aE && !bE) {
+                pick = { kind: "create", i, a, b };
+                break;
+            }
+            if (!aE && bE) {
+                pick = { kind: "delete", i, a, b };
+                break;
+            }
+            if (!eqHistoryRowEqual(a, b)) {
+                pick = { kind: "change", i, a, b };
+                break;
+            }
+        }
+        if (!pick) {
+            if (prev.bandCount !== next.bandCount || !!prev.twoCh !== !!next.twoCh
+                    || prev.activeBank !== next.activeBank) {
+                return {
+                    iconKind: "change",
+                    startFreq: "—",
+                    middle: ""
+                };
+            }
+            return {
+                iconKind: "change",
+                startFreq: "—",
+                middle: ""
+            };
+        }
+        if (pick.kind === "create") {
+            return {
+                iconKind: "plus",
+                startFreq: eqHistoryFormatHz(pick.b.freq),
+                middle: ""
+            };
+        }
+        if (pick.kind === "delete") {
+            return {
+                iconKind: "delete",
+                startFreq: eqHistoryFormatHz(pick.a.freq),
+                middle: ""
+            };
+        }
+        let a = pick.a;
+        let b = pick.b;
+        let middle = "";
+        if (a.type !== b.type) {
+            middle = String(b.type || "");
+        } else if ((+a.freq || 0) !== (+b.freq || 0)) {
+            middle = eqHistoryFormatHz(b.freq);
+        } else if (Math.abs((+a.gain || 0) - (+b.gain || 0)) > 1e-6) {
+            middle = eqHistoryFormatGain(b.gain);
+        } else if (Math.abs((+a.q || 0) - (+b.q || 0)) > 1e-6) {
+            middle = eqHistoryFormatQ(b.q);
+        } else if (!!a.disabled !== !!b.disabled) {
+            middle = b.disabled ? "Off" : "On";
+        }
+        return {
+            iconKind: "change",
+            startFreq: eqHistoryFormatHz(a.freq),
+            middle
+        };
+    };
+    let eqHistorySvgChange = () => (
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"extra-eq-change-history-svg extra-eq-change-history-svg-stroke\" aria-hidden=\"true\">"
+        + "<path stroke=\"none\" d=\"M0 0h24v24H0z\" fill=\"none\" />"
+        + "<path d=\"M5 12h.5m3 0h1.5m3 0h6\" />"
+        + "<path d=\"M15 16l4 -4\" />"
+        + "<path d=\"M15 8l4 4\" />"
+        + "</svg>"
+    );
+    let eqHistorySvgPlus = () => (
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"extra-eq-change-history-svg extra-eq-change-history-svg-stroke\" aria-hidden=\"true\">"
+        + "<path stroke=\"none\" d=\"M0 0h24v24H0z\" fill=\"none\" />"
+        + "<path d=\"M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0\" />"
+        + "<path d=\"M9 12h6\" />"
+        + "<path d=\"M12 9v6\" />"
+        + "</svg>"
+    );
+    let eqHistorySvgReset = () => (
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"extra-eq-change-history-svg extra-eq-change-history-svg-stroke\" aria-hidden=\"true\">"
+        + "<path stroke=\"none\" d=\"M0 0h24v24H0z\" fill=\"none\" />"
+        + "<path d=\"M9 14l-4 -4l4 -4\" />"
+        + "<path d=\"M5 10h11a4 4 0 1 1 0 8h-1\" />"
+        + "</svg>"
+    );
+    let eqHistorySvgAutoEq = () => (
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"extra-eq-change-history-svg extra-eq-change-history-svg-stroke\" aria-hidden=\"true\">"
+        + "<path stroke=\"none\" d=\"M0 0h24v24H0z\" fill=\"none\" />"
+        + "<path d=\"M13 7a9.3 9.3 0 0 0 1.516 -.546c.911 -.438 1.494 -1.015 1.937 -1.932c.207 -.428 .382 -.928 .547 -1.522c.165 .595 .34 1.095 .547 1.521c.443 .918 1.026 1.495 1.937 1.933c.426 .205 .925 .38 1.516 .546a9.3 9.3 0 0 0 -1.516 .547c-.911 .438 -1.494 1.015 -1.937 1.932a9 9 0 0 0 -.547 1.521c-.165 -.594 -.34 -1.095 -.547 -1.521c-.443 -.918 -1.026 -1.494 -1.937 -1.932a9 9 0 0 0 -1.516 -.547\" />"
+        + "<path d=\"M3 14a21 21 0 0 0 1.652 -.532c2.542 -.953 3.853 -2.238 4.816 -4.806a20 20 0 0 0 .532 -1.662a20 20 0 0 0 .532 1.662c.963 2.567 2.275 3.853 4.816 4.806q .75 .28 1.652 .532a21 21 0 0 0 -1.652 .532c-2.542 .953 -3.854 2.238 -4.816 4.806a20 20 0 0 0 -.532 1.662a20 20 0 0 0 -.532 -1.662c-.963 -2.568 -2.275 -3.853 -4.816 -4.806a21 21 0 0 0 -1.652 -.532\" />"
+        + "</svg>"
+    );
+    let eqHistorySvgBookmark = () => (
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"extra-eq-change-history-svg extra-eq-change-history-svg-stroke\" aria-hidden=\"true\">"
+        + "<path stroke=\"none\" d=\"M0 0h24v24H0z\" fill=\"none\" />"
+        + "<path d=\"M18 7v14l-6 -4l-6 4v-14a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4\" />"
+        + "</svg>"
+    );
+    let eqHistoryRowIconHtml = (iconKind) => {
+        if (iconKind === "plus") {
+            return eqHistorySvgPlus();
+        }
+        if (iconKind === "delete") {
+            return "<span class=\"extra-eq-change-history-icon-rotate\">" + eqHistorySvgPlus() + "</span>";
+        }
+        if (iconKind === "reset") {
+            return eqHistorySvgReset();
+        }
+        if (iconKind === "autoeq") {
+            return eqHistorySvgAutoEq();
+        }
+        return eqHistorySvgChange();
+    };
+    let eqHistoryClearTimers = () => {
+        if (eqHistoryDebounceTimer !== null) {
+            clearTimeout(eqHistoryDebounceTimer);
+            eqHistoryDebounceTimer = null;
+        }
+        if (eqHistoryGapWaitTimer !== null) {
+            clearTimeout(eqHistoryGapWaitTimer);
+            eqHistoryGapWaitTimer = null;
+        }
+    };
+    let eqHistoryTrimToCap = () => {
+        while (eqHistoryChain.length > EQ_HISTORY_CAP) {
+            eqHistoryChain.shift();
+            eqHistoryHead = Math.max(0, eqHistoryHead - 1);
+        }
+    };
+    let eqHistoryFormatCompactAge = (ts) => {
+        let sec = (Date.now() - ts) / 1000;
+        if (!Number.isFinite(sec) || sec < 0) {
+            return "—";
+        }
+        if (sec < 60) {
+            return `${Math.max(0, Math.round(sec))}s`;
+        }
+        let min = sec / 60;
+        if (min < 60) {
+            return `${Math.round(min)}m`;
+        }
+        let hr = sec / 3600;
+        if (hr < 24) {
+            return `${Math.round(hr)}h`;
+        }
+        return `${Math.round(sec / 86400)}d`;
+    };
+    let eqHistoryRefreshTimeLabels = () => {
+        let list = document.getElementById("extra-eq-change-history-list");
+        if (!list) {
+            return;
+        }
+        list.querySelectorAll("[data-eq-history-at]").forEach((el) => {
+            let ts = Number(el.getAttribute("data-eq-history-at"));
+            el.textContent = eqHistoryFormatCompactAge(ts);
+        });
+    };
+    let eqHistoryMaybeStartTicker = () => {
+        if (!extraEQEnabled || eqHistoryTimeTicker !== null) {
+            return;
+        }
+        eqHistoryTimeTicker = setInterval(() => {
+            if (!extraEQEnabled) {
+                clearInterval(eqHistoryTimeTicker);
+                eqHistoryTimeTicker = null;
+                return;
+            }
+            eqHistoryRefreshTimeLabels();
+        }, 1000);
+    };
+    let eqHistoryBindListOnce = () => {
+        let list = document.getElementById("extra-eq-change-history-list");
+        if (!list || eqHistoryListClickBound) {
+            return;
+        }
+        eqHistoryListClickBound = true;
+        list.addEventListener("click", (e) => {
+            let row = e.target && e.target.closest && e.target.closest("[data-eq-history-idx]");
+            if (!row || !list.contains(row)) {
+                return;
+            }
+            let ix = parseInt(row.getAttribute("data-eq-history-idx"), 10);
+            if (!Number.isFinite(ix) || ix < 0 || ix >= eqHistoryChain.length) {
+                return;
+            }
+            eqHistoryHead = ix;
+            eqHistoryRestore(eqHistoryChain[ix]);
+        });
+    };
+    let eqHistoryRenderLog = () => {
+        let list = document.getElementById("extra-eq-change-history-list");
+        if (!list || !extraEQEnabled) {
+            return;
+        }
+        eqHistoryBindListOnce();
+        eqHistoryMaybeStartTicker();
+        list.replaceChildren();
+        if (!eqHistoryChain.length) {
+            let empty = document.createElement("div");
+            empty.className = "extra-eq-change-history-empty";
+            empty.textContent = "Edits will appear here after you change the EQ.";
+            list.appendChild(empty);
+            return;
+        }
+        for (let i = eqHistoryChain.length - 1; i >= 0; i--) {
+            let snap = eqHistoryChain[i];
+            let prevSnap = i > 0 ? eqHistoryChain[i - 1] : null;
+            let desc = i === 0
+                ? eqHistoryDescribeTransition(null, snap)
+                : eqHistoryDescribeTransition(prevSnap, snap);
+            let row = document.createElement("button");
+            row.type = "button";
+            let stateClass = i === eqHistoryHead ? "extra-eq-change-history-row--current"
+                : (i < eqHistoryHead ? "extra-eq-change-history-row--past"
+                    : "extra-eq-change-history-row--future");
+            row.className = "extra-eq-change-history-row " + stateClass;
+            row.setAttribute("data-eq-history-idx", String(i));
+            row.setAttribute("role", "listitem");
+            let freqEl = document.createElement("span");
+            freqEl.className = "extra-eq-change-history-col extra-eq-change-history-col-freq";
+            freqEl.textContent = desc.startFreq;
+            let iconWrap = document.createElement("span");
+            iconWrap.className = "extra-eq-change-history-col extra-eq-change-history-col-icon";
+            iconWrap.innerHTML = eqHistoryRowIconHtml(desc.iconKind);
+            let midEl = document.createElement("span");
+            midEl.className = "extra-eq-change-history-col extra-eq-change-history-col-delta";
+            midEl.textContent = desc.middle || "";
+            let timeEl = document.createElement("span");
+            timeEl.className = "extra-eq-change-history-col extra-eq-change-history-col-time";
+            if (Number.isFinite(snap.savedAt)) {
+                timeEl.setAttribute("data-eq-history-at", String(snap.savedAt));
+                timeEl.textContent = eqHistoryFormatCompactAge(snap.savedAt);
+            } else {
+                timeEl.textContent = "—";
+            }
+            let bmEl = document.createElement("span");
+            bmEl.className = "extra-eq-change-history-col extra-eq-change-history-col-bookmark";
+            bmEl.innerHTML = eqHistorySvgBookmark();
+            row.appendChild(freqEl);
+            row.appendChild(iconWrap);
+            row.appendChild(midEl);
+            row.appendChild(timeEl);
+            row.appendChild(bmEl);
+            list.appendChild(row);
+        }
+    };
+    let eqHistoryRestore = (snap) => {
+        if (!snap || !filtersContainer) {
+            return;
+        }
+        eqHistoryRestoring = true;
+        try {
+            if (snap.bandCount !== eqBands) {
+                eqBands = snap.bandCount;
+                updateFilterElements();
+            }
+            if (isEqTwoChannelSupportEnabled() && snap.banks) {
+                eq2chBankData.both = eqHistoryCloneBank(snap.banks.both);
+                eq2chBankData.L = eqHistoryCloneBank(snap.banks.L);
+                eq2chBankData.R = eqHistoryCloneBank(snap.banks.R);
+                let ab = snap.activeBank;
+                eq2chActiveBank = (ab === "L" || ab === "R" || ab === "both") ? ab : "both";
+                eq2chSyncBankTabStyles();
+                filtersToElem(eq2chPadBankToEqBands(eq2chBankData[eq2chActiveBank]));
+            } else {
+                filtersToElem(eq2chPadBankToEqBands(snap.rows));
+            }
+            cancelDeferredApplyEQ();
+            applyEQExec();
+            scheduleLiveEqSync();
+            applyParametricEqGraphTraceFocus();
+            updateEqTraceOpacity();
+            updateEqFilterMarkers();
+            refreshEqFilterConstraintViolationStyles();
+            refreshEqFilterInactiveStateForMaxBands();
+        } finally {
+            eqHistoryRestoring = false;
+        }
+        eqHistoryRenderLog();
+    };
+    let eqHistoryPushSnapshot = (snap, opts) => {
+        opts = opts || {};
+        eqHistoryDebugLog("pushSnapshot enter", {
+            extraEQEnabled,
+            eqHistoryRestoring,
+            chainLen: eqHistoryChain.length,
+            head: eqHistoryHead,
+            opts: { fromDebounced: !!opts.fromDebounced, bypassSnapEqual: !!opts.bypassSnapEqual }
+        });
+        if (!extraEQEnabled || eqHistoryRestoring) {
+            eqHistoryDebugLog("pushSnapshot skip: !extraEQEnabled || eqHistoryRestoring");
+            return;
+        }
+        if (eqHistoryPendingPreEditSnap) {
+            eqHistoryChain.push(eqHistoryPendingPreEditSnap);
+            eqHistoryHead = 0;
+            eqHistoryPendingPreEditSnap = null;
+            eqHistoryLastCommitAt = 0;
+        }
+        if (!eqHistoryChain.length) {
+            if (opts.fromDebounced && eqHistoryInitBaselineSnap != null) {
+                if (eqHistorySnapDataEqual(snap, eqHistoryInitBaselineSnap)) {
+                    eqHistoryDebugLog("pushSnapshot skip: empty chain, snap equals init baseline");
+                    return;
+                }
+                eqHistoryPendingPreEditSnap = eqHistoryInitBaselineSnap;
+                eqHistoryPushSnapshot(snap, { fromDebounced: false });
+                return;
+            }
+            eqHistoryChain.push(snap);
+            eqHistoryHead = 0;
+            eqHistoryLastCommitAt = Date.now();
+            eqHistoryTrimToCap();
+            eqHistoryRenderLog();
+            eqHistoryDebugLog("pushSnapshot: first entry on empty chain");
+            return;
+        }
+        if (!opts.bypassSnapEqual && eqHistorySnapDataEqual(snap, eqHistoryChain[eqHistoryHead])) {
+            eqHistoryDebugLog("pushSnapshot skip: snap equals head (equality)", {
+                headRowsSample: (eqHistoryChain[eqHistoryHead].rows || []).slice(0, 3),
+                snapRowsSample: (snap.rows || []).slice(0, 3)
+            });
+            return;
+        }
+        eqHistoryChain.splice(eqHistoryHead + 1);
+        eqHistoryChain.push(snap);
+        eqHistoryHead = eqHistoryChain.length - 1;
+        eqHistoryTrimToCap();
+        eqHistoryLastCommitAt = Date.now();
+        eqHistoryRenderLog();
+        eqHistoryDebugLog("pushSnapshot: appended", { newHead: eqHistoryHead, chainLen: eqHistoryChain.length });
+    };
+    let eqHistoryCommitTransaction = (optBeforeSnap, meta) => {
+        if (!extraEQEnabled || eqHistoryRestoring) {
+            return;
+        }
+        eqHistoryClearTimers();
+        if (optBeforeSnap && !eqHistoryChain.length) {
+            eqHistoryChain.push(optBeforeSnap);
+            eqHistoryHead = 0;
+            eqHistoryLastCommitAt = 0;
+        }
+        eqHistoryPushSnapshot(eqHistoryTakeSnapshot(meta));
+        /* Must match post-commit DOM so the next applyEQExec (e.g. graph context-menu type cycle) can
+           detect PK→LSQ; null here made lastSig null and skipped the type/enable history path. */
+        eqHistoryLastApplyTypeEnableSig = eqHistoryCaptureTypeEnableSigFromDom();
+    };
+    let eqHistoryDebouncedFlush = () => {
+        eqHistoryDebounceTimer = null;
+        if (!extraEQEnabled || eqHistoryRestoring) {
+            return;
+        }
+        let now = Date.now();
+        let since = now - eqHistoryLastCommitAt;
+        if (eqHistoryLastCommitAt > 0 && since < EQ_HISTORY_MIN_GAP_MS) {
+            if (eqHistoryGapWaitTimer !== null) {
+                clearTimeout(eqHistoryGapWaitTimer);
+                eqHistoryGapWaitTimer = null;
+            }
+            eqHistoryGapWaitTimer = setTimeout(() => {
+                eqHistoryGapWaitTimer = null;
+                eqHistoryDebouncedFlush();
+            }, EQ_HISTORY_MIN_GAP_MS - since);
+            return;
+        }
+        let snap = eqHistoryTakeSnapshot();
+        eqHistoryPushSnapshot(snap, { fromDebounced: true });
+    };
+    function eqHistoryNotifyChange() {
+        if (!extraEQEnabled || eqHistoryRestoring || !filtersContainer) {
+            return;
+        }
+        if (eqHistoryGapWaitTimer !== null) {
+            clearTimeout(eqHistoryGapWaitTimer);
+            eqHistoryGapWaitTimer = null;
+        }
+        if (eqHistoryDebounceTimer !== null) {
+            clearTimeout(eqHistoryDebounceTimer);
+        }
+        eqHistoryDebounceTimer = setTimeout(eqHistoryDebouncedFlush, EQ_HISTORY_DEBOUNCE_MS);
+    }
+    let eqHistoryUndo = () => {
+        if (eqHistoryHead <= 0) {
+            return;
+        }
+        eqHistoryClearTimers();
+        eqHistoryHead--;
+        eqHistoryRestore(eqHistoryChain[eqHistoryHead]);
+    };
+    let eqHistoryRedo = () => {
+        if (eqHistoryHead < 0 || eqHistoryHead >= eqHistoryChain.length - 1) {
+            return;
+        }
+        eqHistoryClearTimers();
+        eqHistoryHead++;
+        eqHistoryRestore(eqHistoryChain[eqHistoryHead]);
+    };
+    let eqHistoryShortcutTargetOk = (t) => {
+        if (!t || t.nodeType !== 1) {
+            return true;
+        }
+        if (t.isContentEditable || (t.closest && t.closest("[contenteditable=\"true\"]"))) {
+            return false;
+        }
+        let tag = t.tagName;
+        if (tag === "TEXTAREA" || tag === "SELECT") {
+            return false;
+        }
+        if (tag === "INPUT") {
+            let typ = (t.getAttribute("type") || "").toLowerCase();
+            if (typ === "text" || typ === "search" || typ === "email" || typ === "url"
+                    || typ === "password" || typ === "") {
+                return false;
+            }
+        }
+        if (t.matches && t.matches("input[name='eq-constraint-freq-min'], input[name='eq-constraint-freq-max'], input[name='eq-constraint-freq-graphic-list']")) {
+            return false;
+        }
+        return true;
+    };
+    document.addEventListener("keydown", (e) => {
+        if (!(e.metaKey || e.ctrlKey)) {
+            return;
+        }
+        if (e.code !== "KeyZ" && e.code !== "KeyY") {
+            return;
+        }
+        let tab = document.querySelector("div.select");
+        if (!extraEnabled || !extraEQEnabled || !tab
+                || tab.getAttribute("data-selected") !== "extra") {
+            return;
+        }
+        if (!eqHistoryShortcutTargetOk(e.target)) {
+            return;
+        }
+        if (e.code === "KeyY") {
+            e.preventDefault();
+            e.stopPropagation();
+            eqHistoryRedo();
+            return;
+        }
+        if (e.code === "KeyZ" && e.shiftKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            eqHistoryRedo();
+            return;
+        }
+        if (e.code === "KeyZ" && !e.shiftKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            eqHistoryUndo();
+        }
+    }, true);
     let eq2chRowsToApplySpecs = (rows) => {
         let clamped = elemToFiltersClampedRowsForEqualizerApply(eq2chPadBankToEqBands(rows), true);
         return clamped.filter((f) => !f.disabled && f.type && f.freq && f.q && f.gain)
@@ -4470,6 +5187,7 @@ function addExtra() {
         cancelDeferredApplyEQ();
         applyEQExec();
         scheduleLiveEqSync();
+        eqHistoryCommitTransaction();
     };
     let eq2chResetAllBanksToDefaultRow = () => {
         eq2chBankData.both = [eq2chDefaultEmptyRow()];
@@ -5233,6 +5951,31 @@ function addExtra() {
         execOpt = execOpt || {};
         refreshEqFilterConstraintViolationStyles();
         eq2chFlushDomToActiveBank();
+        let typeEnableSigNow = eqHistoryCaptureTypeEnableSigFromDom();
+        if (typeEnableSigNow != null && eqHistoryLastApplyTypeEnableSig !== null
+                && typeEnableSigNow !== eqHistoryLastApplyTypeEnableSig) {
+            eqHistoryDebugLog("applyEQExec type/enable sig changed", {
+                prev: eqHistoryLastApplyTypeEnableSig,
+                now: typeEnableSigNow,
+                eqHistoryRestoring,
+                extraEQEnabled,
+                hasFiltersContainer: !!filtersContainer
+            });
+        }
+        if (typeEnableSigNow != null && eqHistoryLastApplyTypeEnableSig !== null
+                && typeEnableSigNow !== eqHistoryLastApplyTypeEnableSig
+                && !eqHistoryRestoring && extraEQEnabled && filtersContainer) {
+            eqHistoryClearTimers();
+            eqHistoryPushSnapshot(eqHistoryTakeSnapshot(), { fromDebounced: true, bypassSnapEqual: true });
+        } else if (typeEnableSigNow != null && eqHistoryLastApplyTypeEnableSig !== null
+                && typeEnableSigNow !== eqHistoryLastApplyTypeEnableSig) {
+            eqHistoryDebugLog("applyEQExec type/enable changed but NOT pushing (gates)", {
+                eqHistoryRestoring,
+                extraEQEnabled,
+                hasFiltersContainer: !!filtersContainer
+            });
+        }
+        try {
         // Create and show phone with eq applied
         let activeElem = document.activeElement;
         let phoneSelected = eqPhoneSelect.value;
@@ -5254,7 +5997,7 @@ function addExtra() {
             p => p.fullName == phoneSelected)[0];
         if (!phoneObj || (!hasEqSpecs && !phoneObj.eq)) {
             updateEqFilterMarkers();
-            return; // Allow empty filters if eq is applied before
+            return;
         }
         let nextEqChannels;
         if (isEqTwoChannelSupportEnabled()) {
@@ -5333,6 +6076,11 @@ function addExtra() {
             activeElem.focus();
         }
         updateEqFilterMarkers();
+        } finally {
+            if (typeEnableSigNow != null) {
+                eqHistoryLastApplyTypeEnableSig = typeEnableSigNow;
+            }
+        }
     };
     /* Coalesce to one apply per animation frame so the trace follows typing without
        the old 100ms debounce pause, while bounding work during rapid input. */
@@ -5403,6 +6151,7 @@ function addExtra() {
                 t.value = String(Math.round(Math.min(fHi, Math.max(fLo, v + dir * delta))));
                 applyEQ();
                 scheduleLiveEqSync();
+                eqHistoryNotifyChange();
                 return;
             }
             if (nm === "q") {
@@ -5437,6 +6186,7 @@ function addExtra() {
                 }
                 applyEQ();
                 scheduleLiveEqSync();
+                eqHistoryNotifyChange();
                 return;
             }
             if (nm === "gain") {
@@ -5453,6 +6203,7 @@ function addExtra() {
                 t.value = String(Math.min(gHi, Math.max(gLo, next)));
                 applyEQ();
                 scheduleLiveEqSync();
+                eqHistoryNotifyChange();
             }
         }, true);
     }
@@ -5643,6 +6394,7 @@ function addExtra() {
         applyParametricEqGraphTraceFocus();
         updateEqTraceOpacity();
         updateEqFilterMarkers();
+        eqHistoryCommitTransaction(undefined, { historyEntry: { kind: "reset" } });
     };
     document.querySelector("div.extra-eq button.extra-eq-reset-btn").addEventListener("click", () => {
         if (!window.confirm("Reset all EQ band values (frequency, Q, and gain) to flat? Constraint presets and limits stay as they are.")) {
@@ -5659,6 +6411,7 @@ function addExtra() {
         eqBands = Math.min(eqBands + 1, extraEQBandsMax);
         updateFilterElements();
         scheduleLiveEqSync();
+        eqHistoryCommitTransaction();
     });
     // Remove last filter
     document.querySelector("div.extra-eq button.remove-filter").addEventListener("click", () => {
@@ -5667,6 +6420,7 @@ function addExtra() {
         updateFilterElements();
         applyEQ(); // May removed effective filter
         scheduleLiveEqSync();
+        eqHistoryCommitTransaction();
     });
     let resolveEqFilterRowIndexForShortcut = () => {
         let el = document.activeElement;
@@ -5705,12 +6459,14 @@ function addExtra() {
         cancelDeferredApplyEQ();
         applyEQExec();
         scheduleLiveEqSync();
+        eqHistoryCommitTransaction();
     };
     // Sort filters by frequency
     document.querySelector("div.extra-eq button.sort-filters").addEventListener("click", () => {
         filtersToElem(elemToFilters(true).sort((a, b) =>
             (a.freq || Infinity) - (b.freq || Infinity)));
         scheduleLiveEqSync();
+        eqHistoryCommitTransaction();
     });
     // Import filters
     document.querySelector("div.extra-eq button.import-filters").addEventListener("click", () => {
@@ -5794,6 +6550,7 @@ function addExtra() {
                 filtersToElem(eq2chPadBankToEqBands(eq2chBankData.both));
                 applyEQ();
                 scheduleLiveEqSync();
+                eqHistoryCommitTransaction();
                 return;
             }
             let filters = parseFilterLineObjects(settings);
@@ -5801,6 +6558,7 @@ function addExtra() {
                 filtersToElem(filters);
                 applyEQ();
                 scheduleLiveEqSync();
+                eqHistoryCommitTransaction();
             } else {
                 alert("Parse filters file failed: no filter found.");
             }
@@ -6248,10 +7006,14 @@ function addExtra() {
         dispParent.appendChild(oDisp);
     };
     let eqConstraintPresetProgrammaticSyncDepth = 0;
-    let runEqConstraintPresetProgrammatic = (fn) => {
+    let runEqConstraintPresetProgrammatic = (fn, opts) => {
+        opts = opts || {};
         eqConstraintPresetProgrammaticSyncDepth++;
         try {
             fn();
+            if (opts.recordHistoryAfter) {
+                eqHistoryCommitTransaction();
+            }
         } finally {
             eqConstraintPresetProgrammaticSyncDepth--;
         }
@@ -6640,7 +7402,7 @@ function addExtra() {
                     hit.value = blob.id;
                     display.selectedIndex = hit.selectedIndex;
                     hit.dataset.eqPresetLastStable = blob.id;
-                });
+                }, { recordHistoryAfter: true });
                 updateCustomActionDeleteDisabled(hit, display);
                 persistEqConstraintPresetSelectionToStorage();
                 return;
@@ -6661,7 +7423,7 @@ function addExtra() {
                         }
                         display.selectedIndex = hit.selectedIndex;
                         hit.dataset.eqPresetLastStable = hit.value;
-                    });
+                    }, { recordHistoryAfter: true });
                     syncEqConstraintCustomPresetOptgroup();
                     updateCustomActionDeleteDisabled(hit, display);
                     persistEqConstraintPresetSelectionToStorage();
@@ -6690,7 +7452,7 @@ function addExtra() {
                     }
                     display.selectedIndex = hit.selectedIndex;
                     hit.dataset.eqPresetLastStable = hit.value;
-                });
+                }, { recordHistoryAfter: true });
                 syncEqConstraintCustomPresetOptgroup();
                 updateCustomActionDeleteDisabled(hit, display);
                 persistEqConstraintPresetSelectionToStorage();
@@ -6700,7 +7462,7 @@ function addExtra() {
                 eqConstraintEphemeralCustomSection = false;
                 runEqConstraintPresetProgrammatic(() => {
                     clearEqConstraintPresetSelection();
-                });
+                }, { recordHistoryAfter: true });
             } else if (v === EQ_CONSTRAINT_PRESET_VALUE_CUSTOM) {
                 eqConstraintEphemeralCustomSection = true;
                 /* selection only; constraints unchanged */
@@ -6712,7 +7474,7 @@ function addExtra() {
                 if (u) {
                     runEqConstraintPresetProgrammatic(() => {
                         applyEqConstraintPreset(u);
-                    });
+                    }, { recordHistoryAfter: true });
                 }
             } else {
                 eqConstraintEphemeralCustomSection = false;
@@ -6720,7 +7482,7 @@ function addExtra() {
                 if (p) {
                     runEqConstraintPresetProgrammatic(() => {
                         applyEqConstraintPreset(p);
-                    });
+                    }, { recordHistoryAfter: true });
                 }
             }
             hit.dataset.eqPresetLastStable = v;
@@ -6876,6 +7638,7 @@ function addExtra() {
                 syncEqConstraintCustomPresetOptgroup();
                 updateCustomActionDeleteDisabled(hit, display);
                 persistEqConstraintPresetSelectionToStorage();
+                eqHistoryInitBaselineSnap = eqHistoryTakeSnapshot();
             })
             .catch(() => {
                 /* Missing file or fetch error: keep row hidden */
@@ -6975,7 +7738,7 @@ function addExtra() {
                         presetHit.value = EQ_CONSTRAINT_PRESET_AUTO_EQ_ID;
                         presetDisplay.selectedIndex = presetHit.selectedIndex;
                         presetHit.dataset.eqPresetLastStable = EQ_CONSTRAINT_PRESET_AUTO_EQ_ID;
-                    });
+                    }, { recordHistoryAfter: true });
                     syncEqConstraintCustomPresetOptgroup();
                     updateCustomActionDeleteDisabled(presetHit, presetDisplay);
                     persistEqConstraintPresetSelectionToStorage();
@@ -7023,6 +7786,7 @@ function addExtra() {
             filtersToElem(filters);
             applyEQ();
             scheduleLiveEqSync();
+            eqHistoryCommitTransaction(undefined, { historyEntry: { kind: "autoeq" } });
             autoEQOverlay.style.display = "none";
         }, 100);
     });
@@ -8485,11 +9249,13 @@ function addExtra() {
             let newIx = addPeakingFilterFromHz(st.fHz, EQ_GRAPH_BASE_GAIN, { skipFocus: true });
             if (newIx >= 0) {
                 setEqFilterSelectedRow(newIx, true);
+                eqHistoryCommitTransaction();
             }
         } else if (st.filterIndex !== null && st.dragging) {
             cancelDeferredApplyEQ();
             applyEQExec();
             scheduleLiveEqSync();
+            eqHistoryCommitTransaction(st.beforeDragSnap || null);
         }
         if (st.filterIndex !== null && st.dragging && st.axisLock) {
             let ix = st.filterIndex;
@@ -8808,6 +9574,9 @@ function addExtra() {
         cancelAnimationFrame(eqGraphApplyEqDragTimer);
         eqGraphApplyEqDragTimer = null;
         pathHL(false);
+        if (!soundRangeSelect) {
+            eqHistoryPendingPreEditSnap = null;
+        }
         eqGraphPointerState = {
             mode: soundRangeSelect ? "soundRange" : "eq",
             soundRangeAnchorHz: soundRangeSelect ? freqAtPointer : null,
@@ -8838,6 +9607,9 @@ function addExtra() {
             svgScaleX: svgScaleX,
             svgScaleY: svgScaleY,
             pointerLockActive: false,
+            beforeDragSnap: (!soundRangeSelect && initialFilterIndex !== null)
+                ? eqHistoryTakeSnapshot()
+                : null,
         };
         /* Sound Tools range drag: avoid preventDefault so Safari keeps default gesture handling;
            EQ drag still uses it to block stray text selection. Selection lock is fine for both. */
@@ -8957,6 +9729,7 @@ function addExtra() {
         cancelDeferredApplyEQ();
         applyEQExec();
         scheduleLiveEqSync();
+        eqHistoryNotifyChange();
         setEqFilterSelectedRow(i);
         requestAnimationFrame(() => {
             let qEl = filterQInput[i];
