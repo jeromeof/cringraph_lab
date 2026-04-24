@@ -6096,7 +6096,7 @@ function addExtra() {
         }
         return out;
     };
-    /* Biquad specs from the pinned history snapshot (for live A/B when Compare is off / A). */
+    /* Biquad specs from the pinned history snapshot (Compare off / A path when a pin exists). */
     let elemToPinnedLivePlaybackSpecs = () => {
         if (!eqPinnedSnapshotBody || !extraEnabled || !extraEQEnabled) {
             return [];
@@ -6791,17 +6791,22 @@ function addExtra() {
             return nts.length ? nts[nts.length - 1].fullName : "";
         })();
         let nextSel = "";
-        if (oldValue && optionValues.indexOf(oldValue) >= 0) {
-            nextSel = oldValue;
-        } else if (intent && optionValues.indexOf(intent) >= 0) {
+        /* Prefer intent (in-flight EQ dropdown) and last graph model over the <select>'s oldValue.
+           Otherwise the hidden select keeps the first model we ever set while eqLastGraphModelForEq
+           tracks the graph — opening the EQ tab shows a blank or stale row. */
+        if (intent && optionValues.indexOf(intent) >= 0) {
             nextSel = intent;
         } else if (lastGraph && optionValues.indexOf(lastGraph) >= 0) {
             nextSel = lastGraph;
+        } else if (oldValue && optionValues.indexOf(oldValue) >= 0) {
+            nextSel = oldValue;
         } else if (tailActive && optionValues.indexOf(tailActive) >= 0) {
             nextSel = tailActive;
         }
         eqPhoneSelect.value = nextSel;
-        let autoFilledModel = Boolean(nextSel && (!oldValue || optionValues.indexOf(oldValue) < 0));
+        let autoFilledModel = Boolean(nextSel && (
+            !oldValue || optionValues.indexOf(oldValue) < 0 || nextSel !== oldValue
+        ));
         updateEQPhoneTargetSelect();
         updateEqFilterMarkers();
         if (autoFilledModel) {
@@ -8648,7 +8653,8 @@ function addExtra() {
     };
     let computeLiveEqSpecs = () => {
         if (!isLivePlaybackEqEnabled()) {
-            return elemToPinnedLivePlaybackSpecs();
+            let ps = elemToPinnedLivePlaybackSpecs();
+            return ps.length ? ps : [];
         }
         return elemToLiveEqSpecsClamped();
     };
@@ -8678,47 +8684,69 @@ function addExtra() {
         if (!phoneObj || !phoneObj.rawChannels) {
             return null;
         }
-        if (liveStereoEqActive()) {
-            let { specL, specR } = computeLiveEqSpecsForStereoPaths();
-            if (!specL.length && !specR.length) {
+        let pinSpecs = elemToPinnedLivePlaybackSpecs();
+        let aPathDry = !isLivePlaybackEqEnabled() && !pinSpecs.length;
+        /* A path with a pin: chain plays pinned EQ — preamp from pinned FR; skip dry-vs-live norm. */
+        if (!isLivePlaybackEqEnabled() && pinSpecs.length) {
+            let rawCh = eq2chSharedMeasurementBaseRaw(phoneObj)
+                || firstPresentChannel(phoneObj.rawChannels);
+            if (!rawCh || !rawCh.length) {
                 return null;
             }
-            let { li, ri } = liveStereoEqChannelIndices();
-            let base2 = eq2chSharedMeasurementBaseRaw(phoneObj);
-            if (base2) {
-                let frEqL = specL.length ? Equalizer.apply(base2, specL, sampleRate) : base2;
-                let frEqR = specR.length ? Equalizer.apply(base2, specR, sampleRate) : base2;
-                let preL = specL.length ? Equalizer.calc_preamp(base2, frEqL) : 0;
-                let preR = specR.length ? Equalizer.calc_preamp(base2, frEqR) : 0;
-                return { raw: base2, frEq: frEqL, preDb: (preL + preR) / 2 };
+            if (eqPinnedSnapshotBody) {
+                let pack = computePinnedEqFrForModel(phoneObj, eqPinnedSnapshotBody);
+                if (pack.ok && pack.frSingle) {
+                    let preDb = Equalizer.calc_preamp(rawCh, pack.frSingle);
+                    return { raw: rawCh, frEq: pack.frSingle, preDb };
+                }
             }
-            let rawL = phoneObj.rawChannels[li];
-            let rawR = phoneObj.rawChannels[ri];
-            if (!rawL || !rawL.length) {
+            let frEq = Equalizer.apply(rawCh, pinSpecs, sampleRate);
+            let preDb = Equalizer.calc_preamp(rawCh, frEq);
+            return { raw: rawCh, frEq, preDb };
+        }
+        /* B path, or A dry: use live EQ for stereo/mono FR + preamp (A dry norm bypass vs B). */
+        if (isLivePlaybackEqEnabled() || aPathDry) {
+            if (isEqTwoChannelSupportEnabled() && LR && LR.length > 1) {
+                let { specL, specR } = computeLiveEqSpecsForStereoPaths();
+                if (!specL.length && !specR.length) {
+                    return null;
+                }
+                let { li, ri } = liveStereoEqChannelIndices();
+                let base2 = eq2chSharedMeasurementBaseRaw(phoneObj);
+                if (base2) {
+                    let frEqL = specL.length ? Equalizer.apply(base2, specL, sampleRate) : base2;
+                    let frEqR = specR.length ? Equalizer.apply(base2, specR, sampleRate) : base2;
+                    let preL = specL.length ? Equalizer.calc_preamp(base2, frEqL) : 0;
+                    let preR = specR.length ? Equalizer.calc_preamp(base2, frEqR) : 0;
+                    return { raw: base2, frEq: frEqL, preDb: (preL + preR) / 2 };
+                }
+                let rawL = phoneObj.rawChannels[li];
+                let rawR = phoneObj.rawChannels[ri];
+                if (!rawL || !rawL.length) {
+                    return null;
+                }
+                let frEqL = specL.length ? Equalizer.apply(rawL, specL, sampleRate) : rawL;
+                let preL = specL.length ? Equalizer.calc_preamp(rawL, frEqL) : 0;
+                let preR = preL;
+                if (rawR && rawR.length && specR.length) {
+                    let frEqR = Equalizer.apply(rawR, specR, sampleRate);
+                    preR = Equalizer.calc_preamp(rawR, frEqR);
+                }
+                return { raw: rawL, frEq: frEqL, preDb: (preL + preR) / 2 };
+            }
+            let specs = elemToLiveEqSpecsClamped();
+            if (!specs.length) {
                 return null;
             }
-            let frEqL = specL.length ? Equalizer.apply(rawL, specL, sampleRate) : rawL;
-            let preL = specL.length ? Equalizer.calc_preamp(rawL, frEqL) : 0;
-            let preR = preL;
-            if (rawR && rawR.length && specR.length) {
-                let frEqR = Equalizer.apply(rawR, specR, sampleRate);
-                preR = Equalizer.calc_preamp(rawR, frEqR);
+            let raw = phoneObj.rawChannels.filter(Boolean)[0];
+            if (!raw || !raw.length) {
+                return null;
             }
-            return { raw: rawL, frEq: frEqL, preDb: (preL + preR) / 2 };
+            let frEq = Equalizer.apply(raw, specs, sampleRate);
+            let preDb = Equalizer.calc_preamp(raw, frEq);
+            return { raw, frEq, preDb };
         }
-        let specs = isLivePlaybackEqEnabled()
-            ? elemToLiveEqSpecsClamped()
-            : elemToPinnedLivePlaybackSpecs();
-        if (!specs.length) {
-            return null;
-        }
-        let raw = phoneObj.rawChannels.filter(Boolean)[0];
-        if (!raw || !raw.length) {
-            return null;
-        }
-        let frEq = Equalizer.apply(raw, specs, sampleRate);
-        let preDb = Equalizer.calc_preamp(raw, frEq);
-        return { raw, frEq, preDb };
+        return null;
     };
     /* Match export semantics: headroom from max EQ boost vs raw FR (see Equalizer.calc_preamp). */
     let computeLiveMusicPreampDb = (sampleRate) => {
@@ -8753,7 +8781,9 @@ function addExtra() {
         }
         let preDb = computeLiveMusicPreampDb(ctx.sampleRate);
         let lin = liveMusicPlaybackGain * Math.pow(10, preDb / 20);
-        if (!isLivePlaybackEqEnabled()) {
+        /* A dry only: level-match raw output to the live EQ curve. A + pinned EQ is already shaped
+           in the biquad chain — do not apply the dry-vs-live graph offset on top. */
+        if (!isLivePlaybackEqEnabled() && !elemToPinnedLivePlaybackSpecs().length) {
             let a = getLiveMusicEqFrAnalysis(ctx.sampleRate);
             if (a) {
                 let adjDb = computeNormBypassAdjustDb(a.raw, a.frEq);
@@ -8856,7 +8886,7 @@ function addExtra() {
         sourceNode.disconnect();
         disconnectEqBiquads(biquadsArr);
         let last = sourceNode;
-        if (isLivePlaybackEqEnabled()) {
+        if (isLivePlaybackEqEnabled() || specs.length > 0) {
             specs.forEach((s) => {
                 let bf = audioContext.createBiquadFilter();
                 bf.type = mapFilterTypeToBiquad(s.type);
