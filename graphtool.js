@@ -7046,7 +7046,29 @@ function addExtra() {
             seenM.add(p.fullName);
             return true;
         });
-        let allOpts = userT.concat(builtins).concat(meas);
+        /* Active graph measurements (same eligibility as target dropdown) listed under User for quick target picks. */
+        let activeMeasQuick = activePhones.filter((p) =>
+            p && !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/)
+            && (!phoneSelected || p.fullName !== phoneSelected)
+            && !isCompensationTargetNameMatch(p));
+        activeMeasQuick.sort(byName);
+        let activeMeasQuickNames = new Set(activeMeasQuick.map((p) => p.fullName));
+        meas = meas.filter((p) => !activeMeasQuickNames.has(p.fullName));
+        let seenUserSec = new Set();
+        let userSectionList = [];
+        userT.forEach((p) => {
+            if (!seenUserSec.has(p.fullName)) {
+                seenUserSec.add(p.fullName);
+                userSectionList.push(p);
+            }
+        });
+        activeMeasQuick.forEach((p) => {
+            if (!seenUserSec.has(p.fullName)) {
+                seenUserSec.add(p.fullName);
+                userSectionList.push(p);
+            }
+        });
+        let allOpts = userSectionList.concat(builtins).concat(meas);
         let oldVal = eqPhoneTargetSelect.value;
         Array.from(eqPhoneTargetSelect.children).slice(1).forEach((c) => eqPhoneTargetSelect.removeChild(c));
         let appendTargetOptgroup = (label, arr, textFor) => {
@@ -7063,7 +7085,7 @@ function addExtra() {
             });
             eqPhoneTargetSelect.appendChild(og);
         };
-        appendTargetOptgroup("User", userT, (p) =>
+        appendTargetOptgroup("User", userSectionList, (p) =>
             ((p.dispName != null && String(p.dispName).trim() !== "") ? String(p.dispName) : p.fullName));
         appendTargetOptgroup("Targets", builtins, (p) => {
             let lab = (p.dispName != null && String(p.dispName).trim() !== "")
