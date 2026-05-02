@@ -1937,6 +1937,11 @@ function updatePaths(trigger) {
 }
 let colorBar = p=>'url(\'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 8"><path d="M0 8v-8h1c0.05 1.5,-0.3 3,-0.16 5s0.1 2,0.15 3z" fill="'+getBgColor(p)+'"/></svg>\')';
 
+/** Raw FR usable for EQ / Auto EQ (channels present). */
+function phoneCurveDataReadyForEq(p) {
+    return !!(p && p.rawChannels && Array.isArray(p.rawChannels) && p.rawChannels.some(c => c));
+}
+
 function manageTableRows() {
     let curvesAll = d3.merge(activePhones.map(p => p.activeCurves || [])),
         phoneOrder = [],
@@ -1970,8 +1975,58 @@ function manageTableRows() {
 }
 
 function updatePhoneTable(trigger) {
-    let rows = manageTableRows(),
-        trJoin = table.selectAll("tr").data(rows, r => r.key);
+    let rows = manageTableRows();
+    let selTab = document.querySelector("div.select");
+    let onEqManageTab = extraEnabled && extraEQEnabled && selTab
+        && selTab.getAttribute("data-selected") === "extra";
+    if (onEqManageTab && typeof window.__getEqParametricFocusContext === "function") {
+        let ctx = window.__getEqParametricFocusContext();
+        if (ctx && ctx.showSet) {
+            rows = rows.filter(r => ctx.showSet.has(r.p));
+            let rank = (p) => {
+                if (p === ctx.targetP) {
+                    return 0;
+                }
+                if (p === ctx.modelP) {
+                    return 1;
+                }
+                if (p === ctx.eqP) {
+                    return 2;
+                }
+                return 3;
+            };
+            rows.sort((a, b) => {
+                let d = rank(a.p) - rank(b.p);
+                if (d !== 0) {
+                    return d;
+                }
+                /* Stable tie-break: targets / models cluster */
+                let ta = a.p.isTarget ? 0 : 1;
+                let tb = b.p.isTarget ? 0 : 1;
+                if (ta !== tb) {
+                    return ta - tb;
+                }
+                return String(a.p.fullName || "").localeCompare(String(b.p.fullName || ""));
+            });
+            rows = rows.map((r) => {
+                if (r.sub != null && r.sub !== 0) {
+                    return r;
+                }
+                let out = { ...r };
+                delete out.eqManageDispOverride;
+                if (ctx.targetP && r.p === ctx.targetP && !r.p.isTarget) {
+                    let lab = (r.p.dispName != null && String(r.p.dispName).trim() !== "")
+                        ? String(r.p.dispName)
+                        : r.p.fullName;
+                    out.eqManageDispOverride = "Target: " + lab;
+                }
+                return out;
+            });
+        } else {
+            rows = [];
+        }
+    }
+    let trJoin = table.selectAll("tr").data(rows, r => r.key);
     trJoin.exit().remove();
 
     function isManageMainRow(r) {
@@ -2111,6 +2166,8 @@ function updatePhoneTable(trigger) {
     enter.merge(trJoin).select(".manage-sample-label")
         .text(r => !isManageMainRow(r) && r.p.activeCurves[r.sub]
             ? r.p.activeCurves[r.sub].id : "");
+    enter.merge(trJoin).filter(isManageMainRow).select("td.item-line .phonename")
+        .text(r => r.eqManageDispOverride != null ? r.eqManageDispOverride : r.p.dispName);
 }
 
 function addKey(s) {
@@ -2215,7 +2272,8 @@ function updateKey(s) {
 }
 
 function addModel(t) {
-    let n = t.append("div").attr("class","phonename").text(r=>r.p.dispName);
+    let n = t.append("div").attr("class","phonename")
+        .text(r => r.eqManageDispOverride != null ? r.eqManageDispOverride : r.p.dispName);
     t.filter(r=>r.p.fileNames)
         .append("div").attr("class","variants")
         .call(function (s) {
@@ -2555,10 +2613,20 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
         let intent = (typeof window !== "undefined" && window.eqDropdownModelIntent)
             ? String(window.eqDropdownModelIntent).trim()
             : "";
+        /* Measurements added only as EQ *target* (Target dropdown » Measurements) are still
+           !isTarget — do not overwrite eqLastGraphModelForEq or the model dropdown steals the
+           target and updateEQPhoneTargetSelect drops it from optgroups. */
+        let bypass = (typeof window !== "undefined" && window._eqModelStickyBypassForShownPhoneFullName)
+            ? String(window._eqModelStickyBypassForShownPhoneFullName).trim()
+            : "";
+        let suppressModelStickyForTargetMeas = !!(bypass && bypass === p.fullName);
         /* Avoid late async showPhone() for the *previous* model overwriting EQ focus while a new
            model is loading from the EQ dropdown (eqDropdownModelIntent). */
-        if (!intent || p.fullName === intent) {
+        if (!suppressModelStickyForTargetMeas && (!intent || p.fullName === intent)) {
             window.eqLastGraphModelForEq = p.fullName;
+        }
+        if (typeof window !== "undefined" && suppressModelStickyForTargetMeas) {
+            window._eqModelStickyBypassForShownPhoneFullName = "";
         }
     }
     if (extraEnabled && extraEQEnabled && p.isTarget && p.fullName && !isCompensationTargetNameMatch(p)) {
@@ -2566,6 +2634,10 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
     }
     if (extraEnabled && extraEQEnabled && typeof window.updateEQPhoneSelect === "function") {
         window.updateEQPhoneSelect();
+        applyParametricEqGraphTraceFocus();
+        /* manageTable Eq-tab filter reads getParametricEqTraceFocusContext — must run *after*
+           sticky + dropdown reconcile (otherwise an extra target click leaves the old row up). */
+        updatePhoneTable(trigger);
     }
     if (p._eqNudgeApplyFromSelect && typeof window.eqOnPhoneDataReadyForEqUi === "function") {
         window.eqOnPhoneDataReadyForEqUi(p);
@@ -2604,6 +2676,17 @@ function removePhone(p) {
         eqP.active = false;
     }
     p.active = p.pin = false; nextPN = null;
+    if (typeof window !== "undefined" && p.fullName) {
+        if (window._eqPendingModelFullName === p.fullName) {
+            window._eqPendingModelFullName = "";
+        }
+        if (window._eqPendingTargetFullName === p.fullName) {
+            window._eqPendingTargetFullName = "";
+        }
+        if (window._eqModelStickyBypassForShownPhoneFullName === p.fullName) {
+            window._eqModelStickyBypassForShownPhoneFullName = "";
+        }
+    }
     activePhones = activePhones.filter(q => q.active);
     if (!p.isTarget) {
         let ap = activePhones.filter(p => !p.isTarget);
@@ -2644,7 +2727,13 @@ function removePhone(p) {
             } else {
                 window.eqResetParametricAfterBaseModelRemoved();
             }
+        } else {
+            /* updatePaths() ran applyParametricEqGraphTraceFocus *before* updateEQPhoneSelect()
+               rebuilt the EQ target dropdown; refresh focus once selections match remaining graph. */
+            applyParametricEqGraphTraceFocus();
+            updateEqTraceOpacity();
         }
+        updatePhoneTable();
     }
 }
 
@@ -3551,6 +3640,10 @@ function addExtra() {
         updateEqTraceOpacity();
         updateEqFilterMarkers();
         eqSoundRangeUiHooks.syncBrushFromInputs();
+        updatePhoneTable();
+        if (typeof window.publishEqUiState === "function") {
+            window.publishEqUiState("showExtraPanel");
+        }
     };
     extraButton.addEventListener("click", showExtraPanel);
     // Upload function
@@ -3698,9 +3791,14 @@ function addExtra() {
         if (!modelP) {
             return null;
         }
-        let fromSel = tsel ? eqFindByFullNameAny(tsel) : null;
+        let tselTrim = tsel ? String(tsel).trim() : "";
+        let fromSel = tselTrim ? eqFindByFullNameAny(tselTrim) : null;
         if (fromSel && !isCompensationTargetNameMatch(fromSel)) {
-            return fromSel;
+            /* Path curves use whatever object instance is bound in activePhones — catalog pool hits
+               from `window.allPhones` can be a different reference with the same fullName, so parametric focus misses. */
+            let key = String(fromSel.fullName || "").trim(),
+                graphCanon = activePhones.filter((q) => q && q.fullName === key)[0];
+            return graphCanon || fromSel;
         }
         let catT = eqCatalogTargetsForEqUi().slice().sort((a, b) => String(a.fullName).localeCompare(String(b.fullName)));
         /* Prefer a target already on the graph (e.g. Diffuse field) over an arbitrary catalog row. */
@@ -3710,6 +3808,13 @@ function addExtra() {
     let getParametricEqTraceFocusContext = () => {
         let tab = document.querySelector("div.select");
         if (!extraEnabled || !extraEQEnabled || !tab || tab.getAttribute("data-selected") !== "extra") {
+            return null;
+        }
+        let explicitModel = eqPhoneSelect && String(eqPhoneSelect.value || "").trim();
+        let pendM = (typeof window !== "undefined" && window._eqPendingModelFullName)
+            ? String(window._eqPendingModelFullName).trim()
+            : "";
+        if (!explicitModel && !pendM) {
             return null;
         }
         let modelP = resolveEqModelPhone();
@@ -3723,6 +3828,63 @@ function addExtra() {
         let eqP = modelP && modelP.eq;
         let showSet = new Set([modelP, eqP, targetP].filter(Boolean));
         return { showSet, targetP, eqP, modelP, tsel };
+    };
+    window.__getEqParametricFocusContext = getParametricEqTraceFocusContext;
+    let eqModelDropdownCandidateRenderable = (fullName, optionValues) => {
+        if (!fullName || !optionValues || optionValues.indexOf(fullName) < 0) {
+            return false;
+        }
+        if (typeof window !== "undefined" && window._eqPendingModelFullName === fullName) {
+            return true;
+        }
+        let hit = eqMeasurementObjForSelect(fullName);
+        return !!(hit && activePhones.indexOf(hit) !== -1 && phoneCurveDataReadyForEq(hit));
+    };
+    let eqTargetDropdownCandidateRenderable = (fullName, allOpts) => {
+        if (!fullName || !allOpts || !allOpts.some((row) => row.fullName === fullName)) {
+            return false;
+        }
+        if (typeof window !== "undefined" && window._eqPendingTargetFullName === fullName) {
+            return true;
+        }
+        let hit = eqFindByFullNameAny(fullName);
+        return !!(hit && activePhones.indexOf(hit) !== -1 && phoneCurveDataReadyForEq(hit));
+    };
+    window.publishEqUiState = (reason) => {
+        let tab = document.querySelector("div.select");
+        let onEqTab = !!(extraEnabled && extraEQEnabled && tab
+            && tab.getAttribute("data-selected") === "extra");
+        let loadedModels = [];
+        let loadedTargets = [];
+        activePhones.forEach((p) => {
+            if (!p || !p.fullName) {
+                return;
+            }
+            if (p.isTarget) {
+                loadedTargets.push(p.fullName);
+            } else if (!p.fullName.match(/ EQ$/)) {
+                loadedModels.push(p.fullName);
+            }
+        });
+        let ctx = onEqTab ? getParametricEqTraceFocusContext() : null;
+        let snap = {
+            reason,
+            onEqTab,
+            loadedModelsFullNames: loadedModels,
+            loadedTargetsFullNames: loadedTargets,
+            eqModelSelectValue: eqPhoneSelect ? eqPhoneSelect.value : "",
+            eqTargetSelectValue: eqPhoneTargetSelect ? eqPhoneTargetSelect.value : "",
+            resolvedEqModelFullName: ctx && ctx.modelP ? ctx.modelP.fullName : "",
+            resolvedEqTargetFullName: ctx && ctx.targetP ? ctx.targetP.fullName : "",
+            eqTraceParentFullName: ctx && ctx.eqP ? ctx.eqP.fullName : "",
+            pendingModelFullName: (typeof window !== "undefined" && window._eqPendingModelFullName) || "",
+            pendingTargetFullName: (typeof window !== "undefined" && window._eqPendingTargetFullName) || "",
+            eqDropdownModelIntent: (typeof window !== "undefined" && window.eqDropdownModelIntent) || "",
+            stickyLastGraphModelForEq: (typeof window !== "undefined" && window.eqLastGraphModelForEq) || "",
+            stickyLastGraphTargetForEq: (typeof window !== "undefined" && window.eqLastGraphTargetForEq) || ""
+        };
+        window.__eqUiState = snap;
+        console.log("[eqUiState]", reason, snap);
     };
     window.__eqParametricPathOpacity = (curve) => {
         if (!curve || !curve.p) {
@@ -6731,6 +6893,9 @@ function addExtra() {
         });
         appendTargetOptgroup("Measurements", meas, (p) => p.fullName);
         let optValOk = (fn) => allOpts.some((row) => row.fullName === fn);
+        let targetPick = (fn) => (fn && optValOk(fn) && eqTargetDropdownCandidateRenderable(fn, allOpts))
+            ? fn
+            : "";
         let lastGraphT = (typeof window !== "undefined" && window.eqLastGraphTargetForEq)
             ? String(window.eqLastGraphTargetForEq).trim()
             : "";
@@ -6739,20 +6904,21 @@ function addExtra() {
                 && !isCompensationTargetNameMatch(q))[0];
             return ht ? ht.fullName : "";
         })();
-        let nextTV = "";
-        if (oldVal && optValOk(oldVal)) {
-            nextTV = oldVal;
-        } else if (lastGraphT && optValOk(lastGraphT)) {
-            nextTV = lastGraphT;
-        } else if (firstActiveTarget && optValOk(firstActiveTarget)) {
-            nextTV = firstActiveTarget;
-        }
+        /* Graph target UI (reviewer targets) updates `eqLastGraphTargetForEq` on each showPhone; the
+           <select> still holds the previous value until this rebuild — prefer sticky over oldVal so
+           the newly enabled target becomes the EQ target (dropdown, focus, manageTable). */
+        let nextTV = targetPick(lastGraphT)
+            || targetPick(oldVal)
+            || targetPick(firstActiveTarget);
         eqPhoneTargetSelect.value = nextTV;
         if (!eqPhoneTargetSelect.value && allOpts.length > 0) {
             let modelM = resolveEqModelPhone();
             let implicitT = resolveEqTargetPhone(modelM, "");
-            if (implicitT && allOpts.some((row) => row.fullName === implicitT.fullName)) {
-                eqPhoneTargetSelect.value = implicitT.fullName;
+            if (implicitT) {
+                let imp = targetPick(implicitT.fullName);
+                if (imp) {
+                    eqPhoneTargetSelect.value = imp;
+                }
             }
         }
         let tgPlaceholder = eqPhoneTargetSelect.querySelector("option[value='']");
@@ -6765,6 +6931,10 @@ function addExtra() {
             tgPlaceholder.disabled = hasTarget;
         }
         eqPhoneTargetSelect.dataset.eqLastTarget = eqPhoneTargetSelect.value || "";
+        if (typeof window !== "undefined") {
+            window.eqLastGraphTargetForEq = eqPhoneTargetSelect.value
+                || (window._eqPendingTargetFullName || "");
+        }
     };
     window.updateEQPhoneSelect = () => {
         let oldValue = eqPhoneSelect.value;
@@ -6791,19 +6961,20 @@ function addExtra() {
             return nts.length ? nts[nts.length - 1].fullName : "";
         })();
         let nextSel = "";
-        /* Prefer intent (in-flight EQ dropdown) and last graph model over the <select>'s oldValue.
-           Otherwise the hidden select keeps the first model we ever set while eqLastGraphModelForEq
-           tracks the graph — opening the EQ tab shows a blank or stale row. */
-        if (intent && optionValues.indexOf(intent) >= 0) {
+        /* Match dropdown to graph reality: only names that are on-graph (or loading from pick). */
+        if (intent && eqModelDropdownCandidateRenderable(intent, optionValues)) {
             nextSel = intent;
-        } else if (lastGraph && optionValues.indexOf(lastGraph) >= 0) {
+        } else if (lastGraph && eqModelDropdownCandidateRenderable(lastGraph, optionValues)) {
             nextSel = lastGraph;
-        } else if (oldValue && optionValues.indexOf(oldValue) >= 0) {
+        } else if (oldValue && eqModelDropdownCandidateRenderable(oldValue, optionValues)) {
             nextSel = oldValue;
-        } else if (tailActive && optionValues.indexOf(tailActive) >= 0) {
+        } else if (tailActive && eqModelDropdownCandidateRenderable(tailActive, optionValues)) {
             nextSel = tailActive;
         }
         eqPhoneSelect.value = nextSel;
+        if (!nextSel && intent && !eqModelDropdownCandidateRenderable(intent, optionValues)) {
+            window.eqDropdownModelIntent = "";
+        }
         let autoFilledModel = Boolean(nextSel && (
             !oldValue || optionValues.indexOf(oldValue) < 0 || nextSel !== oldValue
         ));
@@ -6821,10 +6992,23 @@ function addExtra() {
             phPlaceholder.hidden = !!eqPhoneSelect.value;
         }
         eqPhoneSelect.dataset.eqLastModel = eqPhoneSelect.value || "";
+        if (typeof window !== "undefined") {
+            window.eqLastGraphModelForEq = eqPhoneSelect.value
+                || (window._eqPendingModelFullName || "");
+            if (!eqPhoneSelect.value && !window._eqPendingModelFullName) {
+                window.eqDropdownModelIntent = "";
+            }
+        }
+        if (typeof window.publishEqUiState === "function") {
+            window.publishEqUiState("updateEQPhoneSelect");
+        }
     };
     window.eqResetParametricAfterBaseModelRemoved = () => {
         window._eqModelActivatedByDropdown = null;
         window._eqTargetActivatedByDropdown = null;
+        window._eqPendingModelFullName = "";
+        window._eqPendingTargetFullName = "";
+        window._eqModelStickyBypassForShownPhoneFullName = "";
         window.eqDropdownModelIntent = "";
         eqFiltersUserHasEdited = false;
         eq2chResetAllBanksToDefaultRow();
@@ -6841,6 +7025,7 @@ function addExtra() {
         applyParametricEqGraphTraceFocus();
         updateEqTraceOpacity();
         updateEqFilterMarkers();
+        updatePhoneTable();
         eqHistoryRenderLog();
     };
     updateFilterElements();
@@ -6901,8 +7086,10 @@ function addExtra() {
             } else {
                 window._eqModelActivatedByDropdown = null;
             }
+            window._eqPendingModelFullName = (next && !nextP.rawChannels) ? next : "";
         } else {
             window._eqModelActivatedByDropdown = null;
+            window._eqPendingModelFullName = "";
         }
         setEqFilterSelectedRow(null);
         updateEQPhoneTargetSelect();
@@ -6914,6 +7101,10 @@ function addExtra() {
             cancelDeferredApplyEQ();
             applyEQExec();
             scheduleLiveEqSync();
+        }
+        updatePhoneTable();
+        if (typeof window.publishEqUiState === "function") {
+            window.publishEqUiState("eqModelSelectChange");
         }
         } finally {
             window.__eqGraphBatchSuppressDepth = Math.max(0, (window.__eqGraphBatchSuppressDepth | 0) - 1);
@@ -6954,10 +7145,13 @@ function addExtra() {
             }
             if (v) {
                 let p = eqFindByFullNameAny(v);
+                window._eqPendingTargetFullName = (p && !p.rawChannels) ? v : "";
                 if (p && activePhones.indexOf(p) === -1) {
                     if (!p.rawChannels) {
                         p._eqNudgeApplyFromSelect = true;
                     }
+                    /* See showPhone(): skip overwriting eqLastGraphModelForEq for target-only adds. */
+                    window._eqModelStickyBypassForShownPhoneFullName = v;
                     showPhone(p, 0, true, false);
                     window._eqTargetActivatedByDropdown = v;
                 } else {
@@ -6965,10 +7159,15 @@ function addExtra() {
                 }
             } else {
                 window._eqTargetActivatedByDropdown = null;
+                window._eqPendingTargetFullName = "";
             }
             eqPhoneTargetSelect.dataset.eqLastTarget = v || "";
             applyParametricEqGraphTraceFocus();
             updateEqTraceOpacity();
+            updatePhoneTable();
+            if (typeof window.publishEqUiState === "function") {
+                window.publishEqUiState("eqTargetSelectChange");
+            }
         });
     }
     let resetParametricEqFilterValuesOnly = () => {
@@ -8406,21 +8605,16 @@ function addExtra() {
             return;
         }
         let phoneSelected = eqPhoneSelect && String(eqPhoneSelect.value || "").trim();
-        if (!phoneSelected && typeof window !== "undefined" && window.eqDropdownModelIntent) {
-            phoneSelected = String(window.eqDropdownModelIntent).trim();
-        }
-        if (!phoneSelected && typeof window !== "undefined" && window.eqLastGraphModelForEq) {
-            phoneSelected = String(window.eqLastGraphModelForEq).trim();
-        }
         if (!phoneSelected) {
-            let firstPhone = eqPhoneSelect.querySelectorAll("option")[1];
-            if (firstPhone) {
-                phoneSelected = eqPhoneSelect.value = firstPhone.value;
-            }
+            alert("Choose an EQ model from the Models dropdown (it must be shown on the graph).");
+            return;
+        }
+        let targetSel = (eqPhoneTargetSelect && String(eqPhoneTargetSelect.value || "").trim());
+        if (!targetSel) {
+            alert("Choose an EQ target from the Target dropdown (it must be shown on the graph).");
+            return;
         }
         let phoneObj = phoneSelected && eqMeasurementObjForSelect(phoneSelected);
-        let targetSel = (eqPhoneTargetSelect && String(eqPhoneTargetSelect.value || "").trim())
-            || (typeof window !== "undefined" ? String(window.eqLastGraphTargetForEq || "").trim() : "");
         let eqChild = phoneObj && phoneObj.eq;
         let targetObj = resolveEqTargetPhone(phoneObj, targetSel);
         if (!phoneObj || !targetObj) {
@@ -8432,22 +8626,52 @@ function addExtra() {
             alert("AutoEQ target must be a different trace than the EQ model.");
             return;
         }
+        let phoneRaws = phoneObj.rawChannels;
+        let targetRaws = targetObj.rawChannels;
+        if (!phoneRaws || !Array.isArray(phoneRaws) || !phoneRaws.some(c => c)) {
+            alert("The EQ model has no frequency response loaded yet. Wait for the curve to finish loading, or choose another model.");
+            return;
+        }
+        if (!targetRaws || !Array.isArray(targetRaws) || !targetRaws.some(c => c)) {
+            alert("The target trace has no frequency response loaded yet. Wait for the curve to finish loading, or pick another target.");
+            return;
+        }
         let autoEQOverlay = document.querySelector(".extra-eq-overlay");
         autoEQOverlay.style.display = "block";
         setTimeout(() => {
-            commitEqMaxBandsFromInput({ writeBackDom: true });
-            syncEqConstraintDomToEqualizerConfig();
-            let phoneCHs = (phoneObj.rawChannels.filter(c => c)
-                .map(ch => ch.map(([f, v]) => [f, v + phoneObj.norm])));
-            let phoneCH = (phoneCHs.length > 1) ? avgCurves(phoneCHs) : phoneCHs[0];
-            let targetCH = targetObj.rawChannels.filter(c => c)[0].map(([f, v]) => [f, v + targetObj.norm]);
-            let maxBandsForAuto = Math.min(eqBands, getEffectiveEqMaxBands());
-            let filters = Equalizer.autoeq(phoneCH, targetCH, maxBandsForAuto);
-            filtersToElem(filters);
-            applyEQ();
-            scheduleLiveEqSync();
-            eqHistoryCommitTransaction(undefined, { historyEntry: { kind: "autoeq" } });
-            autoEQOverlay.style.display = "none";
+            try {
+                commitEqMaxBandsFromInput({ writeBackDom: true });
+                syncEqConstraintDomToEqualizerConfig();
+                let pr = phoneObj.rawChannels;
+                let tr = targetObj.rawChannels;
+                if (!pr || !Array.isArray(pr) || !tr || !Array.isArray(tr)) {
+                    alert("Curve data became unavailable. Try Auto EQ again after the graph finishes loading.");
+                    return;
+                }
+                let phoneCHs = pr.filter(c => c).map(ch => ch.map(([f, v]) => [f, v + phoneObj.norm]));
+                if (!phoneCHs.length || !phoneCHs[0]) {
+                    alert("The EQ model has no usable channel data for Auto EQ.");
+                    return;
+                }
+                let phoneCH = (phoneCHs.length > 1) ? avgCurves(phoneCHs) : phoneCHs[0];
+                let targetCH0 = tr.filter(c => c)[0];
+                if (!targetCH0) {
+                    alert("The target has no usable channel data for Auto EQ.");
+                    return;
+                }
+                let targetCH = targetCH0.map(([f, v]) => [f, v + targetObj.norm]);
+                let maxBandsForAuto = Math.min(eqBands, getEffectiveEqMaxBands());
+                let filters = Equalizer.autoeq(phoneCH, targetCH, maxBandsForAuto);
+                filtersToElem(filters);
+                applyEQ();
+                scheduleLiveEqSync();
+                eqHistoryCommitTransaction(undefined, { historyEntry: { kind: "autoeq" } });
+            } catch (e) {
+                console.error(e);
+                alert("Auto EQ failed unexpectedly. If this keeps happening, reload the page and try again.");
+            } finally {
+                autoEQOverlay.style.display = "none";
+            }
         }, 100);
     });
     // Live playback output trim after EQ (linear gain; tune per source)
@@ -9268,10 +9492,17 @@ function addExtra() {
         if ((model && p.fullName === model) || (targ && p.fullName === targ)) {
             if (model && p.fullName === model) {
                 window.eqDropdownModelIntent = "";
+                window._eqPendingModelFullName = "";
+            }
+            if (targ && p.fullName === targ) {
+                window._eqPendingTargetFullName = "";
             }
             cancelDeferredApplyEQ();
             applyEQExec();
             scheduleLiveEqSync();
+        }
+        if (typeof window.publishEqUiState === "function") {
+            window.publishEqUiState("eqOnPhoneDataReadyForEqUi");
         }
     };
     filtersContainer.addEventListener("input", scheduleLiveEqSync);
