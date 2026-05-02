@@ -1723,6 +1723,25 @@ function setPhoneTr(phtr) {
 
 let channelbox_x = c => c?-86:-36,
     channelbox_tr = c => "translate("+channelbox_x(c)+",0)";
+/** Legend / lineLabel text for user-derived targets (`USRMT_*` stays internal in fullName/fileName). */
+function graphCurveLabelForPhone(p) {
+    if (!p || !p.userTargetFromMeasurement) {
+        return p ? p.fullName : "";
+    }
+    let brand = String(p.dispBrand || "").trim(),
+        nm = String(p.phone || "").trim() || String(p.dispName || "").trim();
+    let core = (brand && nm) ? `${brand} ${nm}`.trim() : (nm || "").trim();
+    if (!core) {
+        core = String(p.fullName || "").replace(/^USRMT_[a-z0-9]+$/i, "").trim();
+    }
+    if (!core) {
+        core = "Target";
+    }
+    if (!/\sTarget$/i.test(core)) {
+        core = `${core} Target`;
+    }
+    return core;
+}
 function setCurves(p, avg, lr, samp) {
     if (!p.channels || !p.channels.length) {
         p.activeCurves = p.activeCurves || [];
@@ -1752,7 +1771,7 @@ function setCurves(p, avg, lr, samp) {
                 return pc(LR[j]+sampnums[i%n], l, j);
             }).filter(c => c.l);
     } else {
-        p.activeCurves = [{id:p.fullName, l:p.channels[0], p:p, o:0}];
+        p.activeCurves = [{id: graphCurveLabelForPhone(p), l:p.channels[0], p:p, o:0}];
     }
     let y = 0;
     let k = d3.selectAll(".keyLine").filter(q=>q===p);
@@ -2365,7 +2384,7 @@ function updateVariant(p) {
     updatePaths();
     updatePhoneTable();
     d3.selectAll("#phones .phone-item,.target")
-        .filter(q => q.id !== undefined)
+        .filter((q) => q != null && q.id !== undefined)
         .call(setPhoneTr);
     if (extraEnabled && extraEQEnabled && typeof window.updateEQPhoneSelect === "function") {
         window.updateEQPhoneSelect();
@@ -2537,6 +2556,10 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
              : (q => q.copyOf===p || q.pin || q.isTarget!==p.isTarget);
     if (cantCompare(activePhones.filter(keep),0, p)) return;
     if (!p.rawChannels) {
+        /* User measurement clones (`USRMT_*`) always carry in-memory FR; never fetch from DIR. */
+        if (p.isTarget && p.userTargetFromMeasurement && /^USRMT_/i.test(String(p.fileName || ""))) {
+            return;
+        }
         let pid = p.id != null ? p.id : nextPhoneNumber();
         let items = doc.select("#phones").selectAll(".phone-item");
         let item = items.filter(q => q === p);
@@ -2601,7 +2624,7 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
     updatePaths(trigger);
     updatePhoneTable(trigger);
     d3.selectAll("#phones .phone-item,.target")
-        .filter(p=>p.id!==undefined)
+        .filter((p) => p != null && p.id !== undefined)
         .call(setPhoneTr);
     //Displays variant pop-up when phone displayed
     if (!suppressVariant && p.fileNames && !p.copyOf && window.innerWidth > 1000) {
@@ -2685,6 +2708,13 @@ function removePhone(p) {
         }
         if (window._eqModelStickyBypassForShownPhoneFullName === p.fullName) {
             window._eqModelStickyBypassForShownPhoneFullName = "";
+        }
+    }
+    if (p.userTargetFromMeasurement && typeof window !== "undefined" && window.brandTarget
+            && Array.isArray(window.brandTarget.phoneObjs)) {
+        let i = window.brandTarget.phoneObjs.indexOf(p);
+        if (i >= 0) {
+            window.brandTarget.phoneObjs.splice(i, 1);
         }
     }
     activePhones = activePhones.filter(q => q.active);
@@ -2924,7 +2954,9 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
         let l = (text,c) => s => s.append("div").attr("class","targetLabel").append("span").text(text);
         let ts = b.phoneObjs = doc.select(".targets").call(l("Targets"))
             .selectAll().data(targets).join("div").call(l(t=>t.type))
-            .style("flex-grow",t=>t.files.length).attr("class","targetClass")
+            .style("flex-grow", t => t.files.length)
+            .attr("class","targetClass")
+            .attr("data-target-type", t => t.type)
             .selectAll().data(t=>t.files.map(ph))
             .join("div").text(t=>t.dispName).attr("class","target")
             .call(setClicks(showPhone))
@@ -3723,6 +3755,126 @@ function addExtra() {
         || document.querySelector("div.extra-eq select[name='phone']");
     let eqPhoneTargetSelect = document.querySelector("div.extra-eq div.select-eq-phone-model-target select[name='eq-target']")
         || document.querySelector("div.extra-eq select[name='eq-target']");
+    /** Measurement-derived targets: rows on `brandTarget.phoneObjs` (EQ Target dropdown); no separate catalog file list. */
+    let eqCloneRawChannelsForUserTarget = (rc) => {
+        if (!rc || !Array.isArray(rc)) {
+            return null;
+        }
+        return rc.map((ch) => (!ch ? ch : ch.map((pt) => (pt && pt.slice) ? pt.slice() : [...pt])));
+    };
+    /** Prefer loaded `rawChannels`; fall back to smoothed `channels` or graphed `activeCurves[].l` (R-channel 404 / partial load). */
+    let eqFrArrayForUserMeasurementTarget = (meas) => {
+        if (!meas) {
+            return null;
+        }
+        let rc = meas.rawChannels;
+        if (rc && Array.isArray(rc) && rc.some((c) => c)) {
+            return rc;
+        }
+        let ch = meas.channels;
+        if (ch && Array.isArray(ch) && ch.some((c) => c && c.length)) {
+            return ch;
+        }
+        let ac = meas.activeCurves;
+        if (ac && ac.length) {
+            let hit = ac.filter((c) => c && c.l && c.l.length >= 2)[0];
+            if (hit && hit.l) {
+                return [hit.l.map((pt) => (pt && pt.slice) ? pt.slice() : [...pt])];
+            }
+        }
+        return null;
+    };
+    let userTargetStemKey = (meas) => `${String(meas.fileName || "")}\t${String(meas.fullName || "").trim()}`;
+    let userTargetHashStem = (s) => {
+        let h = 0;
+        for (let i = 0; i < s.length; i++) {
+            h = Math.imul(31, h) + s.charCodeAt(i) | 0;
+        }
+        return (h >>> 0).toString(36);
+    };
+    let allocNextUserBrandTargetNegId = () => {
+        let bt = typeof window !== "undefined" ? window.brandTarget : null;
+        if (!bt || !Array.isArray(bt.phoneObjs)) {
+            return -1;
+        }
+        let m = 0;
+        bt.phoneObjs.forEach((q) => {
+            if (q && typeof q.id === "number" && q.id < m) {
+                m = q.id;
+            }
+        });
+        return m - 1;
+    };
+    let eqDispNameTargetFromMeasurement = (meas) => {
+        let brand = String(meas.dispBrand || "").trim(),
+            tail = String(meas.dispName || meas.phone || "").trim(),
+            body = `${brand}${brand && tail ? " " : ""}${tail}`.trim()
+                || String(meas.fullName || "").replace(/\sEQ$/i, "").trim()
+                || "target";
+        /* Manage row + CSS append " Target"; dropdown User optgroup uses this as the label. */
+        return body.replace(/^Target:\s*/i, "").trim();
+    };
+    window.eqEnsureUserMeasurementBrandTarget = (meas) => {
+        if (!meas || meas.isTarget || (meas.fullName && String(meas.fullName).match(/ EQ$/))) {
+            return null;
+        }
+        let srcFr = eqFrArrayForUserMeasurementTarget(meas);
+        if (!srcFr) {
+            return null;
+        }
+        let b = typeof window !== "undefined" ? window.brandTarget : null;
+        if (!b || !Array.isArray(b.phoneObjs)) {
+            return null;
+        }
+        let stemKey = userTargetStemKey(meas);
+        let exists = b.phoneObjs.filter((u) => u && u.userTargetStemKey === stemKey)[0];
+        if (exists) {
+            let cl = eqCloneRawChannelsForUserTarget(srcFr);
+            if (cl && cl.some((c) => c)) {
+                exists.rawChannels = cl;
+            }
+            exists.norm = meas.norm != null ? meas.norm : exists.norm;
+            exists.offset = meas.offset || exists.offset || 0;
+            exists.dispName = eqDispNameTargetFromMeasurement(meas);
+            exists.dispBrand = String(meas.dispBrand || "").trim();
+            let synthTail = String(meas.dispName || meas.phone || "").trim();
+            exists.phone = String(synthTail || exists.phone).slice(0, 120);
+            if (exists.activeCurves && exists.activeCurves[0]) {
+                exists.activeCurves[0].id = graphCurveLabelForPhone(exists);
+            }
+            return exists;
+        }
+        let fn = "USRMT_" + userTargetHashStem(stemKey),
+            synthBrand = String(meas.dispBrand || "").trim(),
+            synthTail = String(meas.dispName || meas.phone || "").trim(),
+            synthPhone = synthTail
+                || String(meas.fullName || meas.fileName || "UserTarget").trim().replace(/\sEQ$/i, ""),
+            row = {
+                isTarget: true,
+                isDynamic: true,
+                userTargetFromMeasurement: true,
+                userTargetStemKey: stemKey,
+                brand: b,
+                dispBrand: synthBrand,
+                dispName: eqDispNameTargetFromMeasurement(meas),
+                phone: String(synthPhone).slice(0, 120),
+                fullName: fn,
+                fileName: fn,
+                rawChannels: null,
+                norm: meas.norm,
+                offset: meas.offset || 0,
+                id: allocNextUserBrandTargetNegId()
+            };
+        let clonedFr = eqCloneRawChannelsForUserTarget(srcFr);
+        if (!clonedFr || !clonedFr.some((c) => c)) {
+            return null;
+        }
+        row.rawChannels = clonedFr;
+        b.phoneObjs.push(row);
+        return row;
+    };
+    window.eqEnsureUserSynthTargetFromMeasurement = window.eqEnsureUserMeasurementBrandTarget;
+
     let eqAllPhonesPool = () => ((typeof window !== "undefined" && window.allPhones)
         ? window.allPhones
         : activePhones);
@@ -3730,14 +3882,17 @@ function addExtra() {
     let eqBrandTargetPhoneObjs = () => ((typeof window !== "undefined" && window.brandTarget && window.brandTarget.phoneObjs)
         ? window.brandTarget.phoneObjs
         : []);
-    let eqCatalogTargetsForEqUi = () => eqBrandTargetPhoneObjs().filter((p) => p && p.isTarget && p.fullName
-        && !p.fullName.match(/ EQ$/) && !isCompensationTargetNameMatch(p));
+    let eqBuiltinCatalogTargetsForEqUi = () => eqBrandTargetPhoneObjs().filter((p) => p && p.isTarget && p.fullName
+        && !p.fullName.match(/ EQ$/) && !isCompensationTargetNameMatch(p) && !p.userTargetFromMeasurement);
+    let eqUserCatalogTargetsForEqUi = () => eqBrandTargetPhoneObjs().filter((p) => p && p.fullName
+        && p.userTargetFromMeasurement);
+    let eqCatalogTargetsForEqUi = () => eqUserCatalogTargetsForEqUi().concat(eqBuiltinCatalogTargetsForEqUi());
     /** Resolve a graph row by full name in measurements catalog, uploaded targets, or active list. */
     let eqFindByFullNameAny = (fullName) => {
         if (!fullName) {
             return null;
         }
-        let hit = eqAllPhonesPool().filter((p) => p.fullName === fullName)[0];
+        let         hit = eqAllPhonesPool().filter((p) => p.fullName === fullName)[0];
         if (hit) {
             return hit;
         }
@@ -3785,6 +3940,20 @@ function addExtra() {
         }
         return activePhones.filter((p) =>
             !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/))[0] || null;
+    };
+    /** After synthesizing `USRMT_*`, drop the source measurement trace unless it is the active EQ model row. */
+    let removeMeasurementIfSupersededByUserTarget = (meas) => {
+        if (!meas || meas.isTarget || (meas.fullName && String(meas.fullName).match(/ EQ$/))) {
+            return;
+        }
+        if (activePhones.indexOf(meas) === -1) {
+            return;
+        }
+        let mdl = resolveEqModelPhone();
+        if (mdl && meas.fullName === mdl.fullName) {
+            return;
+        }
+        removePhone(meas);
     };
     /** Comparison trace: explicit `eq-target` / catalog / graphed target — never another on-graph IEM as a fake "target". */
     let resolveEqTargetPhone = (modelP, tsel) => {
@@ -3884,7 +4053,6 @@ function addExtra() {
             stickyLastGraphTargetForEq: (typeof window !== "undefined" && window.eqLastGraphTargetForEq) || ""
         };
         window.__eqUiState = snap;
-        console.log("[eqUiState]", reason, snap);
     };
     window.__eqParametricPathOpacity = (curve) => {
         if (!curve || !curve.p) {
@@ -6845,19 +7013,29 @@ function addExtra() {
         }
         let phoneSelected = eqPhoneSelect.value;
         let pool = eqAllPhonesPool();
-        let targs = eqCatalogTargetsForEqUi().slice();
+        let userT = eqUserCatalogTargetsForEqUi().slice();
+        let builtins = eqBuiltinCatalogTargetsForEqUi().slice();
         let meas = pool.filter((p) => !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/)
             && (!phoneSelected || p.fullName !== phoneSelected)
             && !isCompensationTargetNameMatch(p));
         let byName = (a, b) => String(a.fullName).localeCompare(String(b.fullName));
-        targs.sort(byName);
+        userT.sort(byName);
+        builtins.sort(byName);
         meas.sort(byName);
-        let seenT = new Set();
-        targs = targs.filter((p) => {
-            if (seenT.has(p.fullName)) {
+        let seenU = new Set();
+        userT = userT.filter((p) => {
+            if (seenU.has(p.fullName)) {
                 return false;
             }
-            seenT.add(p.fullName);
+            seenU.add(p.fullName);
+            return true;
+        });
+        let seenB = new Set();
+        builtins = builtins.filter((p) => {
+            if (seenB.has(p.fullName)) {
+                return false;
+            }
+            seenB.add(p.fullName);
             return true;
         });
         let seenM = new Set();
@@ -6868,7 +7046,7 @@ function addExtra() {
             seenM.add(p.fullName);
             return true;
         });
-        let allOpts = targs.concat(meas);
+        let allOpts = userT.concat(builtins).concat(meas);
         let oldVal = eqPhoneTargetSelect.value;
         Array.from(eqPhoneTargetSelect.children).slice(1).forEach((c) => eqPhoneTargetSelect.removeChild(c));
         let appendTargetOptgroup = (label, arr, textFor) => {
@@ -6885,7 +7063,9 @@ function addExtra() {
             });
             eqPhoneTargetSelect.appendChild(og);
         };
-        appendTargetOptgroup("Targets", targs, (p) => {
+        appendTargetOptgroup("User", userT, (p) =>
+            ((p.dispName != null && String(p.dispName).trim() !== "") ? String(p.dispName) : p.fullName));
+        appendTargetOptgroup("Targets", builtins, (p) => {
             let lab = (p.dispName != null && String(p.dispName).trim() !== "")
                 ? String(p.dispName)
                 : p.fullName;
@@ -6935,6 +7115,36 @@ function addExtra() {
             window.eqLastGraphTargetForEq = eqPhoneTargetSelect.value
                 || (window._eqPendingTargetFullName || "");
         }
+        /* If the resolved <select> value is still a catalog measurement, synthesize `USRMT_*` even when
+           the user never fires change/input (same-option pick or implicit nextTV from share URL). */
+        (function materializeUserMeasurementEqTargetIfNeeded() {
+            if (!eqPhoneTargetSelect) {
+                return;
+            }
+            let v = String(eqPhoneTargetSelect.value || "").trim();
+            if (!v || typeof window.eqEnsureUserMeasurementBrandTarget !== "function") {
+                return;
+            }
+            let p = eqFindByFullNameAny(v);
+            if (!p || p.isTarget || (p.fullName && String(p.fullName).match(/ EQ$/))) {
+                return;
+            }
+            let tgt = window.eqEnsureUserMeasurementBrandTarget(p);
+            if (!tgt) {
+                return;
+            }
+            if (activePhones.indexOf(tgt) === -1) {
+                showPhone(tgt, 0, true, false);
+            }
+            removeMeasurementIfSupersededByUserTarget(p);
+            if (typeof window !== "undefined") {
+                window.eqLastGraphTargetForEq = tgt.fullName;
+            }
+            let domVal = String(eqPhoneTargetSelect.value || "").trim();
+            if (domVal !== String(tgt.fullName).trim() && typeof window.updateEQPhoneSelect === "function") {
+                window.updateEQPhoneSelect();
+            }
+        })();
     };
     window.updateEQPhoneSelect = () => {
         let oldValue = eqPhoneSelect.value;
@@ -7030,9 +7240,7 @@ function addExtra() {
     };
     updateFilterElements();
     updateEqFilterMarkers();
-    if (!eqPhoneSelect) {
-        console.warn("[graphtool] EQ model <select> not found (expected div.extra-eq select[name='phone']).");
-    } else {
+    if (eqPhoneSelect) {
     /* Coalesce input+change in one tick (both can fire on the same user pick in Chromium). */
     let eqPhoneSelectCoalesce = false;
     function runEqPhoneSelectHandler() {
@@ -7129,46 +7337,93 @@ function addExtra() {
     eqPhoneSelect.dataset.eqLastModel = eqPhoneSelect.value || "";
     }
     if (eqPhoneTargetSelect) {
-        eqPhoneTargetSelect.addEventListener("input", () => {
-            let prevT = eqPhoneTargetSelect.dataset.eqLastTarget || "";
+    let eqTargetSelectCoalesce = false;
+    function runEqTargetSelectHandler() {
+            let prevCanon = eqPhoneTargetSelect.dataset.eqLastTarget || "";
             let v = eqPhoneTargetSelect.value;
-            window.eqLastGraphTargetForEq = v || "";
-            if (prevT && v !== prevT) {
+            if (prevCanon && v !== prevCanon) {
                 let dropT = window._eqTargetActivatedByDropdown;
-                if (dropT && dropT === prevT) {
-                    let pPrev = eqFindByFullNameAny(prevT);
+                if (dropT && dropT === prevCanon) {
+                    let pPrev = eqFindByFullNameAny(prevCanon);
                     if (pPrev && activePhones.indexOf(pPrev) !== -1) {
                         removePhone(pPrev);
                     }
                     window._eqTargetActivatedByDropdown = null;
                 }
             }
+            let canonTarget = "";
             if (v) {
-                let p = eqFindByFullNameAny(v);
-                window._eqPendingTargetFullName = (p && !p.rawChannels) ? v : "";
-                if (p && activePhones.indexOf(p) === -1) {
-                    if (!p.rawChannels) {
-                        p._eqNudgeApplyFromSelect = true;
+                let p = eqFindByFullNameAny(v),
+                    toShow = p,
+                    stickyBypass = "",
+                    synthSrc = null;
+                if (p && !p.isTarget && p.fullName && !String(p.fullName).match(/ EQ$/)) {
+                    let tgt = (typeof window.eqEnsureUserMeasurementBrandTarget === "function")
+                        ? window.eqEnsureUserMeasurementBrandTarget(p)
+                        : null;
+                    if (tgt) {
+                        synthSrc = p;
+                        toShow = tgt;
+                        stickyBypass = "";
+                    } else if (p) {
+                        stickyBypass = p.fullName;
                     }
-                    /* See showPhone(): skip overwriting eqLastGraphModelForEq for target-only adds. */
-                    window._eqModelStickyBypassForShownPhoneFullName = v;
-                    showPhone(p, 0, true, false);
-                    window._eqTargetActivatedByDropdown = v;
+                }
+                canonTarget = (toShow && toShow.fullName) || "";
+                if (typeof window !== "undefined") {
+                    window.eqLastGraphTargetForEq = canonTarget || "";
+                }
+                window._eqPendingTargetFullName = (toShow && !toShow.rawChannels)
+                    ? (toShow.fullName || v)
+                    : "";
+                if (toShow && activePhones.indexOf(toShow) === -1) {
+                    if (!toShow.rawChannels) {
+                        toShow._eqNudgeApplyFromSelect = true;
+                    }
+                    /* See showPhone(): skip overwriting eqLastGraphModelForEq for measurement target adds. */
+                    window._eqModelStickyBypassForShownPhoneFullName = stickyBypass;
+                    showPhone(toShow, 0, true, false);
+                    window._eqTargetActivatedByDropdown = toShow.fullName || "";
                 } else {
                     window._eqTargetActivatedByDropdown = null;
+                    window._eqModelStickyBypassForShownPhoneFullName = "";
+                }
+                if (synthSrc && toShow && toShow.userTargetFromMeasurement) {
+                    removeMeasurementIfSupersededByUserTarget(synthSrc);
                 }
             } else {
                 window._eqTargetActivatedByDropdown = null;
                 window._eqPendingTargetFullName = "";
+                if (typeof window !== "undefined") {
+                    window.eqLastGraphTargetForEq = "";
+                }
             }
-            eqPhoneTargetSelect.dataset.eqLastTarget = v || "";
+            eqPhoneTargetSelect.dataset.eqLastTarget = canonTarget;
+            /* Measurement option value stays on the dropdown until rebuild; reconcile to User `USRMT_*` sticky. */
+            if (extraEnabled && extraEQEnabled && v && canonTarget && String(v).trim() !== String(canonTarget).trim()) {
+                if (typeof window.updateEQPhoneSelect === "function") {
+                    window.updateEQPhoneSelect();
+                }
+            }
             applyParametricEqGraphTraceFocus();
             updateEqTraceOpacity();
             updatePhoneTable();
             if (typeof window.publishEqUiState === "function") {
                 window.publishEqUiState("eqTargetSelectChange");
             }
+    }
+    function queueEqTargetSelectHandler() {
+        if (eqTargetSelectCoalesce) {
+            return;
+        }
+        eqTargetSelectCoalesce = true;
+        queueMicrotask(() => {
+            eqTargetSelectCoalesce = false;
+            runEqTargetSelectHandler();
         });
+    }
+    eqPhoneTargetSelect.addEventListener("input", queueEqTargetSelectHandler);
+    eqPhoneTargetSelect.addEventListener("change", queueEqTargetSelectHandler);
     }
     let resetParametricEqFilterValuesOnly = () => {
         if (!filterFreqInput || !filterFreqInput.length) {
@@ -11902,7 +12157,6 @@ function addExtra() {
 
                 // Call the plugin function with the provided context
                 await initializePlugin(context);
-                console.log(`Successfully loaded plugin: ${pluginPath}`);
             } catch (error) {
                 console.error(`Error loading plugin ${pluginPath}:`, error.message);
             }
