@@ -7128,9 +7128,9 @@ function addExtra() {
     /* Coalesce to one apply per animation frame so the trace follows typing without
        the old 100ms debounce pause, while bounding work during rapid input. */
     let applyEQ = () => {
-        if (applyEQRafId !== null) {
-            return;
-        }
+        /* Coalesce to one apply per frame, but never drop a call: a second applyEQ (e.g. after Auto EQ
+           then remove-band) must not return early or the last DOM change is never applied. */
+        cancelDeferredApplyEQ();
         applyEQRafId = requestAnimationFrame(() => {
             applyEQRafId = null;
             applyEQExec();
@@ -7873,20 +7873,39 @@ function addExtra() {
         scheduleLiveEqSync();
         eqHistoryCommitTransaction();
     });
-    // Remove last filter
+    // Remove last substantive filter band (same core path as ⌘+Backspace / deleteSelectedEqFilterRow).
+    /* After Auto EQ, maybeAutoGrowEqBandsForTrailingBlank often appends an empty row; the old handler
+       only decremented eqBands and removed the last DOM node — first click dropped that blank row
+       with no EQ change, so − looked broken while row-targeted shortcuts still worked. */
     document.querySelector("div.extra-eq button.remove-filter").addEventListener("click", () => {
         eqFiltersUserHasEdited = true;
         let all = elemToFilters(true);
-        let removeHist = null;
-        if (eqBands > 1 && all.length) {
-            removeHist = { historyEntry: {
-                kind: "removeBand",
-                removeFreq: +all[all.length - 1].freq || 0
-            } };
+        let snapIsBlank = (f) => f && (!(f.freq | 0) && !(f.q | 0) && !(f.gain | 0));
+        while (all.length > 1 && snapIsBlank(all[all.length - 1])) {
+            all.pop();
         }
-        eqBands = Math.max(eqBands - 1, 1);
+        if (all.length <= 1) {
+            eqBands = 1;
+            updateFilterElements();
+            filtersToElem([{ disabled: false, type: "PK", freq: 0, q: 0, gain: 0 }]);
+            setEqFilterSelectedRow(0);
+            cancelDeferredApplyEQ();
+            applyEQExec();
+            scheduleLiveEqSync();
+            eqHistoryCommitTransaction(undefined, { historyEntry: { kind: "removeBand", removeFreq: 0 } });
+            return;
+        }
+        let removeHist = { historyEntry: {
+            kind: "removeBand",
+            removeFreq: +all[all.length - 1].freq || 0
+        } };
+        all.pop();
+        eqBands = all.length;
         updateFilterElements();
-        applyEQ(); // May removed effective filter
+        filtersToElem(all);
+        setEqFilterSelectedRow(null);
+        cancelDeferredApplyEQ();
+        applyEQExec();
         scheduleLiveEqSync();
         eqHistoryCommitTransaction(undefined, removeHist);
     });
@@ -9298,7 +9317,9 @@ function addExtra() {
                     return;
                 }
                 let targetCH = targetCH0.map(([f, v]) => [f, v + targetObj.norm]);
-                let maxBandsForAuto = Math.min(eqBands, getEffectiveEqMaxBands());
+                /* Band count for the solver comes only from Constraints (Eq Max Bands / getEffectiveEqMaxBands),
+                   not from how many rows the UI is currently showing (extraEQBands / eqBands). */
+                let maxBandsForAuto = getEffectiveEqMaxBands();
                 let filters = Equalizer.autoeq(phoneCH, targetCH, maxBandsForAuto);
                 filtersToElem(filters);
                 applyEQ();
