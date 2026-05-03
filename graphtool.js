@@ -3782,28 +3782,46 @@ function addExtra() {
                     return;
                 }
                 ch[0] = Equalizer.interp(f_values, ch[0]);
+                let selTabUpload = document.querySelector("div.select");
+                let eqTabActive = extraEnabled && extraEQEnabled && selTabUpload
+                    && selTabUpload.getAttribute("data-selected") === "extra";
                 if (uploadType === "fr") {
                     name.match(/ R$/) && ch.splice(0, 0, null);
                     let phoneObj = addOrUpdatePhone(brandMap.Uploaded, phone, ch);
+                    if (eqTabActive && typeof window !== "undefined") {
+                        window.eqDropdownModelIntent = phoneObj.fullName;
+                    }
                     showPhone(phoneObj, false);
                 } else if (uploadType === "target") {
+                    let bt = typeof window !== "undefined" ? window.brandTarget : null;
+                    if (!bt || !Array.isArray(bt.phoneObjs)) {
+                        alert("Target catalog is not available.");
+                        return;
+                    }
                     let fullName = name + (name.match(/ Target$/i) ? "" : " Target");
-                    let existsTargets = targets.reduce((a, b) => a.concat(b.files), []).map(f => f += " Target");
-                    if (existsTargets.indexOf(fullName) >= 0) {
+                    let existsTargets = (typeof targets !== "undefined" && targets)
+                        ? targets.reduce((a, b) => a.concat(b.files), []).map((f) => f += " Target")
+                        : [];
+                    if (existsTargets.indexOf(fullName) >= 0
+                            || bt.phoneObjs.some((p) => p && p.fullName === fullName)) {
                         alert("This target already exists on this tool, please select it instead of upload.");
                         return;
                     }
                     let phoneObj = {
                         isTarget: true,
-                        brand: brandTarget,
+                        brand: bt,
                         dispName: name,
                         phone: name,
                         fullName: fullName,
                         fileName: fullName,
                         rawChannels: ch,
                         isDynamic: true,
-                        id: -brandTarget.phoneObjs.length
+                        id: -bt.phoneObjs.length
                     };
+                    bt.phoneObjs.push(phoneObj);
+                    if (eqTabActive && typeof window !== "undefined") {
+                        window.eqDropdownTargetIntent = phoneObj.fullName;
+                    }
                     showPhone(phoneObj, true);
                 }
             } finally {
@@ -7179,6 +7197,26 @@ function addExtra() {
         activeMeasQuick.sort(byName);
         let activeMeasQuickNames = new Set(activeMeasQuick.map((p) => p.fullName));
         meas = meas.filter((p) => !activeMeasQuickNames.has(p.fullName));
+        /* On-graph targets (catalog + uploaded), same idea as Active models — pin here; omit from Targets optgroup. */
+        let activeTargetsQuick = [],
+            seenATq = new Set();
+        getManageTableBasePhoneOrder().forEach((p) => {
+            if (!p || !p.isTarget || !p.fullName || isCompensationTargetNameMatch(p)) {
+                return;
+            }
+            if (activePhones.indexOf(p) === -1) {
+                return;
+            }
+            if (seenATq.has(p.fullName)) {
+                return;
+            }
+            seenATq.add(p.fullName);
+            activeTargetsQuick.push(p);
+        });
+        let activeTargetsQuickNames = new Set(activeTargetsQuick.map((p) => p.fullName));
+        builtins = builtins.filter((p) => !activeTargetsQuickNames.has(p.fullName));
+        /* Active order: same idea as the model dropdown — user / measurement quick rows first, on-graph
+           targets (including uploads) last so new uploads sit at the bottom of Active. */
         let seenUserSec = new Set();
         let userSectionList = [];
         userT.forEach((p) => {
@@ -7188,6 +7226,12 @@ function addExtra() {
             }
         });
         activeMeasQuick.forEach((p) => {
+            if (!seenUserSec.has(p.fullName)) {
+                seenUserSec.add(p.fullName);
+                userSectionList.push(p);
+            }
+        });
+        activeTargetsQuick.forEach((p) => {
             if (!seenUserSec.has(p.fullName)) {
                 seenUserSec.add(p.fullName);
                 userSectionList.push(p);
@@ -7210,8 +7254,24 @@ function addExtra() {
             });
             eqPhoneTargetSelect.appendChild(og);
         };
-        appendTargetOptgroup("Active", userSectionList, (p) =>
-            ((p.dispName != null && String(p.dispName).trim() !== "") ? String(p.dispName) : p.fullName));
+        appendTargetOptgroup("Active", userSectionList, (p) => {
+            if (p.isTarget) {
+                let lab = (p.dispName != null && String(p.dispName).trim() !== "")
+                    ? String(p.dispName)
+                    : p.fullName;
+                return "Target: " + lab;
+            }
+            /* Match model dropdown: short model name (`phone`) rather than brand + phone (`fullName`). */
+            let d = (p.dispName != null && String(p.dispName).trim() !== "") ? String(p.dispName).trim() : "";
+            if (d) {
+                return d;
+            }
+            let ph = (p.phone != null && String(p.phone).trim() !== "") ? String(p.phone).trim() : "";
+            if (ph) {
+                return ph;
+            }
+            return String(p.fullName || "");
+        });
         appendTargetOptgroup("Targets", builtins, (p) => {
             let lab = (p.dispName != null && String(p.dispName).trim() !== "")
                 ? String(p.dispName)
