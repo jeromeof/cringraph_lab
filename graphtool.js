@@ -3714,39 +3714,47 @@ function addExtra() {
             return;
         }
         let reader = new FileReader();
-        reader.onload = (e) => {
-            let name = file.name.replace(/\.[^\.]+$/, "");
-            let phone = { name: name };
-            let ch = [tsvParse(e.target.result)];
-            if (ch[0].length < 128) {
-                alert("Parse frequence response file failed: invalid format.");
-                return;
-            }
-            ch[0] = Equalizer.interp(f_values, ch[0]);
-            if (uploadType === "fr") {
-                name.match(/ R$/) && ch.splice(0, 0, null);
-                let phoneObj = addOrUpdatePhone(brandMap.Uploaded, phone, ch);
-                showPhone(phoneObj, false);
-            } else if (uploadType === "target") {
-                let fullName = name + (name.match(/ Target$/i) ? "" : " Target");
-                let existsTargets = targets.reduce((a, b) => a.concat(b.files), []).map(f => f += " Target");
-                if (existsTargets.indexOf(fullName) >= 0) {
-                    alert("This target already exists on this tool, please select it instead of upload.");
+        reader.onload = (ev) => {
+            try {
+                let name = file.name.replace(/\.[^\.]+$/, "");
+                let phone = { name: name };
+                let ch = [tsvParse(ev.target.result)];
+                if (ch[0].length < 128) {
+                    alert("Parse frequence response file failed: invalid format.");
                     return;
                 }
-                let phoneObj = {
-                    isTarget: true,
-                    brand: brandTarget,
-                    dispName: name,
-                    phone: name,
-                    fullName: fullName,
-                    fileName: fullName,
-                    rawChannels: ch,
-                    isDynamic: true,
-                    id: -brandTarget.phoneObjs.length
-                };
-                showPhone(phoneObj, true);
+                ch[0] = Equalizer.interp(f_values, ch[0]);
+                if (uploadType === "fr") {
+                    name.match(/ R$/) && ch.splice(0, 0, null);
+                    let phoneObj = addOrUpdatePhone(brandMap.Uploaded, phone, ch);
+                    showPhone(phoneObj, false);
+                } else if (uploadType === "target") {
+                    let fullName = name + (name.match(/ Target$/i) ? "" : " Target");
+                    let existsTargets = targets.reduce((a, b) => a.concat(b.files), []).map(f => f += " Target");
+                    if (existsTargets.indexOf(fullName) >= 0) {
+                        alert("This target already exists on this tool, please select it instead of upload.");
+                        return;
+                    }
+                    let phoneObj = {
+                        isTarget: true,
+                        brand: brandTarget,
+                        dispName: name,
+                        phone: name,
+                        fullName: fullName,
+                        fileName: fullName,
+                        rawChannels: ch,
+                        isDynamic: true,
+                        id: -brandTarget.phoneObjs.length
+                    };
+                    showPhone(phoneObj, true);
+                }
+            } finally {
+                /* Same path selected twice does not fire `change` unless the input is cleared. */
+                fileFR.value = "";
             }
+        };
+        reader.onerror = () => {
+            fileFR.value = "";
         };
         reader.readAsText(file);
     });
