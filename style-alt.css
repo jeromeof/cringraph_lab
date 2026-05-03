@@ -2505,7 +2505,7 @@ div.extra-panel .live-sound-tools-head {
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     column-gap: 12px;
     row-gap: 6px;
@@ -2513,12 +2513,166 @@ div.extra-panel .live-sound-tools-head {
     width: 100%;
 }
 
+div.extra-panel .live-sound-tools-head-trailing {
+    flex: 0 0 auto;
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+}
+
+/* Collapsible settings (output volume); same expand/collapse pattern as Parametric EQ constraints */
+div.extra-panel .live-sound-tools > div.live-sound-tools-settings {
+    box-sizing: border-box;
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    pointer-events: none;
+    transition: max-height 200ms ease, opacity 200ms ease, margin-bottom 200ms ease;
+}
+
+div.extra-panel .live-sound-tools > div.live-sound-tools-settings.live-sound-tools-settings-expanded {
+    max-height: 200px;
+    opacity: 1;
+    margin-top: 0;
+    margin-bottom: 10px;
+    pointer-events: auto;
+}
+
+div.extra-panel .live-sound-tools .live-sound-tools-settings-inner {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
+    min-width: 0;
+    padding: 12px 12px 10px;
+    border-radius: 10px;
+    background-color: var(--background-color-graph);
+}
+
+/* Match Parametric EQ settings gear; height aligns with Compare A/B switch track (24px) */
+div.extra-panel .live-sound-tools-head-trailing .live-sound-tools-settings-gear {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    align-self: center;
+    order: 0;
+    position: relative;
+    width: auto;
+    min-width: 0;
+    height: var(--eq-switch-track-h);
+    min-height: var(--eq-switch-track-h);
+    margin: 0;
+    /* Override div.extra-panel button { margin-bottom: 4px !important } — no chip wrap here */
+    margin-bottom: 0 !important;
+    padding: 0 0 0 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    border: none !important;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none;
+    color: var(--background-color-contrast-more);
+    font-family: var(--font-primary);
+    font-size: 0;
+    font-weight: 400;
+    line-height: 1;
+    text-transform: none;
+    white-space: nowrap;
+    cursor: pointer;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: color 200ms ease;
+}
+
+div.extra-panel .live-sound-tools-head-trailing .live-sound-tools-settings-gear-char {
+    box-sizing: border-box;
+    display: block;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    background-color: currentColor;
+    mask: var(--icon-eq-settings);
+    -webkit-mask: var(--icon-eq-settings);
+    mask-repeat: no-repeat;
+    -webkit-mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-position: center;
+    mask-size: 16px 16px;
+    -webkit-mask-size: 16px 16px;
+}
+
+div.extra-panel .live-sound-tools-head-trailing .live-sound-tools-settings-gear:hover {
+    color: var(--accent-color);
+}
+
+div.extra-panel .live-sound-tools-head-trailing .live-sound-tools-settings-gear:focus,
+div.extra-panel .live-sound-tools-head-trailing .live-sound-tools-settings-gear:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+div.extra-panel .live-sound-volume-row {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    margin: 0;
+}
+
+div.extra-panel .live-sound-volume-icon {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    color: var(--background-color-contrast-more);
+}
+
+div.extra-panel .live-sound-volume-icon svg {
+    display: block;
+    width: 20px;
+    height: 20px;
+}
+
+div.extra-panel .live-sound-volume-slider-row {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    margin: 0;
+    padding-top: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+div.extra-panel .live-sound-volume-pct {
+    flex: 0 0 auto;
+    min-width: 3.5ch;
+    font-family: var(--font-secondary);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--background-color-contrast-more);
+    text-align: right;
+}
+
 div.extra-panel .live-sound-tools-head > h5.live-sound-tools-title {
     margin: 0;
     padding: 0;
     font-family: var(--font-primary);
     font-size: 13px;
-    line-height: 1.2;
+    line-height: 20px;
     font-weight: 600;
     color: var(--background-color-contrast-more);
 }
@@ -2988,7 +3142,8 @@ div.extra-panel .live-sound-tools .live-sound-slider-row.tone-generator-slider-r
     padding-top: 0;
 }
 
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq'] {
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq'],
+div.extra-panel .live-sound-tools .live-sound-volume-slider-row input[name='live-sound-master-volume'] {
     box-sizing: border-box;
     display: block;
     width: 100%;
@@ -2999,11 +3154,13 @@ div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-genera
     background: transparent;
 }
 
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']:focus {
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']:focus,
+div.extra-panel .live-sound-tools .live-sound-volume-slider-row input[name='live-sound-master-volume']:focus {
     outline: none;
 }
 
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-moz-focus-outer {
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-moz-focus-outer,
+div.extra-panel .live-sound-tools .live-sound-volume-slider-row input[name='live-sound-master-volume']::-moz-focus-outer {
     border: 0;
 }
 
@@ -3017,7 +3174,24 @@ div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-genera
     background-color: var(--background-color-inputs);
 }
 
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-webkit-slider-thumb {
+/* Volume: left of knob = rail (inputs); right of knob = dimmed (--background-color); --live-sound-vol-pct set in JS */
+div.extra-panel .live-sound-tools .live-sound-volume-slider-row input[name='live-sound-master-volume']::-webkit-slider-runnable-track {
+    height: 18px;
+    box-sizing: border-box;
+    padding: 0px 2px;
+    border: 1px solid var(--background-color-contrast-more);
+    border-radius: 100px;
+    background: linear-gradient(
+        to right,
+        var(--background-color-inputs) 0%,
+        var(--background-color-inputs) var(--live-sound-vol-pct, 100%),
+        var(--background-color) var(--live-sound-vol-pct, 100%),
+        var(--background-color) 100%
+    );
+}
+
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-webkit-slider-thumb,
+div.extra-panel .live-sound-tools .live-sound-volume-slider-row input[name='live-sound-master-volume']::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
     box-sizing: border-box;
@@ -3036,6 +3210,13 @@ div.extra-panel .live-sound-tools .tone-generator-slider-row input[name='tone-ge
     width: auto;
 }
 
+div.extra-panel .live-sound-tools .live-sound-volume-slider-row input[name='live-sound-master-volume'] {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+}
+
 div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-moz-range-track {
     height: 16px;
     box-sizing: border-box;
@@ -3045,7 +3226,23 @@ div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-genera
     background-color: var(--background-color-inputs);
 }
 
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-moz-range-thumb {
+div.extra-panel .live-sound-tools .live-sound-volume-slider-row input[name='live-sound-master-volume']::-moz-range-track {
+    height: 16px;
+    box-sizing: border-box;
+    padding: 1px 2px;
+    border: 1px solid var(--background-color-contrast);
+    border-radius: 100px;
+    background: linear-gradient(
+        to right,
+        var(--background-color-inputs) 0%,
+        var(--background-color-inputs) var(--live-sound-vol-pct, 100%),
+        var(--background-color) var(--live-sound-vol-pct, 100%),
+        var(--background-color) 100%
+    );
+}
+
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-moz-range-thumb,
+div.extra-panel .live-sound-tools .live-sound-volume-slider-row input[name='live-sound-master-volume']::-moz-range-thumb {
     box-sizing: border-box;
     width: 12px;
     height: 12px;
@@ -3055,7 +3252,8 @@ div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-genera
     cursor: pointer;
 }
 
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-ms-track {
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-ms-track,
+div.extra-panel .live-sound-tools .live-sound-volume-slider-row input[name='live-sound-master-volume']::-ms-track {
     height: 16px;
     box-sizing: border-box;
     padding: 0 2px;
@@ -3072,7 +3270,20 @@ div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-genera
     border-radius: 100px;
 }
 
-div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-ms-thumb {
+div.extra-panel .live-sound-tools .live-sound-volume-slider-row input[name='live-sound-master-volume']::-ms-fill-lower {
+    background-color: var(--background-color-inputs);
+    border: none;
+    border-radius: 100px;
+}
+
+div.extra-panel .live-sound-tools .live-sound-volume-slider-row input[name='live-sound-master-volume']::-ms-fill-upper {
+    background-color: var(--background-color);
+    border: none;
+    border-radius: 100px;
+}
+
+div.extra-panel .live-sound-tools .live-sound-slider-row input[name='tone-generator-freq']::-ms-thumb,
+div.extra-panel .live-sound-tools .live-sound-volume-slider-row input[name='live-sound-master-volume']::-ms-thumb {
     width: 12px;
     height: 12px;
     border-radius: 50%;
@@ -3127,13 +3338,15 @@ div.extra-panel .live-sound-tools .extra-music.music-file-loaded .music-segment-
     border-color: var(--background-color-contrast-more);
 }
 
+/* Dimmed regions outside the loop (same fill as volume track right of thumb) */
 div.extra-panel .live-sound-tools .extra-music .music-segment-outside {
     position: absolute;
     top: 0;
     bottom: 0;
     box-sizing: border-box;
     border-radius: 100px;
-    background-color: var(--background-color-contrast);
+    background: none;
+    background-color: var(--background-color);
     z-index: 1;
     pointer-events: none;
 }

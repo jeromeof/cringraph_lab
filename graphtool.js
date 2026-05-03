@@ -306,17 +306,33 @@ doc.html(`
             <div class="live-sound-tools">
               <div class="live-sound-tools-head">
                 <h5 class="live-sound-tools-title">Sound Tools</h5>
-                <label class="live-sound-eq-toggle-label">
-                  <span class="live-sound-eq-toggle-text">Compare</span>
-                  <span class="live-sound-eq-switch">
-                    <span class="live-sound-eq-switch-track live-sound-eq-switch-track--compare">
-                      <input type="checkbox" class="live-sound-eq-toggle" checked aria-label="Compare: when on (B), live playback uses parametric EQ; when off (A), reference path" />
-                      <span class="live-sound-eq-switch-thumb live-sound-eq-switch-thumb--compare" aria-hidden="true"><span class="live-sound-eq-switch-thumb-letter live-sound-eq-switch-thumb-letter--a">A</span><span class="live-sound-eq-switch-thumb-letter live-sound-eq-switch-thumb-letter--b">B</span></span>
-                      <span class="live-sound-eq-switch-ab-placeholder live-sound-eq-switch-ab-placeholder--a" aria-hidden="true"><span class="live-sound-eq-switch-ab-placeholder-ring"><span class="live-sound-eq-switch-ab-placeholder-letter">A</span></span></span>
-                      <span class="live-sound-eq-switch-ab-placeholder live-sound-eq-switch-ab-placeholder--b" aria-hidden="true"><span class="live-sound-eq-switch-ab-placeholder-ring"><span class="live-sound-eq-switch-ab-placeholder-letter">B</span></span></span>
+                <div class="live-sound-tools-head-trailing">
+                  <label class="live-sound-eq-toggle-label">
+                    <span class="live-sound-eq-toggle-text">Compare</span>
+                    <span class="live-sound-eq-switch">
+                      <span class="live-sound-eq-switch-track live-sound-eq-switch-track--compare">
+                        <input type="checkbox" class="live-sound-eq-toggle" checked aria-label="Compare: when on (B), live playback uses parametric EQ; when off (A), reference path" />
+                        <span class="live-sound-eq-switch-thumb live-sound-eq-switch-thumb--compare" aria-hidden="true"><span class="live-sound-eq-switch-thumb-letter live-sound-eq-switch-thumb-letter--a">A</span><span class="live-sound-eq-switch-thumb-letter live-sound-eq-switch-thumb-letter--b">B</span></span>
+                        <span class="live-sound-eq-switch-ab-placeholder live-sound-eq-switch-ab-placeholder--a" aria-hidden="true"><span class="live-sound-eq-switch-ab-placeholder-ring"><span class="live-sound-eq-switch-ab-placeholder-letter">A</span></span></span>
+                        <span class="live-sound-eq-switch-ab-placeholder live-sound-eq-switch-ab-placeholder--b" aria-hidden="true"><span class="live-sound-eq-switch-ab-placeholder-ring"><span class="live-sound-eq-switch-ab-placeholder-letter">B</span></span></span>
+                      </span>
                     </span>
-                  </span>
-                </label>
+                  </label>
+                  <button type="button" class="live-sound-tools-settings-gear" aria-expanded="false" aria-controls="live-sound-tools-settings-body" aria-label="Sound Tools settings" title="Sound Tools settings"><span class="live-sound-tools-settings-gear-char" aria-hidden="true"></span></button>
+                </div>
+              </div>
+              <div class="live-sound-tools-settings">
+                <div id="live-sound-tools-settings-body" class="live-sound-tools-settings-body" aria-hidden="true">
+                  <div class="live-sound-tools-settings-inner">
+                    <div class="live-sound-volume-row">
+                      <span class="live-sound-volume-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-volume"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><path d="M15 8a5 5 0 0 1 0 8"></path><path d="M17.7 5a9 9 0 0 1 0 14"></path><path d="M6 15h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l3.5 -4.5a.8 .8 0 0 1 1.5 .5v14a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5"></path></svg></span>
+                      <div class="live-sound-slider-row live-sound-volume-slider-row">
+                        <input name="live-sound-master-volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="Sound Tools output volume" />
+                      </div>
+                      <span class="live-sound-volume-pct" aria-live="polite"><span class="live-sound-volume-pct-text">100</span>%</span>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="live-sound-sources">
                 <div class="live-sound-source extra-pink-noise">
@@ -8994,6 +9010,20 @@ function addExtra() {
     let livePinkNoisePlaybackGain = 0.5;
     let liveToneGeneratorPlaybackGain = 0.2;
     let liveMusicPlaybackGain = 1;
+    /** User-facing Sound Tools master (1 = 100%); multiplies each source after its app-level trim / music preamp math. */
+    let liveSoundToolsUserVolume = 1;
+    let applyLiveSoundToolsUserVolumeToAudioNodes = () => {
+        let v = liveSoundToolsUserVolume;
+        if (pinkNoiseUserGain) {
+            pinkNoiseUserGain.gain.value = v;
+        }
+        if (toneGeneratorUserGain) {
+            toneGeneratorUserGain.gain.value = v;
+        }
+        if (musicUserGain) {
+            musicUserGain.gain.value = v;
+        }
+    };
     let lastEqPlaybackSource = "pink";
     // Pink noise (parametric EQ in audio path)
     let pinkNoisePlayButton = document.querySelector("div.extra-pink-noise .play");
@@ -9001,6 +9031,8 @@ function addExtra() {
     let pinkNoiseContext = null;
     let pinkNoiseProcessor = null;
     let pinkNoiseMasterGain = null;
+    /** Multiplies app trim (pink/tone/music) without disturbing sweep/fade automation on master gains. */
+    let pinkNoiseUserGain = null;
     let pinkNoiseAnalyser = null;
     let pinkNoiseBiquads = [];
     let pinkNoiseBandFilters = [];
@@ -9016,6 +9048,7 @@ function addExtra() {
     let toneGeneratorBandFiltersRight = [];
     let toneGeneratorMerger = null;
     let toneGeneratorMasterGain = null;
+    let toneGeneratorUserGain = null;
     let toneGeneratorAnalyser = null;
     let musicBiquads = [];
     let musicBandFilters = [];
@@ -9029,6 +9062,7 @@ function addExtra() {
     let musicAudio = null;
     let musicMediaSourceNode = null;
     let musicMasterGain = null;
+    let musicUserGain = null;
     let musicAnalyser = null;
     let musicObjectUrl = null;
     let musicFileLoaded = false;
@@ -9938,6 +9972,12 @@ function addExtra() {
             pinkNoiseMasterGain.disconnect();
             pinkNoiseMasterGain = null;
         }
+        if (pinkNoiseUserGain) {
+            try {
+                pinkNoiseUserGain.disconnect();
+            } catch (e) { /* noop */ }
+            pinkNoiseUserGain = null;
+        }
         if (pinkNoiseAnalyser) {
             try {
                 pinkNoiseAnalyser.disconnect();
@@ -9979,6 +10019,45 @@ function addExtra() {
     let toneGeneratorAddFilterButton = document.querySelector(
         "div.extra-tone-generator button.tone-generator-add-filter");
     const TONE_GENERATOR_DEFAULT_HZ = 1000;
+    let liveSoundMasterVolumeInput = document.querySelector("div.live-sound-tools input[name='live-sound-master-volume']");
+    let liveSoundVolumePctText = document.querySelector("div.live-sound-tools .live-sound-volume-pct-text");
+    let syncLiveSoundMasterVolumeTrackFill = () => {
+        let el = liveSoundMasterVolumeInput;
+        if (!el) {
+            return;
+        }
+        let min = parseFloat(el.min) || 0;
+        let max = parseFloat(el.max) || 1;
+        let v = parseFloat(el.value);
+        if (!Number.isFinite(v)) {
+            v = min;
+        }
+        let pct = max > min ? ((v - min) / (max - min)) * 100 : 0;
+        el.style.setProperty("--live-sound-vol-pct", pct + "%");
+    };
+    if (liveSoundMasterVolumeInput) {
+        liveSoundMasterVolumeInput.addEventListener("input", () => {
+            liveSoundToolsUserVolume = Math.min(1, Math.max(0, parseFloat(liveSoundMasterVolumeInput.value) || 0));
+            applyLiveSoundToolsUserVolumeToAudioNodes();
+            syncLiveSoundMasterVolumeTrackFill();
+            if (liveSoundVolumePctText) {
+                liveSoundVolumePctText.textContent = String(Math.round(liveSoundToolsUserVolume * 100));
+            }
+        });
+        syncLiveSoundMasterVolumeTrackFill();
+    }
+    (() => {
+        let stCard = document.querySelector("div.live-sound-tools-settings");
+        let stGear = document.querySelector("div.live-sound-tools button.live-sound-tools-settings-gear");
+        let stBody = document.getElementById("live-sound-tools-settings-body");
+        if (stGear && stCard && stBody) {
+            stGear.addEventListener("click", () => {
+                let exp = stCard.classList.toggle("live-sound-tools-settings-expanded");
+                stGear.setAttribute("aria-expanded", exp ? "true" : "false");
+                stBody.setAttribute("aria-hidden", exp ? "false" : "true");
+            });
+        }
+    })();
     if (toneGeneratorSlider && toneGeneratorFromInput && toneGeneratorToInput && toneGeneratorText) {
         let from = Math.min(Math.max(parseInt(toneGeneratorFromInput.value, 10) || 20, 20), 20000);
         let to = Math.min(Math.max(parseInt(toneGeneratorToInput.value, 10) || from, from), 20000);
@@ -10257,6 +10336,12 @@ function addExtra() {
                 toneGeneratorMerger.disconnect();
             } catch (e) { /* noop */ }
             toneGeneratorMerger = null;
+        }
+        if (toneGeneratorUserGain) {
+            try {
+                toneGeneratorUserGain.disconnect();
+            } catch (e) { /* noop */ }
+            toneGeneratorUserGain = null;
         }
         if (toneGeneratorMasterGain) {
             try {
@@ -11097,13 +11182,16 @@ function addExtra() {
         pinkNoiseProcessor = createPinkNoiseProcessor(pinkNoiseContext);
         pinkNoiseMasterGain = pinkNoiseContext.createGain();
         pinkNoiseMasterGain.gain.value = livePinkNoisePlaybackGain;
+        pinkNoiseUserGain = pinkNoiseContext.createGain();
+        pinkNoiseUserGain.gain.value = liveSoundToolsUserVolume;
         // rebuildPinkNoiseEqChain requires pinkNoisePlaying — set before first build
         pinkNoisePlaying = true;
         rebuildPinkNoiseEqChain();
         pinkNoiseAnalyser = pinkNoiseAnalyser || pinkNoiseContext.createAnalyser();
         configureLiveSpectrumAnalyser(pinkNoiseAnalyser);
         pinkNoiseMasterGain.disconnect();
-        pinkNoiseMasterGain.connect(pinkNoiseAnalyser);
+        pinkNoiseMasterGain.connect(pinkNoiseUserGain);
+        pinkNoiseUserGain.connect(pinkNoiseAnalyser);
         pinkNoiseAnalyser.connect(pinkNoiseContext.destination);
         pinkNoisePlayButton.classList.add("playback-active");
         lastEqPlaybackSource = "pink";
@@ -11162,11 +11250,14 @@ function addExtra() {
         toneGeneratorOsc.frequency.value = parseInt(toneGeneratorText.innerText, 10) || TONE_GENERATOR_DEFAULT_HZ;
         toneGeneratorMasterGain = toneGeneratorContext.createGain();
         toneGeneratorMasterGain.gain.setValueAtTime(0, tA);
+        toneGeneratorUserGain = toneGeneratorContext.createGain();
+        toneGeneratorUserGain.gain.value = liveSoundToolsUserVolume;
         rebuildToneGeneratorEqChain();
         toneGeneratorAnalyser = toneGeneratorAnalyser || toneGeneratorContext.createAnalyser();
         configureLiveSpectrumAnalyser(toneGeneratorAnalyser);
         toneGeneratorMasterGain.disconnect();
-        toneGeneratorMasterGain.connect(toneGeneratorAnalyser);
+        toneGeneratorMasterGain.connect(toneGeneratorUserGain);
+        toneGeneratorUserGain.connect(toneGeneratorAnalyser);
         toneGeneratorAnalyser.connect(toneGeneratorContext.destination);
         toneGeneratorOsc.start(tA);
         toneGeneratorMasterGain.gain.linearRampToValueAtTime(liveToneGeneratorPlaybackGain, tA + TONE_GEN_FADE_IN_SEC);
@@ -11448,6 +11539,12 @@ function addExtra() {
             } catch (err) { /* noop */ }
             musicMasterGain = null;
         }
+        if (musicUserGain) {
+            try {
+                musicUserGain.disconnect();
+            } catch (err) { /* noop */ }
+            musicUserGain = null;
+        }
         if (musicAnalyser) {
             try {
                 musicAnalyser.disconnect();
@@ -11484,10 +11581,13 @@ function addExtra() {
         musicMediaSourceNode = musicContext.createMediaElementSource(musicAudio);
         musicMasterGain = musicContext.createGain();
         musicMasterGain.gain.value = liveMusicPlaybackGain;
+        musicUserGain = musicContext.createGain();
+        musicUserGain.gain.value = liveSoundToolsUserVolume;
         rebuildMusicEqChain();
         musicAnalyser = musicContext.createAnalyser();
         configureLiveSpectrumAnalyser(musicAnalyser);
-        musicMasterGain.connect(musicAnalyser);
+        musicMasterGain.connect(musicUserGain);
+        musicUserGain.connect(musicAnalyser);
         musicAnalyser.connect(musicContext.destination);
         musicSpectrumViz.syncSpectrumViz();
         return true;
@@ -12113,7 +12213,7 @@ function addExtra() {
             return;
         }
         if (t.closest && t.closest("div.extra-panel button") && !t.closest("button.play")) {
-            if (t.closest("button.extra-eq-constraints-gear")) {
+            if (t.closest("button.extra-eq-constraints-gear") || t.closest("button.live-sound-tools-settings-gear")) {
                 /* Gear keeps focus after open/close; native Space would toggle the panel instead of play/pause. */
             } else if (t.closest("button.extra-eq-reset-btn") || t.closest("button.live-sound-range-reset-btn")) {
                 /* Same as gear: keep global Space → play/pause; avoid trapping focus on reset. */
