@@ -1023,6 +1023,8 @@ const LR = typeof default_channels !== "undefined" ? default_channels
 let getO = i => LR.length>1 ? -1+i*2/(LR.length-1) : 0;
 const sampnums = typeof num_samples !== "undefined" ? d3.range(1,num_samples+1)
                                                     : [""];
+window._measurementCalibrationPromise = Promise.resolve();
+window._measurementCalibrationCurve = null;
 function loadFiles(p, callback) {
     let gen = (p._lfGen = (p._lfGen||0) + 1);
     let fetchTxt = base => d3.text(DIR+base+".txt").catch(()=>null);
@@ -1030,6 +1032,14 @@ function loadFiles(p, callback) {
         if (!f) return null;
         try { return Equalizer.interp(f_values, tsvParse(f)); }
         catch (e) { return null; }
+    };
+    let deliver = function (ch) {
+        Promise.resolve(window._measurementCalibrationPromise || Promise.resolve()).then(function () {
+            if (gen !== p._lfGen) {
+                return;
+            }
+            callback(applyMeasurementCalibrationToChannels(ch, p));
+        });
     };
     let f = p.isTarget ? [fetchTxt(p.fileName)]
           : d3.merge(LR.map(s =>
@@ -1046,27 +1056,34 @@ function loadFiles(p, callback) {
             early = true;
             let ch = new Array(LR.length * nSamp).fill(null);
             s1.forEach((idx, j) => { ch[idx] = parseFr(res[j]); });
-            callback(ch);
+            deliver(ch);
         });
 
         Promise.all(f).then(function (frs) {
             if (gen !== p._lfGen) return;
             if (!frs.some(x => x !== null)) return;
             let ch = frs.map(parseFr);
-            if (!early) { callback(ch); return; }
-            let hasNew = ch.some((c, i) =>
-                c !== null && (!p.rawChannels || p.rawChannels[i] === null));
-            if (!hasNew || !p.rawChannels) return;
-            p.rawChannels = ch;
-            p.smooth = undefined;
-            if (p.vars) p.vars[p.fileName] = ch;
-            smoothPhone(p);
-            normalizePhone(p);
-            updatePaths();
-            updatePhoneTable();
-            if (typeof eqAfterMultiSampleRawRefined === "function") {
-                eqAfterMultiSampleRawRefined(p);
-            }
+            Promise.resolve(window._measurementCalibrationPromise || Promise.resolve()).then(function () {
+                if (gen !== p._lfGen) return;
+                ch = applyMeasurementCalibrationToChannels(ch, p);
+                if (!early) {
+                    callback(ch);
+                    return;
+                }
+                let hasNew = ch.some((c, i) =>
+                    c !== null && (!p.rawChannels || p.rawChannels[i] === null));
+                if (!hasNew || !p.rawChannels) return;
+                p.rawChannels = ch;
+                p.smooth = undefined;
+                if (p.vars) p.vars[p.fileName] = ch;
+                smoothPhone(p);
+                normalizePhone(p);
+                updatePaths();
+                updatePhoneTable();
+                if (typeof eqAfterMultiSampleRawRefined === "function") {
+                    eqAfterMultiSampleRawRefined(p);
+                }
+            });
         });
         return;
     }
@@ -1075,7 +1092,7 @@ function loadFiles(p, callback) {
         if (gen !== p._lfGen) return;
         if (!frs.some(f=>f!==null)) return;
         let ch = frs.map(parseFr);
-        callback(ch);
+        deliver(ch);
     });
 }
 let validChannels = p => (p.channels || []).filter(c=>c!==null);
@@ -2506,6 +2523,89 @@ let f_values = (function() {
     while (f[f.length-1] < 20000) { f.push(f[f.length-1] * step) }
     return f;
 })();
+(function initMeasurementCalibrationFromConfig() {
+    window._measurementCalibrationPromise = Promise.resolve();
+    window._measurementCalibrationCurve = null;
+    if (typeof measurement_calibration_file === "undefined" || !measurement_calibration_file) {
+        return;
+    }
+    let raw = String(measurement_calibration_file).trim();
+    if (!raw) {
+        return;
+    }
+    /* Same convention as measurement loads: stem without ".txt" → DIR+stem+".txt".
+       Use URL() so spaces (e.g. "IEF Cal.txt") become valid fetch URLs. */
+    let url;
+    if (/^https?:\/\//i.test(raw)) {
+        try {
+            let u = new URL(raw);
+            if (!/\.txt$/i.test(u.pathname)) {
+                u.pathname += u.pathname.endsWith("/") ? "calibration.txt" : ".txt";
+            }
+            url = u.href;
+        } catch (e) {
+            url = /\.txt$/i.test(raw) ? raw : raw + ".txt";
+        }
+    } else {
+        let stem = raw.replace(/^\/+/, "");
+        if (!/\.txt$/i.test(stem)) {
+            stem += ".txt";
+        }
+        let baseDir = String(DIR || "");
+        if (/^https?:\/\//i.test(baseDir) && !baseDir.endsWith("/")) {
+            baseDir += "/";
+        }
+        try {
+            url = new URL(stem, baseDir).href;
+        } catch (e2) {
+            url = baseDir.replace(/\/?$/, "/") + stem.replace(/^\/+/, "");
+            url = url.replace(/ /g, "%20");
+        }
+    }
+    window._measurementCalibrationPromise = d3.text(url).then(function (txt) {
+        if (!txt) {
+            return;
+        }
+        try {
+            window._measurementCalibrationCurve = Equalizer.interp(f_values, tsvParse(txt));
+        } catch (e) {
+            window._measurementCalibrationCurve = null;
+        }
+    }).catch(function () {
+        window._measurementCalibrationCurve = null;
+    });
+})();
+function shouldApplyMeasurementCalibration(p) {
+    if (!p || !window._measurementCalibrationCurve || !window._measurementCalibrationCurve.length) {
+        return false;
+    }
+    if (p.isTarget) {
+        return false;
+    }
+    if (p.brand && p.brand.name === "Uploaded") {
+        return false;
+    }
+    if (p.isDynamic) {
+        return false;
+    }
+    return true;
+}
+function applyMeasurementCalibrationToChannels(ch, p) {
+    if (!ch || !shouldApplyMeasurementCalibration(p)) {
+        return ch;
+    }
+    let cal = window._measurementCalibrationCurve;
+    return ch.map(function (c) {
+        if (!c) {
+            return c;
+        }
+        return c.map(function (pt, i) {
+            let calPt = cal[i];
+            let dbCal = calPt && calPt.length >= 2 && Number.isFinite(calPt[1]) ? calPt[1] : 0;
+            return [pt[0], pt[1] - dbCal];
+        });
+    });
+}
 let fr_to_ind = fr => d3.bisect(f_values, fr, 0, f_values.length-1);
 function range_to_slice(xs, fn) {
     let r = xs.map(v => d3.bisectLeft(f_values, x.invert(fn(v))));
