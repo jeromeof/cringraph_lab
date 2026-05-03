@@ -1759,7 +1759,7 @@ div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear {
     height: 20px;
     margin: 0;
     /* Hit target extends left only so the glyph stays flush with the column’s right edge */
-    padding: 0 0 0 10px;
+    padding: 0 0 0 8px;
     display: inline-flex;
     align-items: center;
     justify-content: flex-end;
@@ -2571,7 +2571,7 @@ div.extra-panel .live-sound-tools-head-trailing .live-sound-tools-settings-gear 
     margin: 0;
     /* Override div.extra-panel button { margin-bottom: 4px !important } — no chip wrap here */
     margin-bottom: 0 !important;
-    padding: 0 0 0 10px;
+    padding: 0 0 0 8px;
     display: inline-flex;
     align-items: center;
     justify-content: flex-end;
