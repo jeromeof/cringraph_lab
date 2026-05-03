@@ -11006,7 +11006,7 @@ function addExtra() {
             + (1 - EQ_GRAPH_WHEEL_Q_SENS_FLOOR) * Math.pow(t, EQ_GRAPH_WHEEL_Q_SENS_GAMMA);
     };
     function eqGraphPlotWheel(e) {
-        if (eqGraphPointerState || interactInspect) {
+        if (interactInspect) {
             return;
         }
         let tab = document.querySelector("div.select");
@@ -11014,16 +11014,27 @@ function addExtra() {
                 || tab.getAttribute("data-selected") !== "extra") {
             return;
         }
-        let m = clientToGraphPlotXY(e.clientX, e.clientY);
-        if (!m) {
+        let stWheel = eqGraphPointerState;
+        let wheelDuringEqDrag = Boolean(stWheel && stWheel.mode === "eq"
+            && stWheel.filterIndex !== null);
+        if (stWheel && !wheelDuringEqDrag) {
             return;
         }
-        let hit = findEqGraphMarkerHit(m);
-        if (!hit) {
-            return;
+        let i = -1;
+        if (wheelDuringEqDrag) {
+            i = stWheel.filterIndex;
+        } else {
+            let m = clientToGraphPlotXY(e.clientX, e.clientY);
+            if (!m) {
+                return;
+            }
+            let hit = findEqGraphMarkerHit(m);
+            if (!hit) {
+                return;
+            }
+            i = hit.rowIndex;
         }
         e.preventDefault();
-        let i = hit.rowIndex;
         let qDisplay = parseFloat(filterQInput[i].value);
         if (!Number.isFinite(qDisplay)) {
             qDisplay = 1;
@@ -11078,17 +11089,23 @@ function addExtra() {
             ? q.toFixed(2)
             : String(q);
         cancelDeferredApplyEQ();
-        applyEQExec();
+        if (wheelDuringEqDrag) {
+            applyEQExec({ skipRestoreFocus: true, liveGraphEqDrag: true });
+        } else {
+            applyEQExec();
+        }
         scheduleLiveEqSync();
         eqHistoryNotifyChange();
         setEqFilterSelectedRow(i);
-        requestAnimationFrame(() => {
-            let qEl = filterQInput[i];
-            if (qEl) {
-                qEl.focus();
-                qEl.select();
-            }
-        });
+        if (!wheelDuringEqDrag) {
+            requestAnimationFrame(() => {
+                let qEl = filterQInput[i];
+                if (qEl) {
+                    qEl.focus();
+                    qEl.select();
+                }
+            });
+        }
     }
     function eqGraphPlotContextMenu(e) {
         if (interactInspect || eqGraphPointerState) {
