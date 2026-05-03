@@ -10155,10 +10155,10 @@ function addExtra() {
     let toneGeneratorOsc = null;
     let toneGeneratorTimeoutHandle = null;
     let toneSweepRafId = null;
-    let toneSweepDurationSec = 6;
+    let toneSweepDurationSec = 30;
     /** log(20k/20); sweep uses log-frequency interpolation — partial ranges use the same share of wall time as on a full 20–20k sweep. */
     const TONE_SWEEP_FULL_LOG_SPAN = Math.log(20000 / 20);
-    const TONE_SWEEP_MIN_DURATION_SEC = 2;
+    const TONE_SWEEP_MIN_DURATION_SEC = 6;
     /** Last Space keydown in Extra tab (any live sound source); two within `toneSpaceDoubleMs` → sine sweep. */
     let lastToneSpaceKeydownTime = 0;
     let toneSpaceDoubleMs = 200;
