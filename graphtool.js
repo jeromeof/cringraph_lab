@@ -1977,16 +1977,43 @@ function phoneCurveDataReadyForEq(p) {
     return !!(p && p.rawChannels && Array.isArray(p.rawChannels) && p.rawChannels.some(c => c));
 }
 
-function manageTableRows() {
+/** Same phone ordering as the manage table (before Eq-tab row filter): unique phones in curve-walk order,
+    then targets clustered first; with a share/config `initPhoneOrderIndex`, each segment (targets, then IEMs)
+    is sorted by `initOrderRankForPhone` so order matches the URL. */
+function getManageTableBasePhoneOrder() {
     let curvesAll = d3.merge(activePhones.map(p => p.activeCurves || [])),
         phoneOrder = [],
         seenP = new Set();
     curvesAll.forEach(c => {
-        if (!c || !c.p || seenP.has(c.p)) return;
+        if (!c || !c.p || seenP.has(c.p)) {
+            return;
+        }
         seenP.add(c.p);
         phoneOrder.push(c.p);
     });
-    phoneOrder = phonesClusteredTargetsFirst(phoneOrder);
+    let clustered = phonesClusteredTargetsFirst(phoneOrder);
+    if (!initPhoneOrderIndex.size) {
+        return clustered;
+    }
+    let sortSeg = (seg) => seg.slice().sort((a, b) => {
+        let ra = initOrderRankForPhone(a),
+            rb = initOrderRankForPhone(b);
+        if (ra == null) {
+            ra = 1e6 + phoneManageIdentity(a) * 1e-6;
+        }
+        if (rb == null) {
+            rb = 1e6 + phoneManageIdentity(b) * 1e-6;
+        }
+        if (ra !== rb) {
+            return ra - rb;
+        }
+        return phoneManageIdentity(a) - phoneManageIdentity(b);
+    });
+    return sortSeg(clustered.filter((p) => p && p.isTarget))
+        .concat(sortSeg(clustered.filter((p) => p && !p.isTarget)));
+}
+function manageTableRows() {
+    let phoneOrder = getManageTableBasePhoneOrder();
     let rows = [];
     phoneOrder.forEach(p => {
         let pid = phoneManageIdentity(p),
@@ -2661,7 +2688,13 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
         let suppressModelStickyForTargetMeas = !!(bypass && bypass === p.fullName);
         /* Avoid late async showPhone() for the *previous* model overwriting EQ focus while a new
            model is loading from the EQ dropdown (eqDropdownModelIntent). */
-        if (!suppressModelStickyForTargetMeas && (!intent || p.fullName === intent)) {
+        /* Parallel init loads can finish out of order; do not let later fetches stomp sticky during
+           bulk config/share/embed once another model is already on-graph. */
+        let otherModels = activePhones.filter((q) =>
+            q && q !== p && !q.isTarget && q.fullName && !String(q.fullName).match(/ EQ$/));
+        let initBulk = trigger === "config" || trigger === "share" || trigger === "embed";
+        if (!suppressModelStickyForTargetMeas && (!intent || p.fullName === intent)
+                && !(initBulk && otherModels.length > 0)) {
             window.eqLastGraphModelForEq = p.fullName;
         }
         if (typeof window !== "undefined" && suppressModelStickyForTargetMeas) {
@@ -2669,7 +2702,16 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
         }
     }
     if (extraEnabled && extraEQEnabled && p.isTarget && p.fullName && !isCompensationTargetNameMatch(p)) {
-        window.eqLastGraphTargetForEq = p.fullName;
+        /* init `inits.map(... showPhone(..., initMode))` can load several targets in parallel. Each
+           async showPhone() would otherwise stomp `eqLastGraphTargetForEq` — whichever network fetch
+           completes last “wins” instead of config/init order. Skip sticky updates when this target is
+           joining one or more targets already on-graph during bulk init (config/share/embed). */
+        let otherTargets = activePhones.filter((q) =>
+            q && q !== p && q.isTarget && q.fullName && !isCompensationTargetNameMatch(q));
+        let initBulk = trigger === "config" || trigger === "share" || trigger === "embed";
+        if (!(initBulk && otherTargets.length > 0)) {
+            window.eqLastGraphTargetForEq = p.fullName;
+        }
     }
     if (extraEnabled && extraEQEnabled && typeof window.updateEQPhoneSelect === "function") {
         window.updateEQPhoneSelect();
@@ -3962,8 +4004,14 @@ function addExtra() {
                applyParametricEqGraphTraceFocus briefly treated it as the EQ model — "flash twice". */
             return null;
         }
-        return activePhones.filter((p) =>
-            !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/))[0] || null;
+        let ord = getManageTableBasePhoneOrder();
+        for (let i = 0; i < ord.length; i++) {
+            let p = ord[i];
+            if (p && !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/)) {
+                return p;
+            }
+        }
+        return null;
     };
     /** After synthesizing `USRMT_*`, drop the source measurement trace unless it is the active EQ model row. */
     let removeMeasurementIfSupersededByUserTarget = (meas) => {
@@ -3994,8 +4042,17 @@ function addExtra() {
             return graphCanon || fromSel;
         }
         let catT = eqCatalogTargetsForEqUi().slice().sort((a, b) => String(a.fullName).localeCompare(String(b.fullName)));
-        /* Prefer a target already on the graph (e.g. Diffuse field) over an arbitrary catalog row. */
-        let onGraphT = activePhones.filter((p) => p.isTarget && !isCompensationTargetNameMatch(p))[0];
+        /* Prefer a target already on the graph (manage-table order: targets first in row order). */
+        let onGraphT = (() => {
+            let ord = getManageTableBasePhoneOrder();
+            for (let i = 0; i < ord.length; i++) {
+                let p = ord[i];
+                if (p && p.isTarget && !isCompensationTargetNameMatch(p)) {
+                    return p;
+                }
+            }
+            return null;
+        })();
         return onGraphT || catT[0] || null;
     };
     let getParametricEqTraceFocusContext = () => {
@@ -4033,6 +4090,17 @@ function addExtra() {
         let hit = eqMeasurementObjForSelect(fullName);
         return !!(hit && activePhones.indexOf(hit) !== -1 && phoneCurveDataReadyForEq(hit));
     };
+    /** Same as renderable but does not wait for rawChannels — avoids races when parallel loads finish out of order. */
+    let eqModelOnGraphInOptionList = (fullName, optionValues) => {
+        if (!fullName || !optionValues || optionValues.indexOf(fullName) < 0) {
+            return false;
+        }
+        if (typeof window !== "undefined" && window._eqPendingModelFullName === fullName) {
+            return true;
+        }
+        let hit = eqMeasurementObjForSelect(fullName);
+        return !!(hit && activePhones.indexOf(hit) !== -1);
+    };
     let eqTargetDropdownCandidateRenderable = (fullName, allOpts) => {
         if (!fullName || !allOpts || !allOpts.some((row) => row.fullName === fullName)) {
             return false;
@@ -4042,6 +4110,16 @@ function addExtra() {
         }
         let hit = eqFindByFullNameAny(fullName);
         return !!(hit && activePhones.indexOf(hit) !== -1 && phoneCurveDataReadyForEq(hit));
+    };
+    let eqTargetOnGraphInOptionList = (fullName, allOpts) => {
+        if (!fullName || !allOpts || !allOpts.some((row) => row.fullName === fullName)) {
+            return false;
+        }
+        if (typeof window !== "undefined" && window._eqPendingTargetFullName === fullName) {
+            return true;
+        }
+        let hit = eqFindByFullNameAny(fullName);
+        return !!(hit && activePhones.indexOf(hit) !== -1);
     };
     window.publishEqUiState = (reason) => {
         let tab = document.querySelector("div.select");
@@ -7146,26 +7224,48 @@ function addExtra() {
         let lastGraphT = (typeof window !== "undefined" && window.eqLastGraphTargetForEq)
             ? String(window.eqLastGraphTargetForEq).trim()
             : "";
-        let firstActiveTarget = (() => {
-            let ht = activePhones.filter((q) => q && q.isTarget && q.fullName
-                && !isCompensationTargetNameMatch(q))[0];
-            return ht ? ht.fullName : "";
-        })();
-        /* Graph target UI (reviewer targets) updates `eqLastGraphTargetForEq` on each showPhone; the
-           <select> still holds the previous value until this rebuild — prefer sticky over oldVal so
-           the newly enabled target becomes the EQ target (dropdown, focus, manageTable). */
-        let nextTV = targetPick(lastGraphT)
-            || targetPick(oldVal)
-            || targetPick(firstActiveTarget);
-        eqPhoneTargetSelect.value = nextTV;
-        if (!eqPhoneTargetSelect.value && allOpts.length > 0) {
-            let modelM = resolveEqModelPhone();
-            let implicitT = resolveEqTargetPhone(modelM, "");
-            if (implicitT) {
-                let imp = targetPick(implicitT.fullName);
-                if (imp) {
-                    eqPhoneTargetSelect.value = imp;
+        let manageTopTargetFn = (() => {
+            let ord = getManageTableBasePhoneOrder();
+            for (let i = 0; i < ord.length; i++) {
+                let p = ord[i];
+                if (!p || !p.isTarget || !p.fullName || isCompensationTargetNameMatch(p)) {
+                    continue;
                 }
+                if (eqTargetOnGraphInOptionList(p.fullName, allOpts)) {
+                    return p.fullName;
+                }
+            }
+            return "";
+        })();
+        /* eqDropdownTargetIntent: user picked from the target dropdown (like eqDropdownModelIntent).
+           Without it, async loads can set oldVal to whichever target finished first and block share/init order. */
+        let targetIntent = (typeof window !== "undefined" && window.eqDropdownTargetIntent)
+            ? String(window.eqDropdownTargetIntent).trim()
+            : "";
+        let nextTV = (targetIntent && targetPick(targetIntent))
+            || manageTopTargetFn
+            || targetPick(oldVal)
+            || targetPick(lastGraphT);
+        if (typeof window !== "undefined") {
+            window.__eqSuppressTargetSelectHandler = true;
+        }
+        try {
+            eqPhoneTargetSelect.value = nextTV;
+            if (!eqPhoneTargetSelect.value && allOpts.length > 0) {
+                let modelM = resolveEqModelPhone();
+                let implicitT = resolveEqTargetPhone(modelM, "");
+                if (implicitT) {
+                    let imp = targetPick(implicitT.fullName);
+                    if (imp) {
+                        eqPhoneTargetSelect.value = imp;
+                    }
+                }
+            }
+        } finally {
+            if (typeof window !== "undefined") {
+                queueMicrotask(() => {
+                    window.__eqSuppressTargetSelectHandler = false;
+                });
             }
         }
         let tgPlaceholder = eqPhoneTargetSelect.querySelector("option[value='']");
@@ -7232,21 +7332,31 @@ function addExtra() {
         let lastGraph = (typeof window !== "undefined" && window.eqLastGraphModelForEq)
             ? String(window.eqLastGraphModelForEq).trim()
             : "";
-        let tailActive = (() => {
-            let nts = activePhones.filter((q) =>
-                !q.isTarget && q.fullName && !q.fullName.match(/ EQ$/));
-            return nts.length ? nts[nts.length - 1].fullName : "";
+        let manageTopModel = (() => {
+            let ord = getManageTableBasePhoneOrder();
+            for (let i = 0; i < ord.length; i++) {
+                let p = ord[i];
+                if (!p || p.isTarget || !p.fullName || String(p.fullName).match(/ EQ$/)) {
+                    continue;
+                }
+                if (eqModelOnGraphInOptionList(p.fullName, optionValues)) {
+                    return p.fullName;
+                }
+            }
+            return "";
         })();
         let nextSel = "";
-        /* Match dropdown to graph reality: only names that are on-graph (or loading from pick). */
+        /* Match dropdown to graph reality: only names that are on-graph (or loading from pick).
+           Prefer manage-table row order (same object order as manageTableRows) over async sticky so
+           parallel loads do not reshuffle the default; keep graph sticky last for clicks after load. */
         if (intent && eqModelDropdownCandidateRenderable(intent, optionValues)) {
             nextSel = intent;
-        } else if (lastGraph && eqModelDropdownCandidateRenderable(lastGraph, optionValues)) {
-            nextSel = lastGraph;
         } else if (oldValue && eqModelDropdownCandidateRenderable(oldValue, optionValues)) {
             nextSel = oldValue;
-        } else if (tailActive && eqModelDropdownCandidateRenderable(tailActive, optionValues)) {
-            nextSel = tailActive;
+        } else if (manageTopModel && eqModelDropdownCandidateRenderable(manageTopModel, optionValues)) {
+            nextSel = manageTopModel;
+        } else if (lastGraph && eqModelDropdownCandidateRenderable(lastGraph, optionValues)) {
+            nextSel = lastGraph;
         }
         eqPhoneSelect.value = nextSel;
         if (!nextSel && intent && !eqModelDropdownCandidateRenderable(intent, optionValues)) {
@@ -7287,6 +7397,7 @@ function addExtra() {
         window._eqPendingTargetFullName = "";
         window._eqModelStickyBypassForShownPhoneFullName = "";
         window.eqDropdownModelIntent = "";
+        window.eqDropdownTargetIntent = "";
         eqFiltersUserHasEdited = false;
         eq2chResetAllBanksToDefaultRow();
         filtersToElem([{ disabled: false, type: "PK", freq: 0, q: 0, gain: 0 }]);
@@ -7406,6 +7517,9 @@ function addExtra() {
     if (eqPhoneTargetSelect) {
     let eqTargetSelectCoalesce = false;
     function runEqTargetSelectHandler() {
+            if (typeof window !== "undefined" && window.__eqSuppressTargetSelectHandler) {
+                return;
+            }
             let prevCanon = eqPhoneTargetSelect.dataset.eqLastTarget || "";
             let v = eqPhoneTargetSelect.value;
             if (prevCanon && v !== prevCanon) {
@@ -7466,6 +7580,9 @@ function addExtra() {
                 }
             }
             eqPhoneTargetSelect.dataset.eqLastTarget = canonTarget;
+            if (typeof window !== "undefined") {
+                window.eqDropdownTargetIntent = canonTarget || "";
+            }
             /* Measurement option value stays on the dropdown until rebuild; reconcile to User `USRMT_*` sticky. */
             if (extraEnabled && extraEQEnabled && v && canonTarget && String(v).trim() !== String(canonTarget).trim()) {
                 if (typeof window.updateEQPhoneSelect === "function") {
