@@ -11200,6 +11200,8 @@ function addExtra() {
                 sweepDurationSec = TONE_SWEEP_MIN_DURATION_SEC;
             }
         }
+        /** Looped sweeps (Space held / play-button hold) alternate low→high then high→low. Each new startToneGeneratorSweep() begins upward. */
+        let sweepForward = true;
         void toneGeneratorContext.resume();
         let t0 = toneGeneratorContext.currentTime;
         toneGeneratorOsc.frequency.cancelScheduledValues(t0);
@@ -11238,10 +11240,14 @@ function addExtra() {
             g.setValueAtTime(0, tSilent);
             g.linearRampToValueAtTime(liveToneGeneratorPlaybackGain, tSweepStart);
             let f = toneGeneratorOsc.frequency;
+            let sweepLo = fromHz;
+            let sweepHi = toHz;
+            let rampStart = sweepForward ? sweepLo : sweepHi;
+            let rampEnd = sweepForward ? sweepHi : sweepLo;
             f.cancelScheduledValues(tSilent);
-            f.setValueAtTime(fromHz, tSilent);
-            f.setValueAtTime(fromHz, tSweepStart);
-            f.exponentialRampToValueAtTime(toHz, tSweepStart + sweepDurationSec);
+            f.setValueAtTime(rampStart, tSilent);
+            f.setValueAtTime(rampStart, tSweepStart);
+            f.exponentialRampToValueAtTime(rampEnd, tSweepStart + sweepDurationSec);
             /* Approximate wall time when the next frequency ramp begins (audio clock ≈ real time). */
             loopNextSweepPerfAnchorMs = performance.now() + (tSweepStart - t) * 1000;
         };
@@ -11267,15 +11273,19 @@ function addExtra() {
                 return;
             }
             let u = Math.min(1, (performance.now() - sweepStartMs) / sweepDurationMs);
-            let freq = Math.round(Math.exp(
-                Math.log(fromHz) + (Math.log(toHz) - Math.log(fromHz)) * u));
-            toneGeneratorSlider.value = String(u);
+            let freq = sweepForward
+                ? Math.round(Math.exp(
+                    Math.log(fromHz) + (Math.log(toHz) - Math.log(fromHz)) * u))
+                : Math.round(Math.exp(
+                    Math.log(toHz) + (Math.log(fromHz) - Math.log(toHz)) * u));
+            toneGeneratorSlider.value = String(sweepForward ? u : (1 - u));
             toneGeneratorText.innerText = String(freq);
             if (u < 1) {
                 toneSweepRafId = requestAnimationFrame(sweepTick);
             } else {
                 let loopHeld = toneSweepLoopSpaceHeld || toneSweepLoopPointerHeld;
                 if (loopHeld && fromHz !== toHz && toneGeneratorOsc && sweepDurationSec > 0) {
+                    sweepForward = !sweepForward;
                     scheduleLoopSilenceThenNextSweep();
                     sweepPhase = "gap";
                     sweepStartMs = performance.now();
