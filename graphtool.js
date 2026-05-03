@@ -9046,6 +9046,8 @@ function addExtra() {
     let toneGeneratorBiquadsRight = [];
     let toneGeneratorBandFiltersLeft = [];
     let toneGeneratorBandFiltersRight = [];
+    /** Mono tone path: HP/LP (or parallel band branches) before parametric EQ when range limits apply. */
+    let toneGeneratorBandFiltersMono = [];
     let toneGeneratorMerger = null;
     let toneGeneratorMasterGain = null;
     let toneGeneratorUserGain = null;
@@ -9399,6 +9401,148 @@ function addExtra() {
         let toHz = Math.min(Math.max(parseInt(toEl && toEl.value) || 0, fromHz), 20000);
         return { fromHz, toHz };
     };
+    let liveSoundBandDatasetRoot = () =>
+        document.querySelector("div.live-sound-tools div.live-sound-band");
+    function normalizeLiveSoundIntervalPair(lo, hi) {
+        let [fLo, fHi] = getEqConstraintFreqLoHi();
+        lo = Math.round(Math.min(fHi, Math.max(fLo, lo)));
+        hi = Math.round(Math.min(fHi, Math.max(fLo, hi)));
+        if (hi <= lo) {
+            hi = Math.min(fHi, lo + 1);
+        }
+        return { lo, hi };
+    }
+    function mergeLiveSoundIntervalsSorted(intervals) {
+        if (!intervals.length) {
+            return [];
+        }
+        let sorted = intervals.slice().sort((a, b) => a.lo - b.lo);
+        let out = [];
+        let cur = { lo: sorted[0].lo, hi: sorted[0].hi };
+        for (let i = 1; i < sorted.length; i++) {
+            let n = sorted[i];
+            if (n.lo <= cur.hi) {
+                cur.hi = Math.max(cur.hi, n.hi);
+            } else {
+                out.push(cur);
+                cur = { lo: n.lo, hi: n.hi };
+            }
+        }
+        out.push(cur);
+        return out;
+    }
+    function readLiveSoundBandIntervals() {
+        let root = liveSoundBandDatasetRoot();
+        let raw = root && root.dataset && root.dataset.liveSoundIntervals;
+        if (raw) {
+            try {
+                let parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length) {
+                    let ivs = [];
+                    for (let i = 0; i < parsed.length; i++) {
+                        let o = parsed[i];
+                        if (!o || typeof o !== "object") {
+                            continue;
+                        }
+                        let lo = Number(o.lo);
+                        let hi = Number(o.hi);
+                        if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
+                            continue;
+                        }
+                        ivs.push(normalizeLiveSoundIntervalPair(lo, hi));
+                    }
+                    ivs = mergeLiveSoundIntervalsSorted(ivs);
+                    if (ivs.length) {
+                        return ivs;
+                    }
+                }
+            } catch (e) { /* noop */ }
+        }
+        let { fromHz, toHz } = readLiveSoundBandEdgeHz();
+        let lo = Math.min(fromHz, toHz);
+        let hi = Math.max(fromHz, toHz);
+        return [normalizeLiveSoundIntervalPair(lo, hi)];
+    }
+    function writeLiveSoundIntervalsState(intervals) {
+        if (!toneGeneratorFromInput || !toneGeneratorToInput) {
+            return;
+        }
+        let merged = mergeLiveSoundIntervalsSorted(intervals.map((iv) =>
+            normalizeLiveSoundIntervalPair(iv.lo, iv.hi)));
+        if (!merged.length) {
+            merged.push(normalizeLiveSoundIntervalPair(20, 20000));
+        }
+        let loMin = merged.reduce((m, iv) => Math.min(m, iv.lo), merged[0].lo);
+        let hiMax = merged.reduce((m, iv) => Math.max(m, iv.hi), merged[0].hi);
+        toneGeneratorFromInput.value = String(loMin);
+        toneGeneratorToInput.value = String(hiMax);
+        let root = liveSoundBandDatasetRoot();
+        if (root) {
+            if (merged.length <= 1) {
+                delete root.dataset.liveSoundIntervals;
+            } else {
+                root.dataset.liveSoundIntervals = JSON.stringify(merged);
+            }
+        }
+    }
+    function clearLiveSoundIntervalsDatasetIfPresent() {
+        let root = liveSoundBandDatasetRoot();
+        if (root && root.dataset.liveSoundIntervals) {
+            delete root.dataset.liveSoundIntervals;
+        }
+    }
+    /** Sum of parallel HP→LP branches (optional gain per branch); bandStorageArr owns hp, lp, norm for each branch plus summer. */
+    function connectParallelHpLpBandBranches(ctx, sourceNode, bandStorageArr, intervals) {
+        let summer = ctx.createGain();
+        summer.gain.value = 1;
+        let n = intervals.length;
+        let normMul = n > 1 ? 1 / Math.sqrt(n) : 1;
+        intervals.forEach((iv) => {
+            let norm = ctx.createGain();
+            norm.gain.value = normMul;
+            let hp = ctx.createBiquadFilter();
+            hp.type = "highpass";
+            hp.frequency.value = iv.lo;
+            hp.Q.value = 0.707;
+            let lp = ctx.createBiquadFilter();
+            lp.type = "lowpass";
+            lp.frequency.value = iv.hi;
+            lp.Q.value = 0.707;
+            sourceNode.connect(hp);
+            hp.connect(lp);
+            lp.connect(norm);
+            norm.connect(summer);
+            bandStorageArr.push(hp, lp, norm);
+        });
+        bandStorageArr.push(summer);
+        return summer;
+    }
+    /** Same as connectParallelHpLpBandBranches but input is a stereo splitter channel. */
+    function connectParallelHpLpMusicSide(ctx, splitter, splitChannel, bandStorageArr, intervals) {
+        let summer = ctx.createGain();
+        summer.gain.value = 1;
+        let n = intervals.length;
+        let normMul = n > 1 ? 1 / Math.sqrt(n) : 1;
+        intervals.forEach((iv) => {
+            let norm = ctx.createGain();
+            norm.gain.value = normMul;
+            let hp = ctx.createBiquadFilter();
+            hp.type = "highpass";
+            hp.frequency.value = iv.lo;
+            hp.Q.value = 0.707;
+            let lp = ctx.createBiquadFilter();
+            lp.type = "lowpass";
+            lp.frequency.value = iv.hi;
+            lp.Q.value = 0.707;
+            splitter.connect(hp, splitChannel);
+            hp.connect(lp);
+            lp.connect(norm);
+            norm.connect(summer);
+            bandStorageArr.push(hp, lp, norm);
+        });
+        bandStorageArr.push(summer);
+        return summer;
+    }
     let disconnectEqBiquads = (biquadsArr) => {
         biquadsArr.forEach((b) => {
             try { b.disconnect(); } catch (e) { /* noop */ }
@@ -9478,9 +9622,13 @@ function addExtra() {
         if (!pinkNoisePlaying || !pinkNoiseContext || !pinkNoiseProcessor || !pinkNoiseMasterGain) {
             return;
         }
-        let { fromHz, toHz } = readLiveSoundBandEdgeHz();
+        let intervals = readLiveSoundBandIntervals();
+        let multiBand = intervals.length > 1;
+        let iv0 = intervals[0];
+        let fromHz = iv0.lo;
+        let toHz = iv0.hi;
         let { specL, specR } = computeLiveEqSpecsForStereoPaths();
-        if (pinkNoiseBandFiltersLeft.length === 2 && pinkNoiseBandFiltersRight.length === 2
+        if (!multiBand && pinkNoiseBandFiltersLeft.length === 2 && pinkNoiseBandFiltersRight.length === 2
                 && specL.length === pinkNoiseBiquadsLeft.length
                 && specR.length === pinkNoiseBiquadsRight.length
                 && syncBandShelfFiltersInPlace(pinkNoiseContext, pinkNoiseBandFiltersLeft, fromHz, toHz)
@@ -9497,21 +9645,26 @@ function addExtra() {
         disconnectPinkBandFilters();
         pinkNoiseMerger = pinkNoiseContext.createChannelMerger(2);
         let wireSide = (specs, bandArr, bqArr, mergerCh) => {
-            let last = pinkNoiseProcessor;
-            let hp = pinkNoiseContext.createBiquadFilter();
-            hp.type = "highpass";
-            hp.frequency.value = fromHz;
-            hp.Q.value = 0.707;
-            last.connect(hp);
-            last = hp;
-            bandArr.push(hp);
-            let lp = pinkNoiseContext.createBiquadFilter();
-            lp.type = "lowpass";
-            lp.frequency.value = toHz;
-            lp.Q.value = 0.707;
-            last.connect(lp);
-            last = lp;
-            bandArr.push(lp);
+            let last;
+            if (multiBand) {
+                last = connectParallelHpLpBandBranches(pinkNoiseContext, pinkNoiseProcessor, bandArr, intervals);
+            } else {
+                last = pinkNoiseProcessor;
+                let hp = pinkNoiseContext.createBiquadFilter();
+                hp.type = "highpass";
+                hp.frequency.value = fromHz;
+                hp.Q.value = 0.707;
+                last.connect(hp);
+                last = hp;
+                bandArr.push(hp);
+                let lp = pinkNoiseContext.createBiquadFilter();
+                lp.type = "lowpass";
+                lp.frequency.value = toHz;
+                lp.Q.value = 0.707;
+                last.connect(lp);
+                last = lp;
+                bandArr.push(lp);
+            }
             specs.forEach((s) => {
                 let bf = pinkNoiseContext.createBiquadFilter();
                 bf.type = mapFilterTypeToBiquad(s.type);
@@ -9532,9 +9685,13 @@ function addExtra() {
         if (!pinkNoisePlaying || !pinkNoiseContext || !pinkNoiseProcessor || !pinkNoiseMasterGain) {
             return;
         }
-        let { fromHz, toHz } = readLiveSoundBandEdgeHz();
+        let intervals = readLiveSoundBandIntervals();
+        let multiBand = intervals.length > 1;
+        let iv0 = intervals[0];
+        let fromHz = iv0.lo;
+        let toHz = iv0.hi;
         let specs = computeLiveEqSpecs();
-        if (pinkNoiseBandFilters.length === 2
+        if (!multiBand && pinkNoiseBandFilters.length === 2
                 && specs.length === pinkNoiseBiquads.length
                 && syncBandShelfFiltersInPlace(pinkNoiseContext, pinkNoiseBandFilters, fromHz, toHz)) {
             if (specs.length === 0 || syncEqBiquadsInPlace(pinkNoiseContext, pinkNoiseBiquads, specs)) {
@@ -9546,21 +9703,26 @@ function addExtra() {
         disconnectEqBiquads(pinkNoiseBiquadsLeft);
         disconnectEqBiquads(pinkNoiseBiquadsRight);
         disconnectPinkBandFilters();
-        let last = pinkNoiseProcessor;
-        let hp = pinkNoiseContext.createBiquadFilter();
-        hp.type = "highpass";
-        hp.frequency.value = fromHz;
-        hp.Q.value = 0.707;
-        last.connect(hp);
-        last = hp;
-        pinkNoiseBandFilters.push(hp);
-        let lp = pinkNoiseContext.createBiquadFilter();
-        lp.type = "lowpass";
-        lp.frequency.value = toHz;
-        lp.Q.value = 0.707;
-        last.connect(lp);
-        last = lp;
-        pinkNoiseBandFilters.push(lp);
+        let last;
+        if (multiBand) {
+            last = connectParallelHpLpBandBranches(pinkNoiseContext, pinkNoiseProcessor, pinkNoiseBandFilters, intervals);
+        } else {
+            last = pinkNoiseProcessor;
+            let hp = pinkNoiseContext.createBiquadFilter();
+            hp.type = "highpass";
+            hp.frequency.value = fromHz;
+            hp.Q.value = 0.707;
+            last.connect(hp);
+            last = hp;
+            pinkNoiseBandFilters.push(hp);
+            let lp = pinkNoiseContext.createBiquadFilter();
+            lp.type = "lowpass";
+            lp.frequency.value = toHz;
+            lp.Q.value = 0.707;
+            last.connect(lp);
+            last = lp;
+            pinkNoiseBandFilters.push(lp);
+        }
         specs.forEach((s) => {
             let bf = pinkNoiseContext.createBiquadFilter();
             bf.type = mapFilterTypeToBiquad(s.type);
@@ -9587,9 +9749,17 @@ function addExtra() {
         if (!toneGeneratorOsc || !toneGeneratorContext || !toneGeneratorMasterGain) {
             return;
         }
-        let { fromHz, toHz } = readLiveSoundBandEdgeHz();
+        toneGeneratorBandFiltersMono.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        toneGeneratorBandFiltersMono.length = 0;
+        let intervals = readLiveSoundBandIntervals();
+        let multiBand = intervals.length > 1;
+        let iv0 = intervals[0];
+        let fromHz = iv0.lo;
+        let toHz = iv0.hi;
         let { specL, specR } = computeLiveEqSpecsForStereoPaths();
-        if (toneGeneratorBandFiltersLeft.length === 2 && toneGeneratorBandFiltersRight.length === 2
+        if (!multiBand && toneGeneratorBandFiltersLeft.length === 2 && toneGeneratorBandFiltersRight.length === 2
                 && specL.length === toneGeneratorBiquadsLeft.length
                 && specR.length === toneGeneratorBiquadsRight.length
                 && syncBandShelfFiltersInPlace(toneGeneratorContext, toneGeneratorBandFiltersLeft, fromHz, toHz)
@@ -9619,21 +9789,26 @@ function addExtra() {
         }
         toneGeneratorMerger = toneGeneratorContext.createChannelMerger(2);
         let wireSide = (specs, bandArr, bqArr, mergerCh) => {
-            let last = toneGeneratorOsc;
-            let hp = toneGeneratorContext.createBiquadFilter();
-            hp.type = "highpass";
-            hp.frequency.value = fromHz;
-            hp.Q.value = 0.707;
-            last.connect(hp);
-            last = hp;
-            bandArr.push(hp);
-            let lp = toneGeneratorContext.createBiquadFilter();
-            lp.type = "lowpass";
-            lp.frequency.value = toHz;
-            lp.Q.value = 0.707;
-            last.connect(lp);
-            last = lp;
-            bandArr.push(lp);
+            let last;
+            if (multiBand) {
+                last = connectParallelHpLpBandBranches(toneGeneratorContext, toneGeneratorOsc, bandArr, intervals);
+            } else {
+                last = toneGeneratorOsc;
+                let hp = toneGeneratorContext.createBiquadFilter();
+                hp.type = "highpass";
+                hp.frequency.value = fromHz;
+                hp.Q.value = 0.707;
+                last.connect(hp);
+                last = hp;
+                bandArr.push(hp);
+                let lp = toneGeneratorContext.createBiquadFilter();
+                lp.type = "lowpass";
+                lp.frequency.value = toHz;
+                lp.Q.value = 0.707;
+                last.connect(lp);
+                last = lp;
+                bandArr.push(lp);
+            }
             specs.forEach((s) => {
                 let bf = toneGeneratorContext.createBiquadFilter();
                 bf.type = mapFilterTypeToBiquad(s.type);
@@ -9654,7 +9829,65 @@ function addExtra() {
         if (!toneGeneratorOsc || !toneGeneratorContext || !toneGeneratorMasterGain) {
             return;
         }
-        rebuildLiveEqChain(toneGeneratorOsc, toneGeneratorContext, toneGeneratorMasterGain, toneGeneratorBiquads);
+        let intervals = readLiveSoundBandIntervals();
+        let multiBand = intervals.length > 1;
+        let iv0 = intervals[0];
+        let singleFullBand = intervals.length === 1 && iv0.lo <= 20 && iv0.hi >= 20000;
+        if (!multiBand && singleFullBand) {
+            toneGeneratorBandFiltersMono.forEach((b) => {
+                try { b.disconnect(); } catch (e) { /* noop */ }
+            });
+            toneGeneratorBandFiltersMono.length = 0;
+            rebuildLiveEqChain(toneGeneratorOsc, toneGeneratorContext, toneGeneratorMasterGain, toneGeneratorBiquads);
+            return;
+        }
+        let fromHz = iv0.lo;
+        let toHz = iv0.hi;
+        let specs = computeLiveEqSpecs();
+        if (!multiBand && toneGeneratorBandFiltersMono.length === 2
+                && specs.length === toneGeneratorBiquads.length
+                && syncBandShelfFiltersInPlace(toneGeneratorContext, toneGeneratorBandFiltersMono, fromHz, toHz)) {
+            if (specs.length === 0 || syncEqBiquadsInPlace(toneGeneratorContext, toneGeneratorBiquads, specs)) {
+                return;
+            }
+        }
+        toneGeneratorOsc.disconnect();
+        disconnectEqBiquads(toneGeneratorBiquads);
+        toneGeneratorBandFiltersMono.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        toneGeneratorBandFiltersMono.length = 0;
+        let last;
+        if (multiBand) {
+            last = connectParallelHpLpBandBranches(toneGeneratorContext, toneGeneratorOsc, toneGeneratorBandFiltersMono, intervals);
+        } else {
+            last = toneGeneratorOsc;
+            let hp = toneGeneratorContext.createBiquadFilter();
+            hp.type = "highpass";
+            hp.frequency.value = fromHz;
+            hp.Q.value = 0.707;
+            last.connect(hp);
+            last = hp;
+            toneGeneratorBandFiltersMono.push(hp);
+            let lp = toneGeneratorContext.createBiquadFilter();
+            lp.type = "lowpass";
+            lp.frequency.value = toHz;
+            lp.Q.value = 0.707;
+            last.connect(lp);
+            last = lp;
+            toneGeneratorBandFiltersMono.push(lp);
+        }
+        specs.forEach((s) => {
+            let bf = toneGeneratorContext.createBiquadFilter();
+            bf.type = mapFilterTypeToBiquad(s.type);
+            bf.frequency.value = s.freq;
+            bf.Q.value = s.q;
+            bf.gain.value = s.gain;
+            last.connect(bf);
+            last = bf;
+            toneGeneratorBiquads.push(bf);
+        });
+        last.connect(toneGeneratorMasterGain);
     };
     let rebuildToneGeneratorEqChain = () => {
         if (!toneGeneratorOsc || !toneGeneratorContext || !toneGeneratorMasterGain) {
@@ -9686,9 +9919,13 @@ function addExtra() {
         if (!musicMediaSourceNode || !musicContext || !musicMasterGain) {
             return;
         }
-        let { fromHz, toHz } = readLiveSoundBandEdgeHz();
+        let intervals = readLiveSoundBandIntervals();
+        let multiBand = intervals.length > 1;
+        let iv0 = intervals[0];
+        let fromHz = iv0.lo;
+        let toHz = iv0.hi;
         let { specL, specR } = computeLiveEqSpecsForStereoPaths();
-        if (musicBandFiltersLeft.length === 2 && musicBandFiltersRight.length === 2
+        if (!multiBand && musicBandFiltersLeft.length === 2 && musicBandFiltersRight.length === 2
                 && specL.length === musicBiquadsLeft.length
                 && specR.length === musicBiquadsRight.length
                 && syncBandShelfFiltersInPlace(musicContext, musicBandFiltersLeft, fromHz, toHz)
@@ -9708,20 +9945,25 @@ function addExtra() {
         musicStereoMerger = musicContext.createChannelMerger(2);
         musicMediaSourceNode.connect(musicStereoSplitter);
         let wireSide = (splitOut, specs, bandArr, bqArr, mergerCh) => {
-            let hp = musicContext.createBiquadFilter();
-            hp.type = "highpass";
-            hp.frequency.value = fromHz;
-            hp.Q.value = 0.707;
-            musicStereoSplitter.connect(hp, splitOut);
-            let last = hp;
-            bandArr.push(hp);
-            let lp = musicContext.createBiquadFilter();
-            lp.type = "lowpass";
-            lp.frequency.value = toHz;
-            lp.Q.value = 0.707;
-            last.connect(lp);
-            last = lp;
-            bandArr.push(lp);
+            let last;
+            if (multiBand) {
+                last = connectParallelHpLpMusicSide(musicContext, musicStereoSplitter, splitOut, bandArr, intervals);
+            } else {
+                let hp = musicContext.createBiquadFilter();
+                hp.type = "highpass";
+                hp.frequency.value = fromHz;
+                hp.Q.value = 0.707;
+                musicStereoSplitter.connect(hp, splitOut);
+                last = hp;
+                bandArr.push(hp);
+                let lp = musicContext.createBiquadFilter();
+                lp.type = "lowpass";
+                lp.frequency.value = toHz;
+                lp.Q.value = 0.707;
+                last.connect(lp);
+                last = lp;
+                bandArr.push(lp);
+            }
             specs.forEach((s) => {
                 let bf = musicContext.createBiquadFilter();
                 bf.type = mapFilterTypeToBiquad(s.type);
@@ -9743,9 +9985,13 @@ function addExtra() {
         if (!musicMediaSourceNode || !musicContext || !musicMasterGain) {
             return;
         }
-        let { fromHz, toHz } = readLiveSoundBandEdgeHz();
+        let intervals = readLiveSoundBandIntervals();
+        let multiBand = intervals.length > 1;
+        let iv0 = intervals[0];
+        let fromHz = iv0.lo;
+        let toHz = iv0.hi;
         let specs = computeLiveEqSpecs();
-        if (musicBandFilters.length === 2
+        if (!multiBand && musicBandFilters.length === 2
                 && specs.length === musicBiquads.length
                 && syncBandShelfFiltersInPlace(musicContext, musicBandFilters, fromHz, toHz)) {
             if (specs.length === 0 || syncEqBiquadsInPlace(musicContext, musicBiquads, specs)) {
@@ -9758,21 +10004,26 @@ function addExtra() {
         disconnectEqBiquads(musicBiquadsLeft);
         disconnectEqBiquads(musicBiquadsRight);
         disconnectMusicBandFilters();
-        let last = musicMediaSourceNode;
-        let hp = musicContext.createBiquadFilter();
-        hp.type = "highpass";
-        hp.frequency.value = fromHz;
-        hp.Q.value = 0.707;
-        last.connect(hp);
-        last = hp;
-        musicBandFilters.push(hp);
-        let lp = musicContext.createBiquadFilter();
-        lp.type = "lowpass";
-        lp.frequency.value = toHz;
-        lp.Q.value = 0.707;
-        last.connect(lp);
-        last = lp;
-        musicBandFilters.push(lp);
+        let last;
+        if (multiBand) {
+            last = connectParallelHpLpBandBranches(musicContext, musicMediaSourceNode, musicBandFilters, intervals);
+        } else {
+            last = musicMediaSourceNode;
+            let hp = musicContext.createBiquadFilter();
+            hp.type = "highpass";
+            hp.frequency.value = fromHz;
+            hp.Q.value = 0.707;
+            last.connect(hp);
+            last = hp;
+            musicBandFilters.push(hp);
+            let lp = musicContext.createBiquadFilter();
+            lp.type = "lowpass";
+            lp.frequency.value = toHz;
+            lp.Q.value = 0.707;
+            last.connect(lp);
+            last = lp;
+            musicBandFilters.push(lp);
+        }
         specs.forEach((s) => {
             let bf = musicContext.createBiquadFilter();
             bf.type = mapFilterTypeToBiquad(s.type);
@@ -10323,6 +10574,10 @@ function addExtra() {
         disconnectEqBiquads(toneGeneratorBiquads);
         disconnectEqBiquads(toneGeneratorBiquadsLeft);
         disconnectEqBiquads(toneGeneratorBiquadsRight);
+        toneGeneratorBandFiltersMono.forEach((b) => {
+            try { b.disconnect(); } catch (e) { /* noop */ }
+        });
+        toneGeneratorBandFiltersMono.length = 0;
         toneGeneratorBandFiltersLeft.forEach((b) => {
             try { b.disconnect(); } catch (e) { /* noop */ }
         });
@@ -10524,7 +10779,8 @@ function addExtra() {
     let eqGraphPerformDragCleanup = (st, endEvent) => {
         if (st.mode === "soundRange") {
             if (st.soundRangeActive) {
-                applyLiveSoundRangeFromHzPair(st.soundRangeAnchorHz, st.soundRangeLastHz);
+                applyLiveSoundRangeFromHzPair(st.soundRangeAnchorHz, st.soundRangeLastHz,
+                    st.soundRangeAppend);
                 let bandEl = document.querySelector("div.live-sound-tools .live-sound-band");
                 if (bandEl && typeof bandEl.scrollIntoView === "function") {
                     bandEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -10664,7 +10920,12 @@ function addExtra() {
                 st.soundRangeActive = true;
             }
             if (st.soundRangeActive) {
-                renderEqSoundRangeBrush(st.soundRangeAnchorHz, st.soundRangeLastHz);
+                if (st.soundRangeAppend) {
+                    renderEqSoundRangeBrushFromIntervals(readLiveSoundBandIntervals(),
+                        st.soundRangeAnchorHz, st.soundRangeLastHz);
+                } else {
+                    renderEqSoundRangeBrush(st.soundRangeAnchorHz, st.soundRangeLastHz);
+                }
                 gEqSoundRangeBrush.raise();
                 gEqFilterMarkers.raise();
                 gEqHoverPreview.raise();
@@ -10932,6 +11193,7 @@ function addExtra() {
             mode: soundRangeSelect ? "soundRange" : "eq",
             soundRangeAnchorHz: soundRangeSelect ? freqAtPointer : null,
             soundRangeLastHz: soundRangeSelect ? freqAtPointer : null,
+            soundRangeAppend: Boolean(soundRangeSelect && e.shiftKey),
             soundRangeActive: false,
             startClientX: e.clientX,
             startClientY: startClientYVal,
@@ -11219,6 +11481,8 @@ function addExtra() {
         updateEqTraceOpacity();
     });
     // Tone Generator
+    toneGeneratorFromInput.addEventListener("change", clearLiveSoundIntervalsDatasetIfPresent);
+    toneGeneratorToInput.addEventListener("change", clearLiveSoundIntervalsDatasetIfPresent);
     toneGeneratorFromInput.addEventListener("input", scheduleLiveEqSync);
     toneGeneratorToInput.addEventListener("input", scheduleLiveEqSync);
     toneGeneratorFromInput.addEventListener("input", syncEqSoundRangeBrushFromLiveSoundInputs);
@@ -12026,6 +12290,7 @@ function addExtra() {
         if (!toneGeneratorFromInput || !toneGeneratorToInput) {
             return;
         }
+        clearLiveSoundIntervalsDatasetIfPresent();
         toneGeneratorFromInput.value = "20";
         toneGeneratorToInput.value = "20000";
         let midHz = Math.round(Math.exp((Math.log(20) + Math.log(20000)) / 2));
@@ -12085,6 +12350,55 @@ function addExtra() {
         eqSoundRangeBrushDismissLast = { xRight: xa + w, yTop: 20 };
         syncEqSoundRangeBrushDismissOverlay();
     }
+    function renderEqSoundRangeBrushFromIntervals(intervals, liveHz1, liveHz2) {
+        gEqSoundRangeBrush.selectAll("*").remove();
+        hideEqSoundRangeBrushDismissOverlay();
+        let [fLo, fHi] = getEqConstraintFreqLoHi();
+        let maxXRight = 0;
+        let any = false;
+        let yTop = 20;
+        let pushRect = (lo, hi) => {
+            if (lo <= fLo && hi >= fHi) {
+                return;
+            }
+            if (hi <= lo) {
+                return;
+            }
+            let xa = Math.min(x(lo), x(hi));
+            let xb = Math.max(x(lo), x(hi));
+            let w = Math.max(0.5, xb - xa);
+            let inner = gEqSoundRangeBrush.append("g").attr("class", "eq-sound-range-brush-inner");
+            inner.append("rect")
+                .attr("class", "eq-sound-range-brush-rect")
+                .attr("x", xa)
+                .attr("y", yTop)
+                .attr("width", w)
+                .attr("height", 302);
+            maxXRight = Math.max(maxXRight, xa + w);
+            any = true;
+        };
+        if (intervals && intervals.length) {
+            intervals.forEach((iv) => {
+                pushRect(iv.lo, iv.hi);
+            });
+        }
+        if (liveHz1 !== undefined && liveHz2 !== undefined
+                && Number.isFinite(liveHz1) && Number.isFinite(liveHz2)) {
+            let lo = Math.min(liveHz1, liveHz2);
+            let hi = Math.max(liveHz1, liveHz2);
+            lo = Math.min(fHi, Math.max(fLo, lo));
+            hi = Math.min(fHi, Math.max(fLo, hi));
+            if (hi > lo) {
+                pushRect(lo, hi);
+            }
+        }
+        if (!any) {
+            return;
+        }
+        ensureEqSoundRangeBrushDismissOverlay();
+        eqSoundRangeBrushDismissLast = { xRight: maxXRight, yTop: yTop };
+        syncEqSoundRangeBrushDismissOverlay();
+    }
     function syncEqSoundRangeBrushFromLiveSoundInputs() {
         let tab = document.querySelector("div.select");
         if (!extraEnabled || !extraEQEnabled || !tab
@@ -12096,12 +12410,10 @@ function addExtra() {
             clearEqSoundRangeBrush();
             return;
         }
-        let from = Math.min(Math.max(parseInt(toneGeneratorFromInput.value, 10) || 20, 20), 20000);
-        let to = Math.min(Math.max(parseInt(toneGeneratorToInput.value, 10) || 20, 20), 20000);
-        let lo = Math.min(from, to);
-        let hi = Math.max(from, to);
-        if (lo > 20 || hi < 20000) {
-            renderEqSoundRangeBrush(lo, hi);
+        let intervals = readLiveSoundBandIntervals();
+        let full = intervals.length === 1 && intervals[0].lo <= 20 && intervals[0].hi >= 20000;
+        if (!full) {
+            renderEqSoundRangeBrushFromIntervals(intervals);
             gEqSoundRangeBrush.raise();
             gEqFilterMarkers.raise();
             gEqHoverPreview.raise();
@@ -12109,7 +12421,7 @@ function addExtra() {
             clearEqSoundRangeBrush();
         }
     }
-    function applyLiveSoundRangeFromHzPair(hz1, hz2) {
+    function applyLiveSoundRangeFromHzPair(hz1, hz2, appendRange) {
         if (!toneGeneratorFromInput || !toneGeneratorToInput) {
             return;
         }
@@ -12132,9 +12444,18 @@ function addExtra() {
         if (hi <= lo) {
             hi = Math.min(fHi, lo + 1);
         }
-        toneGeneratorFromInput.value = String(lo);
-        toneGeneratorToInput.value = String(hi);
-        let midHz = Math.round(Math.exp((Math.log(Math.max(lo, 20.001)) + Math.log(hi)) / 2));
+        let newIv = normalizeLiveSoundIntervalPair(lo, hi);
+        let next;
+        if (appendRange) {
+            let existing = readLiveSoundBandIntervals();
+            next = mergeLiveSoundIntervalsSorted(existing.concat([newIv]));
+        } else {
+            next = [newIv];
+        }
+        writeLiveSoundIntervalsState(next);
+        let loAg = next.reduce((m, iv) => Math.min(m, iv.lo), next[0].lo);
+        let hiAg = next.reduce((m, iv) => Math.max(m, iv.hi), next[0].hi);
+        let midHz = Math.round(Math.exp((Math.log(Math.max(loAg, 20.001)) + Math.log(hiAg)) / 2));
         syncToneGeneratorToEqFrequencyHz(midHz);
         scheduleLiveEqSync();
     }
