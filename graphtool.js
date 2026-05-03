@@ -4733,6 +4733,27 @@ function addExtra() {
     };
     let elemToFiltersClampedForEqualizerApply = (includeAll) =>
         elemToFiltersClampedRowsForEqualizerApply(elemToFilters(includeAll), includeAll);
+    /* Range clamp + freq snap only (no gain/Q step quantization) so exports match Equalizer fields. */
+    let elemToFiltersBoundedRowsForExport = (raw, includeAll) => {
+        let [fLo, fHi] = getEqConstraintFreqLoHi();
+        let [qLo, qHi] = getEqConstraintQLoHi();
+        let [gLo, gHi] = getEqConstraintGainLoHi();
+        let allowed = Equalizer.config.EqAllowedTypes || { PK: true, LSQ: true, HSQ: true };
+        return raw.map((f) => {
+            let type = allowed[f.type] ? f.type : firstAllowedEqFilterType();
+            let freq = f.freq ? Math.min(fHi, Math.max(fLo, f.freq)) : 0;
+            if (freq) {
+                freq = snapEqFilterFreqToGraphicBands(freq);
+            }
+            let q = f.q ? Math.min(qHi, Math.max(qLo, f.q)) : 0;
+            let gain = (f.gain !== 0 || f.freq || f.q)
+                ? Math.min(gHi, Math.max(gLo, f.gain))
+                : 0;
+            return { ...f, type, freq, q, gain };
+        });
+    };
+    let elemToFiltersBoundedForExport = (includeAll) =>
+        elemToFiltersBoundedRowsForExport(elemToFilters(includeAll), includeAll);
     let filtersToElem = (filters) => {
         // Set filters to ui
         let filtersCopy = filters.map(f => f);
@@ -7702,6 +7723,16 @@ function addExtra() {
             return;
         }
         eq2chFlushDomToActiveBank();
+        let formatEqExportDecimal = (val, maxPlaces) => {
+            if (!Number.isFinite(val)) {
+                return "0";
+            }
+            let s = val.toFixed(maxPlaces);
+            if (s.indexOf(".") !== -1) {
+                s = s.replace(/\.?0+$/, "");
+            }
+            return s || "0";
+        };
         let appendExportFilterLines = (settings, filtersArr) => {
             let fi = 0;
             filtersArr.forEach((f) => {
@@ -7716,8 +7747,8 @@ function addExtra() {
                     type = type.substr(0, 2) + "C";
                 }
                 settings += ("Filter " + fi + ": " + on + " " + type + " Fc " +
-                    f.freq.toFixed(0) + " Hz Gain " + f.gain.toFixed(1) + " dB Q " +
-                    f.q.toFixed(3) + "\r\n");
+                    f.freq.toFixed(0) + " Hz Gain " + formatEqExportDecimal(f.gain, 4) + " dB Q " +
+                    formatEqExportDecimal(f.q, 6) + "\r\n");
             });
             return settings;
         };
@@ -7742,7 +7773,7 @@ function addExtra() {
                 let specs = eq2chMergedSpecsForChannelIndex(ci);
                 let eqCh = Equalizer.apply(raw, specs);
                 let preamp = Equalizer.calc_preamp(raw, eqCh);
-                let rowsForFile = elemToFiltersClampedRowsForEqualizerApply(
+                let rowsForFile = elemToFiltersBoundedRowsForExport(
                     specs.map((s) => ({
                         disabled: false,
                         type: s.type,
@@ -7751,7 +7782,7 @@ function addExtra() {
                         gain: s.gain
                     })), true);
                 settings += "Channel: " + lab + "\r\n";
-                settings += "Preamp: " + preamp.toFixed(1) + " dB\r\n";
+                settings += "Preamp: " + formatEqExportDecimal(preamp, 4) + " dB\r\n";
                 settings = appendExportFilterLines(settings, rowsForFile);
                 settings += "\r\n";
             }
@@ -7760,7 +7791,7 @@ function addExtra() {
                 return;
             }
         } else {
-            let filters = elemToFiltersClampedForEqualizerApply(true);
+            let filters = elemToFiltersBoundedForExport(true);
             if (!phoneObj.eq || !filters.length) {
                 alert("Please select model and add atleast one filter before export.");
                 return;
@@ -7768,7 +7799,7 @@ function addExtra() {
             let preamp = Equalizer.calc_preamp(
                 phoneObj.rawChannels.filter(c => c)[0],
                 phoneObj.eq.rawChannels.filter(c => c)[0]);
-            settings = "Preamp: " + preamp.toFixed(1) + " dB\r\n";
+            settings = "Preamp: " + formatEqExportDecimal(preamp, 4) + " dB\r\n";
             settings = appendExportFilterLines(settings, filters);
         }
         let exportElem = document.querySelector("#file-filters-export");
@@ -7794,7 +7825,7 @@ function addExtra() {
         if (isEqTwoChannelSupportEnabled()) {
             filters = eq2chMergedSpecsForChannelIndex(0);
         } else {
-            filters = elemToFiltersClampedForEqualizerApply();
+            filters = elemToFiltersBoundedForExport();
         }
         if (!filters.length) {
             alert("Please add atleast one filter before export.");
