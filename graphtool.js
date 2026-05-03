@@ -4418,6 +4418,8 @@ function addExtra() {
         syncEqHoverPreview(null);
         applyParametricEqGraphTraceFocus();
         updateEqTraceOpacity();
+        /* Match showExtraPanel: table was filtered to EQ focus context; restore full rows when leaving. */
+        updatePhoneTable();
     };
     let parseEqConstraintGraphicFreqList = (raw) => {
         if (raw == null || typeof raw !== "string") {
