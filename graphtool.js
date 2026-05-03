@@ -3877,7 +3877,7 @@ function addExtra() {
             body = `${brand}${brand && tail ? " " : ""}${tail}`.trim()
                 || String(meas.fullName || "").replace(/\sEQ$/i, "").trim()
                 || "target";
-        /* Manage row + CSS append " Target"; dropdown User optgroup uses this as the label. */
+        /* Manage row + CSS append " Target"; dropdown Active optgroup uses this as the label. */
         return body.replace(/^Target:\s*/i, "").trim();
     };
     window.eqEnsureUserMeasurementBrandTarget = (meas) => {
@@ -7171,7 +7171,7 @@ function addExtra() {
             seenM.add(p.fullName);
             return true;
         });
-        /* Active graph measurements (same eligibility as target dropdown) listed under User for quick target picks. */
+        /* Active graph measurements (same eligibility as target dropdown) listed under Active for quick target picks. */
         let activeMeasQuick = activePhones.filter((p) =>
             p && !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/)
             && (!phoneSelected || p.fullName !== phoneSelected)
@@ -7210,7 +7210,7 @@ function addExtra() {
             });
             eqPhoneTargetSelect.appendChild(og);
         };
-        appendTargetOptgroup("User", userSectionList, (p) =>
+        appendTargetOptgroup("Active", userSectionList, (p) =>
             ((p.dispName != null && String(p.dispName).trim() !== "") ? String(p.dispName) : p.fullName));
         appendTargetOptgroup("Targets", builtins, (p) => {
             let lab = (p.dispName != null && String(p.dispName).trim() !== "")
@@ -7320,14 +7320,41 @@ function addExtra() {
         let list = eqAllPhonesPool().filter((p) =>
             !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/));
         list.sort((a, b) => String(a.fullName).localeCompare(String(b.fullName)));
-        let optionValues = list.map((p) => p.fullName);
-        Array.from(eqPhoneSelect.children).slice(1).forEach(c => eqPhoneSelect.removeChild(c));
-        list.forEach((p) => {
-            let optionElem = document.createElement("option");
-            optionElem.setAttribute("value", p.fullName);
-            optionElem.innerText = p.fullName;
-            eqPhoneSelect.appendChild(optionElem);
+        /* Active IEMs on the graph under "Active" (same idea as the target dropdown); full catalog below. */
+        let activeModelsQuick = [],
+            seenActive = new Set();
+        getManageTableBasePhoneOrder().forEach((p) => {
+            if (!p || p.isTarget || !p.fullName || String(p.fullName).match(/ EQ$/)) {
+                return;
+            }
+            if (activePhones.indexOf(p) === -1) {
+                return;
+            }
+            if (seenActive.has(p.fullName)) {
+                return;
+            }
+            seenActive.add(p.fullName);
+            activeModelsQuick.push(p);
         });
+        let listRest = list.filter((p) => !seenActive.has(p.fullName));
+        let optionValues = activeModelsQuick.concat(listRest).map((p) => p.fullName);
+        Array.from(eqPhoneSelect.children).slice(1).forEach(c => eqPhoneSelect.removeChild(c));
+        let appendModelOptgroup = (label, arr) => {
+            if (!arr.length) {
+                return;
+            }
+            let og = document.createElement("optgroup");
+            og.label = label;
+            arr.forEach((p) => {
+                let optionElem = document.createElement("option");
+                optionElem.setAttribute("value", p.fullName);
+                optionElem.innerText = p.fullName;
+                og.appendChild(optionElem);
+            });
+            eqPhoneSelect.appendChild(og);
+        };
+        appendModelOptgroup("Active", activeModelsQuick);
+        appendModelOptgroup("All models", listRest);
         let intent = (typeof window !== "undefined" && window.eqDropdownModelIntent)
             ? String(window.eqDropdownModelIntent).trim()
             : "";
