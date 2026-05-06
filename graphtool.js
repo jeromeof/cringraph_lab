@@ -1901,24 +1901,209 @@ let ifURL = typeof share_url !== "undefined" && share_url;
 let baseTitle = typeof page_title !== "undefined" ? page_title : "CrinGraph";
 let baseDescription = typeof page_description !== "undefined" ? page_description : "View and compare frequency response graphs";
 let baseURL;  // Set by setInitPhones
+/** Parametric EQ types in share URLs: index → Equalizer type string (v2 row column 2). */
+let eqShareTypeFromIx = (ix) => {
+    let n = Math.floor(Number(ix));
+    return (n === 1) ? "LSQ" : (n === 2) ? "HSQ" : "PK";
+};
+let eqShareIxFromType = (t) => {
+    let s = String(t || "PK");
+    if (s === "LSQ") {
+        return 1;
+    }
+    if (s === "HSQ") {
+        return 2;
+    }
+    return 0;
+};
+/** ASCII `v2;` rows (much smaller than JSON before base64). Legacy `[` JSON still decoded. */
+function eqShareFiltersToV2Ascii(filters) {
+    let rows = filters.map((f) => {
+        let ti = eqShareIxFromType(f.type);
+        return [f.disabled ? 1 : 0, ti, f.freq, f.q, f.gain].join(",");
+    });
+    return "v2;" + rows.join(";");
+}
+function eqShareFiltersParseV2Ascii(bin) {
+    if (bin.indexOf("v2;") !== 0) {
+        return null;
+    }
+    let body = bin.slice(3);
+    if (!body) {
+        return [];
+    }
+    return body.split(";").map((row) => {
+        let p = row.split(",");
+        return {
+            disabled: !!Number(p[0]),
+            type: eqShareTypeFromIx(p[1]),
+            freq: Number(p[2]) || 0,
+            q: Number(p[3]) || 0,
+            gain: Number(p[4]) || 0
+        };
+    });
+}
+/** Compact base64url for parametric EQ bands in share URLs (`eqFilters`). Prefer v2 text; legacy JSON array still supported. */
+function eqShareFiltersSerialize(filters) {
+    let s = eqShareFiltersToV2Ascii(filters);
+    let b = btoa(s);
+    return b.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function eqShareFiltersDeserialize(s) {
+    let pad = String(s || "").replace(/-/g, "+").replace(/_/g, "/");
+    while (pad.length % 4) {
+        pad += "=";
+    }
+    let bin = atob(pad);
+    let v2 = eqShareFiltersParseV2Ascii(bin);
+    if (v2) {
+        return v2;
+    }
+    let arr = JSON.parse(bin);
+    if (!Array.isArray(arr)) {
+        return [];
+    }
+    return arr.map((x) => (
+        x && typeof x === "object" && "t" in x
+            ? {
+                disabled: !!x.d,
+                type: x.t || "PK",
+                freq: Number(x.f) || 0,
+                q: Number(x.q) || 0,
+                gain: Number(x.g) || 0
+            }
+            : {
+                disabled: !!x[0],
+                type: eqShareTypeFromIx(x[1]),
+                freq: Number(x[2]) || 0,
+                q: Number(x[3]) || 0,
+                gain: Number(x[4]) || 0
+            }
+    ));
+}
+/** Encode model/target fullName for `eqModel` / `eqTarget`: spaces as underscores (like `share=`), not `+`. */
+function eqShareFullNameToUrlParam(fullName) {
+    return encodeURIComponent(String(fullName || "").trim()).replace(/%20/g, "_");
+}
+function eqShareUrlParamToFullName(seg) {
+    if (seg == null || seg === "") {
+        return "";
+    }
+    return String(seg).replace(/_/g, " ");
+}
+/** Share URL query keys (short camelCase). Legacy snake_case still accepted when parsing. */
+let EQ_URL_PARAM_MODEL = "eqModel";
+let EQ_URL_PARAM_TARGET = "eqTarget";
+let EQ_URL_PARAM_FILTERS = "eqFilters";
+/** Read Equalizer share params from a full page URL (`eqModel` / `eqTarget` / `eqFilters`; no `eq` flag). */
+function parseEqUrlShareParams(href) {
+    try {
+        let u = new URL(href);
+        let eqm = u.searchParams.get(EQ_URL_PARAM_MODEL) || u.searchParams.get("eq_model");
+        let eqt = u.searchParams.get(EQ_URL_PARAM_TARGET) || u.searchParams.get("eq_target");
+        let eqf = u.searchParams.get(EQ_URL_PARAM_FILTERS) || u.searchParams.get("eq_filters");
+        if (!eqm && !eqt && !eqf) {
+            return null;
+        }
+        let filters = null;
+        if (eqf) {
+            try {
+                filters = eqShareFiltersDeserialize(eqf);
+            } catch (e) {
+                console.warn("eqFilters in URL could not be parsed", e);
+            }
+        }
+        return {
+            openEqTab: true,
+            model: eqm ? eqShareUrlParamToFullName(eqm) : "",
+            target: eqt ? eqShareUrlParamToFullName(eqt) : "",
+            filters: (filters && filters.length) ? filters : null
+        };
+    } catch (e) {
+        return null;
+    }
+}
+/** `share=` payload: commas between filenames stay unescaped; each stem is encoded (spaces → "_" first). Avoids `%2C` separators from URLSearchParams. */
+function shareQueryValueForUrl(namesArr) {
+    return namesArr.map((fn) => encodeURIComponent(String(fn).replace(/ /g, "_"))).join(",");
+}
+/** Inverse of share line for initial load (`URLSearchParams` gives decoded commas). */
+function parseSharePhonesFromHref(href) {
+    try {
+        let s = new URL(href).searchParams.get("share");
+        if (s === null || s === "") {
+            return null;
+        }
+        return String(s).split(",").map((t) =>
+            decodeURIComponent(t.trim()).replace(/_/g, " "));
+    } catch (e) {
+        return null;
+    }
+}
 function addPhonesToUrl() {
-    let title = baseTitle,
-        url = baseURL,
-        names = activePhones.filter(p => !p.isDynamic).map(p => p.fileName),
+    let names = activePhones.filter(p => !p.isDynamic).map(p => p.fileName),
         namesCombined = names.join(", ");
-    
-    if (names.length) {
-        url += "?share=" + encodeURI(names.join().replace(/ /g,"_"));
-        title = namesCombined + " - " + title;
+    let sel = document.querySelector("div.select");
+    let onEqTab = typeof extraEQEnabled !== "undefined" && extraEQEnabled && sel
+        && sel.getAttribute("data-selected") === "extra";
+    let ref = baseURL || targetWindow.location.pathname;
+    let u;
+    try {
+        u = new URL(ref, targetWindow.location.href);
+    } catch (e) {
+        return;
     }
-    if (names.length === 1) {
-        targetWindow.document.querySelector("link[rel='canonical']").setAttribute("href",url)
+    /* Never stash `share` on URLSearchParams (encodes commas as %2C). Build explicit `share=…` with literal commas instead. */
+    u.searchParams.delete("share");
+    let shareQueryPair = "";
+    let eqModelTit = "",
+        eqTargetTit = "";
+    let title = baseTitle;
+    if (ifURL && onEqTab) {
+        /* EQ tab: omit `share=` so the URL lists only EQ model/target/filters — no unrelated graph traces. */
+        let eqSel = document.querySelector("div.extra-eq div.select-eq-phone-model-target select[name='phone']")
+            || document.querySelector("div.extra-eq select[name='phone']");
+        let eqTgt = document.querySelector("div.extra-eq div.select-eq-phone-model-target select[name='eq-target']")
+            || document.querySelector("div.extra-eq select[name='eq-target']");
+        eqModelTit = eqSel ? String(eqSel.value || "").trim() : "";
+        eqTargetTit = eqTgt ? String(eqTgt.value || "").trim() : "";
+        if (eqModelTit && eqTargetTit) {
+            title = eqModelTit + " → " + eqTargetTit + " - " + baseTitle;
+        } else if (eqModelTit || eqTargetTit) {
+            title = (eqModelTit || eqTargetTit) + " - " + baseTitle;
+        }
+    } else if (names.length) {
+        if (ifURL) {
+            shareQueryPair = "share=" + shareQueryValueForUrl(names);
+        }
+        title = namesCombined + " - " + baseTitle;
+    }
+    if (ifURL && typeof window._appendEqShareParamsToUrlSearch === "function") {
+        window._appendEqShareParamsToUrlSearch(u);
     } else {
-        targetWindow.document.querySelector("link[rel='canonical']").setAttribute("href",baseURL)
+        ["eq", "eqModel", "eqTarget", "eqFilters",
+            "eq_model", "eq_target", "eq_filters"].forEach((k) => u.searchParams.delete(k));
     }
-    targetWindow.history.replaceState("", title, url);
+    let qsRest = u.searchParams.toString();
+    let outUrl = u.pathname + (shareQueryPair && qsRest
+        ? ("?" + shareQueryPair + "&" + qsRest)
+        : (shareQueryPair ? ("?" + shareQueryPair) : (qsRest ? ("?" + qsRest) : "")));
+    let canonicalHref = baseURL || ref;
+    if (ifURL && onEqTab && (u.searchParams.get(EQ_URL_PARAM_MODEL) || u.searchParams.get("eq_model"))) {
+        canonicalHref = outUrl;
+    } else if (!onEqTab && names.length === 1) {
+        canonicalHref = outUrl;
+    }
+    targetWindow.document.querySelector("link[rel='canonical']").setAttribute("href", canonicalHref);
+    targetWindow.history.replaceState("", title, outUrl);
     targetWindow.document.title = title;
-    targetWindow.document.querySelector("meta[name='description']").setAttribute("content",baseDescription + ", including " + namesCombined +".");
+    let metaDesc = baseDescription;
+    if (ifURL && onEqTab && (eqModelTit || eqTargetTit)) {
+        metaDesc += " Parametric EQ: " + [eqModelTit, eqTargetTit].filter(Boolean).join(" → ") + ".";
+    } else {
+        metaDesc += ", including " + namesCombined + ".";
+    }
+    targetWindow.document.querySelector("meta[name='description']").setAttribute("content", metaDesc);
 }
 
 function setModeEmbed() {
@@ -3016,6 +3201,7 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
         initReq = typeof init_phones !== "undefined" ? [init_phones].flat() : false;
     loadFromShare = 0;
     
+    window.__pendingEqUrlShareParsed = parseEqUrlShareParams(targetWindow.location.href);
     if (ifURL) {
         let url = targetWindow.location.href,
             par = "share=";
@@ -3023,12 +3209,18 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
         baseURL = url.split("?").shift();
         
         if (url.includes(par) && url.includes(emb)) {
-            initReq = decodeURIComponent(url.replace(/_/g," ").split(par).pop()).split(",");
+            initReq = parseSharePhonesFromHref(url);
+            if (!initReq || !initReq.length) {
+                initReq = decodeURIComponent(url.replace(/_/g," ").split(par).pop()).split(",");
+            }
             loadFromShare = 2;
-            
+
             setModeEmbed();
         } else if (url.includes(par)) {
-            initReq = decodeURIComponent(url.replace(/_/g," ").split(par).pop()).split(",");
+            initReq = parseSharePhonesFromHref(url);
+            if (!initReq || !initReq.length) {
+                initReq = decodeURIComponent(url.replace(/_/g," ").split(par).pop()).split(",");
+            }
             loadFromShare = 1;
         } else if (url.includes(emb)) {
             setModeEmbed();
@@ -3225,6 +3417,11 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
     });
     
     userConfigApplyNormalization();
+    setTimeout(() => {
+        if (typeof window.applyPendingEqUrlShare === "function") {
+            window.applyPendingEqUrlShare(0);
+        }
+    }, 0);
 });
 
 let pathHoverTimeout;
@@ -3833,6 +4030,9 @@ function addExtra() {
         updatePhoneTable();
         if (typeof window.publishEqUiState === "function") {
             window.publishEqUiState("showExtraPanel");
+        }
+        if (typeof ifURL !== "undefined" && ifURL && typeof addPhonesToUrl === "function") {
+            addPhonesToUrl();
         }
     };
     extraButton.addEventListener("click", showExtraPanel);
@@ -13011,6 +13211,126 @@ function addExtra() {
             config
         });
     }
+    window._appendEqShareParamsToUrlSearch = (u) => {
+        if (!extraEQEnabled) {
+            return;
+        }
+        let tab = document.querySelector("div.select");
+        let onEq = tab && tab.getAttribute("data-selected") === "extra";
+        if (!onEq) {
+            u.searchParams.delete("eq");
+            u.searchParams.delete(EQ_URL_PARAM_MODEL);
+            u.searchParams.delete(EQ_URL_PARAM_TARGET);
+            u.searchParams.delete(EQ_URL_PARAM_FILTERS);
+            u.searchParams.delete("eq_model");
+            u.searchParams.delete("eq_target");
+            u.searchParams.delete("eq_filters");
+            return;
+        }
+        u.searchParams.delete("eq_model");
+        u.searchParams.delete("eq_target");
+        u.searchParams.delete("eq_filters");
+        if (eqPhoneSelect && eqPhoneSelect.value) {
+            u.searchParams.set(EQ_URL_PARAM_MODEL, eqShareFullNameToUrlParam(eqPhoneSelect.value));
+        } else {
+            u.searchParams.delete(EQ_URL_PARAM_MODEL);
+        }
+        if (eqPhoneTargetSelect && eqPhoneTargetSelect.value) {
+            u.searchParams.set(EQ_URL_PARAM_TARGET, eqShareFullNameToUrlParam(eqPhoneTargetSelect.value));
+        } else {
+            u.searchParams.delete(EQ_URL_PARAM_TARGET);
+        }
+        if (isEqTwoChannelSupportEnabled()) {
+            u.searchParams.delete(EQ_URL_PARAM_FILTERS);
+            return;
+        }
+        let filters = elemToFilters(true);
+        let nonTrivial = filters.some((f) => (f.freq | 0) || (f.q | 0) || (f.gain | 0));
+        if (nonTrivial) {
+            u.searchParams.set(EQ_URL_PARAM_FILTERS, eqShareFiltersSerialize(filters));
+        } else {
+            u.searchParams.delete(EQ_URL_PARAM_FILTERS);
+        }
+    };
+    window.applyPendingEqUrlShare = (attempt) => {
+        let pending = window.__pendingEqUrlShareParsed;
+        if (!pending || window.__eqUrlShareApplied) {
+            return;
+        }
+        if (!extraEQEnabled) {
+            window.__pendingEqUrlShareParsed = null;
+            return;
+        }
+        if (isEqConstraintGraphicModeActive()) {
+            window.__pendingEqUrlShareParsed = null;
+            return;
+        }
+        attempt = attempt | 0;
+        let maxAttempts = 50;
+        let ensurePhoneOnGraphForEqShare = (fullName) => {
+            if (!fullName) {
+                return true;
+            }
+            let p = eqFindByFullNameAny(fullName);
+            if (!p) {
+                return false;
+            }
+            if (activePhones.indexOf(p) === -1) {
+                showPhone(p, false, true, false);
+            }
+            return true;
+        };
+        if (pending.model && !ensurePhoneOnGraphForEqShare(pending.model) && attempt < maxAttempts) {
+            setTimeout(() => window.applyPendingEqUrlShare(attempt + 1), 100);
+            return;
+        }
+        if (pending.target && !ensurePhoneOnGraphForEqShare(pending.target) && attempt < maxAttempts) {
+            setTimeout(() => window.applyPendingEqUrlShare(attempt + 1), 100);
+            return;
+        }
+        let modelP = pending.model ? eqMeasurementObjForSelect(pending.model) : null;
+        let modelReady = !pending.model || !!(modelP && phoneCurveDataReadyForEq(modelP));
+        let targetP = pending.target ? eqFindByFullNameAny(pending.target) : null;
+        let targetReady = !pending.target || !!(targetP && phoneCurveDataReadyForEq(targetP));
+        if ((!modelReady || !targetReady) && attempt < maxAttempts) {
+            setTimeout(() => window.applyPendingEqUrlShare(attempt + 1), 100);
+            return;
+        }
+        if (!modelReady || !targetReady) {
+            window.__pendingEqUrlShareParsed = null;
+            return;
+        }
+        window.__pendingEqUrlShareParsed = null;
+        window.__eqUrlShareApplied = true;
+        window.eqDropdownModelIntent = pending.model ? String(pending.model) : "";
+        window.eqDropdownTargetIntent = pending.target ? String(pending.target) : "";
+        if (pending.openEqTab && typeof showExtraPanel === "function") {
+            showExtraPanel();
+        } else if (typeof window.updateEQPhoneSelect === "function") {
+            window.updateEQPhoneSelect();
+        }
+        if (pending.filters && pending.filters.length) {
+            eqFiltersUserHasEdited = true;
+            eqHistoryRestoring = true;
+            try {
+                filtersToElem(pending.filters);
+                cancelDeferredApplyEQ();
+                applyEQExec();
+                scheduleLiveEqSync();
+            } finally {
+                eqHistoryRestoring = false;
+            }
+        } else {
+            applyEQ();
+            scheduleLiveEqSync();
+        }
+        applyParametricEqGraphTraceFocus();
+        updateEqTraceOpacity();
+        updateEqFilterMarkers();
+        if (ifURL && typeof addPhonesToUrl === "function") {
+            addPhonesToUrl();
+        }
+    };
 }
 addExtra();
 
