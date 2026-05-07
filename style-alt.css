@@ -3117,6 +3117,17 @@ div.extra-panel .live-sound-tools .extra-music .music-play-or-search-slot {
     box-sizing: border-box;
 }
 
+/* No track: play stays in layout flow (smooth panel collapse) but is invisible */
+div.extra-panel .live-sound-tools .extra-music:not(.music-file-loaded) .music-play-row button.play {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .music-play-row button.play {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
 /* Our `display: flex` on the play button and actions row beats the UA `[hidden]` rule; force real collapse. */
 div.extra-panel .live-sound-tools .live-sound-music-file .music-file-actions-row[hidden] {
     display: none !important;
@@ -3152,9 +3163,15 @@ div.extra-panel .live-sound-tools .extra-music.music-apple-search-mode:not(.musi
     overflow: visible;
 }
 
-/* Search-open only: hide play + seek (panel `button` rules override `[hidden]`; seek row is otherwise visible without a track). */
-div.extra-panel .live-sound-tools .extra-music.music-apple-search-mode:not(.music-file-loaded) .music-play-row button.play {
-    display: none !important;
+/* Search overlays the invisible play pill (play stays in flow at opacity 0) */
+div.extra-panel .live-sound-tools .extra-music.music-apple-search-mode:not(.music-file-loaded) .music-play-or-search-slot .apple-music-search-inline:not([hidden]) {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    z-index: 2;
+    width: 100%;
+    max-width: 100%;
 }
 
 div.extra-panel .live-sound-tools .extra-music.music-apple-search-mode:not(.music-file-loaded) .live-sound-slider-row.music-slider-row {
@@ -3750,6 +3767,17 @@ div.extra-panel .live-sound-tools .extra-music .apple-music-preview-results butt
 div.extra-panel .live-sound-tools .extra-music .apple-music-preview-results button:focus-visible {
     background: var(--background-color-contrast-faint, rgba(127, 127, 127, 0.08));
     outline: none;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-results button.apple-music-preview-highlight {
+    background: var(--background-color-contrast) !important;
+    background-color: var(--background-color-contrast) !important;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-results button.apple-music-preview-highlight:hover,
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-results button.apple-music-preview-highlight:focus-visible {
+    background: var(--background-color-contrast) !important;
+    background-color: var(--background-color-contrast) !important;
 }
 
 div.extra-panel .live-sound-tools .extra-music .apple-music-preview-meta {
