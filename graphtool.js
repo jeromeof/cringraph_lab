@@ -1288,11 +1288,11 @@ function isCompensationTargetNameMatch(p) {
 
 /** Dash + stroke width per slot. `w` is the target trace stroke width in SVG user units (absolute, not added to NORMAL/SAMPLE). */
 const TARGET_TRACE_DOT_SPECS = [
-    { dash: "6 3", w: 2.8, cap: "butt" },
-    { dash: "18 9", w: 1.25, cap: "round" },
-    { dash: "2 6", w: 1.45, cap: "round" },
-    { dash: "2 3", w: 1.55, cap: "round" },
-    { dash: "6 4", w: 1.75, cap: "round" },
+    { dash: "6 3", w: 2.5, cap: "butt" },
+    { dash: "18 9", w: 1.5, cap: "round" },
+    { dash: "3 6", w: 2.0, cap: "round" },
+    { dash: "2 3", w: 2.0, cap: "round" },
+    { dash: "8 6", w: 1.0, cap: "round" },
     { dash: "10 5", w: 1.3, cap: "round" },
     { dash: "14 4 2 4", w: 1.65, cap: "round" },
     { dash: "1 5", w: 1.95, cap: "round" },
@@ -1912,6 +1912,16 @@ try {
 }
 
 let ifURL = typeof share_url !== "undefined" && share_url;
+/** First `location.search` seen at startup — survives `history.replaceState` stripping EQ params before phone_book loads. */
+let eqUrlShareBootstrapSearch = "";
+try {
+    eqUrlShareBootstrapSearch = targetWindow && targetWindow.location
+        ? String(targetWindow.location.search || "")
+        : "";
+} catch (e) {
+    eqUrlShareBootstrapSearch = "";
+}
+window.__eqUrlShareBootstrapSearch = eqUrlShareBootstrapSearch;
 let baseTitle = typeof page_title !== "undefined" ? page_title : "CrinGraph";
 let baseDescription = typeof page_description !== "undefined" ? page_description : "View and compare frequency response graphs";
 let baseURL;  // Set by setInitPhones
@@ -1995,7 +2005,9 @@ function eqShareFiltersDeserialize(s) {
             }
     ));
 }
-/** Encode model/target fullName for `eqModel` / `eqTarget`: spaces as underscores (like `share=`), not `+`. */
+/** Encode model/target fullName for `eqModel` / `eqTarget`: `%20` → `_` for readable URLs (same idea as `share=`).
+ * Do not decode with a global `_`→space — names like `B_Media` need `applyPendingEqUrlShare` resolution
+ * (`eqResolveShareFullNameFromParam` + legacy segment match). */
 function eqShareFullNameToUrlParam(fullName) {
     return encodeURIComponent(String(fullName || "").trim()).replace(/%20/g, "_");
 }
@@ -2003,7 +2015,31 @@ function eqShareUrlParamToFullName(seg) {
     if (seg == null || seg === "") {
         return "";
     }
-    return String(seg).replace(/_/g, " ");
+    /* `URLSearchParams.get` already decodes `%XX`; do not map `_`→space — breaks `B_Media`-style names. */
+    return String(seg).trim();
+}
+/** `URLSearchParams` only percent-decodes once. Pasted / redirected links often double-encode (e.g. `%2520`
+ * → `%20` left inside the value); decode until no `%HH` remains or string stabilizes. */
+function eqShareFullyDecodeQueryValue(val) {
+    if (val == null || val === "") {
+        return "";
+    }
+    let s = String(val).trim();
+    for (let n = 0; n < 8; n++) {
+        if (!/%[0-9A-Fa-f]{2}/i.test(s)) {
+            return s;
+        }
+        try {
+            let d = decodeURIComponent(s.replace(/\+/g, " "));
+            if (d === s) {
+                return s;
+            }
+            s = d;
+        } catch (e) {
+            return s;
+        }
+    }
+    return s;
 }
 /** Share URL query keys (short camelCase). Legacy snake_case still accepted when parsing. */
 let EQ_URL_PARAM_MODEL = "eqModel";
@@ -2016,6 +2052,15 @@ function parseEqUrlShareParams(href) {
         let eqm = u.searchParams.get(EQ_URL_PARAM_MODEL) || u.searchParams.get("eq_model");
         let eqt = u.searchParams.get(EQ_URL_PARAM_TARGET) || u.searchParams.get("eq_target");
         let eqf = u.searchParams.get(EQ_URL_PARAM_FILTERS) || u.searchParams.get("eq_filters");
+        if (eqm) {
+            eqm = eqShareFullyDecodeQueryValue(eqm);
+        }
+        if (eqt) {
+            eqt = eqShareFullyDecodeQueryValue(eqt);
+        }
+        if (eqf) {
+            eqf = eqShareFullyDecodeQueryValue(eqf);
+        }
         if (!eqm && !eqt && !eqf) {
             return null;
         }
@@ -3308,7 +3353,16 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
         inits = [],
         initReq = typeof init_phones !== "undefined" ? [init_phones].flat() : false;
     loadFromShare = 0;
-    
+    /* If early URL sync stripped the bar before pending EQ was captured, re-parse from bootstrap ?… */
+    if (!window.__pendingEqUrlShareParsed && window.__eqUrlShareBootstrapSearch
+            && window.__eqUrlShareBootstrapSearch.length > 1) {
+        try {
+            let bootHref = targetWindow.location.origin + targetWindow.location.pathname
+                + window.__eqUrlShareBootstrapSearch;
+            window.__pendingEqUrlShareParsed = parseEqUrlShareParams(bootHref);
+        } catch (e) { /* noop */ }
+    }
+
     if (ifURL) {
         let url = targetWindow.location.href,
             par = "share=";
@@ -4392,6 +4446,33 @@ function addExtra() {
             return hit;
         }
         return activePhones.filter((p) => p.fullName === fullName)[0] || null;
+    };
+    /** Legacy share URLs used `encodeURIComponent(name).replace(/%20/g,"_")` — ambiguous with literal `_`.
+     * Resolve param string to catalog `fullName` by exact match, `_`→space, or matching legacy segment. */
+    let eqLegacyShareUrlSegment = (fullName) =>
+        encodeURIComponent(String(fullName || "").trim()).replace(/%20/g, "_");
+    let eqResolveShareFullNameFromParam = (raw) => {
+        if (!raw) {
+            return "";
+        }
+        let s = String(raw).trim();
+        let hit = eqFindByFullNameAny(s);
+        if (hit) {
+            return hit.fullName;
+        }
+        let relaxed = s.replace(/_/g, " ");
+        hit = eqFindByFullNameAny(relaxed);
+        if (hit) {
+            return hit.fullName;
+        }
+        let pool = eqAllPhonesPool().concat(eqBrandTargetPhoneObjs());
+        for (let i = 0; i < pool.length; i++) {
+            let p = pool[i];
+            if (p && p.fullName && eqLegacyShareUrlSegment(p.fullName) === s) {
+                return p.fullName;
+            }
+        }
+        return relaxed;
     };
     /** Measurement (non-target, not parametric-EQ child) by full name from the full catalog or active list. */
     let eqMeasurementObjForSelect = (fullName) => {
@@ -7562,11 +7643,26 @@ function addExtra() {
             return;
         }
         let phoneSelected = eqPhoneSelect.value;
+        /* Dropdown omits measurements whose fullName equals the EQ model so the same IEM is not
+           listed twice — but when that measurement is the chosen EQ *target*, optValOk(intent) failed,
+           targetPick reverted, and a second click appeared to "fix" it. */
+        let intentSticky = (typeof window !== "undefined" && window.eqDropdownTargetIntent)
+            ? String(window.eqDropdownTargetIntent).trim()
+            : "";
+        let pendingSticky = (typeof window !== "undefined" && window._eqPendingTargetFullName)
+            ? String(window._eqPendingTargetFullName).trim()
+            : "";
+        let keepMeasDespiteSameModel = (fullName) => {
+            if (!fullName || !phoneSelected || fullName !== phoneSelected) {
+                return false;
+            }
+            return fullName === intentSticky || fullName === pendingSticky;
+        };
         let pool = eqAllPhonesPool();
         let userT = eqUserCatalogTargetsForEqUi().slice();
         let builtins = eqBuiltinCatalogTargetsForEqUi().slice();
         let meas = pool.filter((p) => !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/)
-            && (!phoneSelected || p.fullName !== phoneSelected)
+            && (!phoneSelected || p.fullName !== phoneSelected || keepMeasDespiteSameModel(p.fullName))
             && !isCompensationTargetNameMatch(p));
         let byName = (a, b) => String(a.fullName).localeCompare(String(b.fullName));
         userT.sort(byName);
@@ -7599,7 +7695,7 @@ function addExtra() {
         /* Active graph measurements (same eligibility as target dropdown) listed under Active for quick target picks. */
         let activeMeasQuick = activePhones.filter((p) =>
             p && !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/)
-            && (!phoneSelected || p.fullName !== phoneSelected)
+            && (!phoneSelected || p.fullName !== phoneSelected || keepMeasDespiteSameModel(p.fullName))
             && !isCompensationTargetNameMatch(p));
         activeMeasQuick.sort(byName);
         let activeMeasQuickNames = new Set(activeMeasQuick.map((p) => p.fullName));
@@ -7642,6 +7738,23 @@ function addExtra() {
             if (!seenUserSec.has(p.fullName)) {
                 seenUserSec.add(p.fullName);
                 userSectionList.push(p);
+            }
+        });
+        [intentSticky, pendingSticky].forEach((sticky) => {
+            if (!sticky) {
+                return;
+            }
+            let pooled = userSectionList.concat(builtins).concat(meas);
+            if (pooled.some((row) => row.fullName === sticky)) {
+                return;
+            }
+            let p = eqFindByFullNameAny(sticky);
+            if (!p || isCompensationTargetNameMatch(p)) {
+                return;
+            }
+            if (!p.isTarget && p.fullName && !String(p.fullName).match(/ EQ$/)) {
+                meas.push(p);
+                meas.sort(byName);
             }
         });
         let allOpts = userSectionList.concat(builtins).concat(meas);
@@ -7769,13 +7882,27 @@ function addExtra() {
             if (!tgt) {
                 return;
             }
+            /* Measurement FR may load async; this block runs once data exists. Before superseding the
+               source measurement, commit sticky intent to `USRMT_*`. Leaving intent on the raw
+               measurement name caused targetPick() to fail after removePhone(meas) — dropdown reverted;
+               a second pick worked because synthesis had already run. */
+            if (typeof window !== "undefined") {
+                window.eqDropdownTargetIntent = tgt.fullName;
+                window.eqLastGraphTargetForEq = tgt.fullName;
+                window._eqPendingTargetFullName = (activePhones.indexOf(tgt) === -1
+                    || !phoneCurveDataReadyForEq(tgt))
+                    ? tgt.fullName
+                    : "";
+            }
+            eqPhoneTargetSelect.dataset.eqLastTarget = tgt.fullName;
             if (activePhones.indexOf(tgt) === -1) {
                 showPhone(tgt, 0, true, false);
             }
-            removeMeasurementIfSupersededByUserTarget(p);
-            if (typeof window !== "undefined") {
-                window.eqLastGraphTargetForEq = tgt.fullName;
+            if (typeof window !== "undefined" && activePhones.indexOf(tgt) !== -1
+                    && phoneCurveDataReadyForEq(tgt)) {
+                window._eqPendingTargetFullName = "";
             }
+            removeMeasurementIfSupersededByUserTarget(p);
             let domVal = String(eqPhoneTargetSelect.value || "").trim();
             if (domVal !== String(tgt.fullName).trim() && typeof window.updateEQPhoneSelect === "function") {
                 window.updateEQPhoneSelect();
@@ -8050,9 +8177,20 @@ function addExtra() {
                 if (typeof window !== "undefined") {
                     window.eqLastGraphTargetForEq = canonTarget || "";
                 }
-                window._eqPendingTargetFullName = (toShow && !toShow.rawChannels)
-                    ? (toShow.fullName || v)
-                    : "";
+                /* Pending must cover any target about to join the graph, not only `!rawChannels`.
+                   USRMT and other in-memory rows skipped `_eqPending` before showPhone() finished, so
+                   intermediate rebuilds saw no intent match in optgroups and no pending — dropdown reverted. */
+                window._eqPendingTargetFullName = "";
+                if (toShow && activePhones.indexOf(toShow) === -1) {
+                    window._eqPendingTargetFullName = (toShow.fullName || v) || "";
+                }
+                /* Before showPhone(): it calls updateEQPhoneSelect → updateEQPhoneTargetSelect, which
+                   prefers eqDropdownTargetIntent. Setting intent after showPhone left stale intent and
+                   the dropdown rebuilt to the previous target (second click “worked”). */
+                eqPhoneTargetSelect.dataset.eqLastTarget = canonTarget;
+                if (typeof window !== "undefined") {
+                    window.eqDropdownTargetIntent = canonTarget || "";
+                }
                 if (toShow && activePhones.indexOf(toShow) === -1) {
                     if (!toShow.rawChannels) {
                         toShow._eqNudgeApplyFromSelect = true;
@@ -8061,6 +8199,9 @@ function addExtra() {
                     window._eqModelStickyBypassForShownPhoneFullName = stickyBypass;
                     showPhone(toShow, 0, true, false);
                     window._eqTargetActivatedByDropdown = toShow.fullName || "";
+                    if (activePhones.indexOf(toShow) !== -1 && phoneCurveDataReadyForEq(toShow)) {
+                        window._eqPendingTargetFullName = "";
+                    }
                 } else {
                     window._eqTargetActivatedByDropdown = null;
                     window._eqModelStickyBypassForShownPhoneFullName = "";
@@ -8073,11 +8214,9 @@ function addExtra() {
                 window._eqPendingTargetFullName = "";
                 if (typeof window !== "undefined") {
                     window.eqLastGraphTargetForEq = "";
+                    window.eqDropdownTargetIntent = "";
                 }
-            }
-            eqPhoneTargetSelect.dataset.eqLastTarget = canonTarget;
-            if (typeof window !== "undefined") {
-                window.eqDropdownTargetIntent = canonTarget || "";
+                eqPhoneTargetSelect.dataset.eqLastTarget = "";
             }
             /* Measurement option value stays on the dropdown until rebuild; reconcile to User `USRMT_*` sticky. */
             if (extraEnabled && extraEQEnabled && v && canonTarget && String(v).trim() !== String(canonTarget).trim()) {
@@ -10739,13 +10878,20 @@ function addExtra() {
             || (typeof window !== "undefined" ? String(window.eqLastGraphModelForEq || "").trim() : "");
         let targ = (eqPhoneTargetSelect && String(eqPhoneTargetSelect.value || "").trim())
             || (typeof window !== "undefined" ? String(window.eqLastGraphTargetForEq || "").trim() : "");
-        if ((model && p.fullName === model) || (targ && p.fullName === targ)) {
+        let intentT = (typeof window !== "undefined" && window.eqDropdownTargetIntent)
+            ? String(window.eqDropdownTargetIntent).trim()
+            : "";
+        let targetRowReady = (targ && p.fullName === targ) || (intentT && p.fullName === intentT);
+        if ((model && p.fullName === model) || targetRowReady) {
             if (model && p.fullName === model) {
                 window.eqDropdownModelIntent = "";
                 window._eqPendingModelFullName = "";
             }
-            if (targ && p.fullName === targ) {
+            if (targetRowReady) {
                 window._eqPendingTargetFullName = "";
+                if (intentT && p.fullName === intentT) {
+                    window.eqDropdownTargetIntent = "";
+                }
             }
             cancelDeferredApplyEQ();
             applyEQExec();
@@ -13970,12 +14116,21 @@ function addExtra() {
             window.__pendingEqUrlShareParsed = null;
             return;
         }
-        if (isEqConstraintGraphicModeActive()) {
-            window.__pendingEqUrlShareParsed = null;
-            return;
+        /* Graphic band mode conflicts with parametric eqFilters; still apply model/target from URL. */
+        if (isEqConstraintGraphicModeActive() && pending.filters && pending.filters.length) {
+            console.warn("eqFilters in URL were skipped because graphic EQ band mode is active; model/target still apply.");
+            pending = {
+                openEqTab: pending.openEqTab,
+                model: pending.model,
+                target: pending.target,
+                filters: null
+            };
+            window.__pendingEqUrlShareParsed = pending;
         }
         attempt = attempt | 0;
         let maxAttempts = 50;
+        let modelCanon = eqResolveShareFullNameFromParam(pending.model);
+        let targetCanon = eqResolveShareFullNameFromParam(pending.target);
         let ensurePhoneOnGraphForEqShare = (fullName) => {
             if (!fullName) {
                 return true;
@@ -13989,17 +14144,17 @@ function addExtra() {
             }
             return true;
         };
-        if (pending.model && !ensurePhoneOnGraphForEqShare(pending.model) && attempt < maxAttempts) {
+        if (pending.model && !ensurePhoneOnGraphForEqShare(modelCanon) && attempt < maxAttempts) {
             setTimeout(() => window.applyPendingEqUrlShare(attempt + 1), 100);
             return;
         }
-        if (pending.target && !ensurePhoneOnGraphForEqShare(pending.target) && attempt < maxAttempts) {
+        if (pending.target && !ensurePhoneOnGraphForEqShare(targetCanon) && attempt < maxAttempts) {
             setTimeout(() => window.applyPendingEqUrlShare(attempt + 1), 100);
             return;
         }
-        let modelP = pending.model ? eqMeasurementObjForSelect(pending.model) : null;
+        let modelP = modelCanon ? eqMeasurementObjForSelect(modelCanon) : null;
         let modelReady = !pending.model || !!(modelP && phoneCurveDataReadyForEq(modelP));
-        let targetP = pending.target ? eqFindByFullNameAny(pending.target) : null;
+        let targetP = targetCanon ? eqFindByFullNameAny(targetCanon) : null;
         let targetReady = !pending.target || !!(targetP && phoneCurveDataReadyForEq(targetP));
         if ((!modelReady || !targetReady) && attempt < maxAttempts) {
             setTimeout(() => window.applyPendingEqUrlShare(attempt + 1), 100);
@@ -14011,8 +14166,8 @@ function addExtra() {
         }
         window.__pendingEqUrlShareParsed = null;
         window.__eqUrlShareApplied = true;
-        window.eqDropdownModelIntent = pending.model ? String(pending.model) : "";
-        window.eqDropdownTargetIntent = pending.target ? String(pending.target) : "";
+        window.eqDropdownModelIntent = modelCanon ? String(modelCanon) : "";
+        window.eqDropdownTargetIntent = targetCanon ? String(targetCanon) : "";
         if (pending.openEqTab && typeof showExtraPanel === "function") {
             showExtraPanel();
         } else if (typeof window.updateEQPhoneSelect === "function") {
