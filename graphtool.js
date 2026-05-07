@@ -335,29 +335,6 @@ doc.html(`
                 </div>
               </div>
               <div class="live-sound-sources">
-                <div class="live-sound-source extra-pink-noise">
-                  <div class="live-sound-source-head">
-                    <span class="live-sound-source-title">Pink Noise</span>
-                  </div>
-                  <div class="live-sound-source-actions">
-                    <button type="button" class="play" aria-label="Toggle pink noise playback"></button>
-                  </div>
-                </div>
-                <div class="live-sound-source extra-tone-generator">
-                  <div class="live-sound-source-head">
-                    <span class="live-sound-source-title">Tone Generator</span>
-                  </div>
-                  <div class="live-sound-source-actions tone-generator-play-row">
-                    <button type="button" class="play" aria-label="Toggle tone playback"></button>
-                  </div>
-                  <div class="live-sound-slider-row tone-generator-slider-row">
-                    <input name="tone-generator-freq" type="range" min="0" max="1" step="0.0001" value="0" aria-label="Tone frequency along band" />
-                    <span class="live-sound-tone-freq-display"><span class="freq-text">1000</span> Hz</span>
-                  </div>
-                  <div class="live-sound-tone-create-filter">
-                    <button type="button" class="tone-generator-add-filter">+ Add Filter</button>
-                  </div>
-                </div>
                 <div class="live-sound-source extra-music">
                   <div class="live-sound-source-head">
                     <span class="live-sound-source-title">Music</span>
@@ -401,6 +378,29 @@ doc.html(`
                     </div>
                     <input type="file" class="music-file-input" tabindex="-1" aria-hidden="true"
                         accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/x-aac,audio/aac,audio/wav,audio/x-wav,audio/flac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.aac,.wav,.caf,.flac,.ogg,.opus,.webm,audio/*" />
+                  </div>
+                </div>
+                <div class="live-sound-source extra-pink-noise">
+                  <div class="live-sound-source-head">
+                    <span class="live-sound-source-title">Pink Noise</span>
+                  </div>
+                  <div class="live-sound-source-actions">
+                    <button type="button" class="play" aria-label="Toggle pink noise playback"></button>
+                  </div>
+                </div>
+                <div class="live-sound-source extra-tone-generator">
+                  <div class="live-sound-source-head">
+                    <span class="live-sound-source-title">Tone Generator</span>
+                  </div>
+                  <div class="live-sound-source-actions tone-generator-play-row">
+                    <button type="button" class="play" aria-label="Toggle tone playback"></button>
+                  </div>
+                  <div class="live-sound-slider-row tone-generator-slider-row">
+                    <input name="tone-generator-freq" type="range" min="0" max="1" step="0.0001" value="0" aria-label="Tone frequency along band" />
+                    <span class="live-sound-tone-freq-display"><span class="freq-text">1000</span> Hz</span>
+                  </div>
+                  <div class="live-sound-tone-create-filter">
+                    <button type="button" class="tone-generator-add-filter">+ Add Filter</button>
                   </div>
                 </div>
               </div>
@@ -2059,6 +2059,33 @@ function parseAppleMusicSongIdFromHref(href) {
         return null;
     }
 }
+/** Normalized loop/trim range (`musicSegStartU` / `musicSegEndU`, 0–1). Omitted when full track; URL order: … `amSong`, `amIn`, `amOut`. */
+let MUSIC_URL_PARAM_IN = "amIn";
+let MUSIC_URL_PARAM_OUT = "amOut";
+let MUSIC_URL_SEG_PARSE_MIN_SPAN_U = 1e-5;
+function parseAppleMusicSegmentFromHref(href) {
+    try {
+        let u = new URL(href);
+        let rs = u.searchParams.get(MUSIC_URL_PARAM_IN) || u.searchParams.get("amSegStart");
+        let re = u.searchParams.get(MUSIC_URL_PARAM_OUT) || u.searchParams.get("amSegEnd");
+        if (rs === null || rs === "" || re === null || re === "") {
+            return null;
+        }
+        let segStartU = parseFloat(String(rs).trim());
+        let segEndU = parseFloat(String(re).trim());
+        if (!Number.isFinite(segStartU) || !Number.isFinite(segEndU)) {
+            return null;
+        }
+        segStartU = Math.max(0, Math.min(1, segStartU));
+        segEndU = Math.max(0, Math.min(1, segEndU));
+        if (segEndU - segStartU < MUSIC_URL_SEG_PARSE_MIN_SPAN_U || segStartU >= segEndU) {
+            return null;
+        }
+        return { segStartU, segEndU };
+    } catch (e) {
+        return null;
+    }
+}
 /** `share=` payload: commas between filenames stay unescaped; each stem is encoded (spaces → "_" first). Avoids `%2C` separators from URLSearchParams. */
 function shareQueryValueForUrl(namesArr) {
     return namesArr.map((fn) => encodeURIComponent(String(fn).replace(/ /g, "_"))).join(",");
@@ -2091,9 +2118,13 @@ function addPhonesToUrl() {
     } catch (e) {
         return;
     }
-    /* Drop Apple song id first so we can re-append it after EQ/share logic (`amSong` stays last in the query string). */
+    /* Drop Apple music share keys first so we can re-append after EQ/share (`amSong` then `amIn` / `amOut` at end). */
     u.searchParams.delete(MUSIC_URL_PARAM_APPLE_SONG);
     u.searchParams.delete("appleMusicSong");
+    u.searchParams.delete(MUSIC_URL_PARAM_IN);
+    u.searchParams.delete(MUSIC_URL_PARAM_OUT);
+    u.searchParams.delete("amSegStart");
+    u.searchParams.delete("amSegEnd");
     /* Never stash `share` on URLSearchParams (encodes commas as %2C). Build explicit `share=…` with literal commas instead. */
     u.searchParams.delete("share");
     let shareQueryPair = "";
@@ -2130,6 +2161,10 @@ function addPhonesToUrl() {
     } else {
         u.searchParams.delete(MUSIC_URL_PARAM_APPLE_SONG);
         u.searchParams.delete("appleMusicSong");
+        u.searchParams.delete(MUSIC_URL_PARAM_IN);
+        u.searchParams.delete(MUSIC_URL_PARAM_OUT);
+        u.searchParams.delete("amSegStart");
+        u.searchParams.delete("amSegEnd");
     }
     let qsRest = u.searchParams.toString();
     let outUrl = u.pathname + (shareQueryPair && qsRest
@@ -3248,7 +3283,6 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
         initReq = typeof init_phones !== "undefined" ? [init_phones].flat() : false;
     loadFromShare = 0;
     
-    window.__pendingEqUrlShareParsed = parseEqUrlShareParams(targetWindow.location.href);
     if (ifURL) {
         let url = targetWindow.location.href,
             par = "share=";
@@ -9765,6 +9799,9 @@ function addExtra() {
                 segEndU: musicSegEndU
             }));
         } catch (e) { /* quota / private mode */ }
+        if (typeof ifURL !== "undefined" && ifURL && musicAppleShareSongId && typeof addPhonesToUrl === "function") {
+            addPhonesToUrl();
+        }
     };
     let persistMusicFileToIndexedDb = (file) => {
         if (!window.indexedDB || !file) {
@@ -13277,9 +13314,11 @@ function addExtra() {
             });
         };
         let pendingAppleSongFromUrl = window.__pendingAppleMusicCatalogSongId;
+        let pendingAppleSegFromUrl = window.__pendingAppleMusicSegment;
         if (pendingAppleSongFromUrl && typeof extraMusicEnabled !== "undefined" && extraMusicEnabled
                 && musicPlayButton && musicCard) {
             window.__pendingAppleMusicCatalogSongId = null;
+            window.__pendingAppleMusicSegment = null;
             if (!window.AudioContext && !window.webkitAudioContext) {
                 tryRestorePersistedMusic();
             } else {
@@ -13291,7 +13330,7 @@ function addExtra() {
                     if (!initMusicAudioGraph()) {
                         return;
                     }
-                    wireMusicLoadedFromSource(meta.previewUrl, null, {
+                    wireMusicLoadedFromSource(meta.previewUrl, pendingAppleSegFromUrl || null, {
                         autoPlay: true,
                         appleCatalogSongId: pendingAppleSongFromUrl
                     });
@@ -13301,6 +13340,7 @@ function addExtra() {
                 });
             }
         } else {
+            window.__pendingAppleMusicSegment = null;
             tryRestorePersistedMusic();
         }
     }
@@ -13698,7 +13738,7 @@ function addExtra() {
                 pinkNoisePlayButton.click();
             } else {
                 let order = hasMusicSlot
-                    ? ["pink", "tone", "music"]
+                    ? ["music", "pink", "tone"]
                     : ["pink", "tone"];
                 let idx = order.indexOf(lastEqPlaybackSource);
                 if (idx < 0) {
@@ -13726,6 +13766,9 @@ function addExtra() {
         if (lastEqPlaybackSource === "tone") {
             toneGeneratorPlayButton.click();
         } else if (lastEqPlaybackSource === "music" && musicFileLoaded && musicPlayButton) {
+            musicPlayButton.click();
+        } else if (musicFileLoaded && musicPlayButton && !pinkNoisePlaying && !toneGeneratorOsc) {
+            /* Pink/tone idle: prefer starting music when a track is loaded (otherwise pink). */
             musicPlayButton.click();
         } else {
             pinkNoisePlayButton.click();
@@ -13807,13 +13850,42 @@ function addExtra() {
         if (typeof extraMusicEnabled === "undefined" || !extraMusicEnabled) {
             u.searchParams.delete(MUSIC_URL_PARAM_APPLE_SONG);
             u.searchParams.delete("appleMusicSong");
+            u.searchParams.delete(MUSIC_URL_PARAM_IN);
+            u.searchParams.delete(MUSIC_URL_PARAM_OUT);
+            u.searchParams.delete("amSegStart");
+            u.searchParams.delete("amSegEnd");
             return;
         }
+        /* Same idea as EQ share params: only keep Apple preview links on the URL while Equalizer is selected. */
+        let tab = document.querySelector("div.select");
+        let onExtraTab = tab && tab.getAttribute("data-selected") === "extra";
+        if (!onExtraTab) {
+            u.searchParams.delete(MUSIC_URL_PARAM_APPLE_SONG);
+            u.searchParams.delete("appleMusicSong");
+            u.searchParams.delete(MUSIC_URL_PARAM_IN);
+            u.searchParams.delete(MUSIC_URL_PARAM_OUT);
+            u.searchParams.delete("amSegStart");
+            u.searchParams.delete("amSegEnd");
+            return;
+        }
+        let fmtSegU = (x) => String(Math.round(x * 1e6) / 1e6);
+        let segIsCustom = musicSegStartU > 1e-5 || musicSegEndU < 1 - 1e-5;
         if (musicAppleShareSongId) {
             u.searchParams.set(MUSIC_URL_PARAM_APPLE_SONG, musicAppleShareSongId);
+            if (segIsCustom) {
+                u.searchParams.set(MUSIC_URL_PARAM_IN, fmtSegU(musicSegStartU));
+                u.searchParams.set(MUSIC_URL_PARAM_OUT, fmtSegU(musicSegEndU));
+            } else {
+                u.searchParams.delete(MUSIC_URL_PARAM_IN);
+                u.searchParams.delete(MUSIC_URL_PARAM_OUT);
+            }
         } else {
             u.searchParams.delete(MUSIC_URL_PARAM_APPLE_SONG);
             u.searchParams.delete("appleMusicSong");
+            u.searchParams.delete(MUSIC_URL_PARAM_IN);
+            u.searchParams.delete(MUSIC_URL_PARAM_OUT);
+            u.searchParams.delete("amSegStart");
+            u.searchParams.delete("amSegEnd");
         }
     };
     window._appendEqShareParamsToUrlSearch = (u) => {
@@ -13823,8 +13895,19 @@ function addExtra() {
         let tab = document.querySelector("div.select");
         let onEq = tab && tab.getAttribute("data-selected") === "extra";
         if (!onEq) {
-            /* Keep EQ params already on the URL (e.g. shared links opened on Graph tab). Stripping them
-               here broke combined EQ + amSong loads when music sync ran before the Extra tab opened. */
+            /* Drop EQ from the URL when browsing Graph/Models (restores pre-share behavior). While a shared
+               EQ link is still waiting for applyPendingEqUrlShare, keep params so early music/URL sync does
+               not strip them before the handler runs. */
+            if (window.__pendingEqUrlShareParsed) {
+                return;
+            }
+            u.searchParams.delete("eq");
+            u.searchParams.delete(EQ_URL_PARAM_MODEL);
+            u.searchParams.delete(EQ_URL_PARAM_TARGET);
+            u.searchParams.delete(EQ_URL_PARAM_FILTERS);
+            u.searchParams.delete("eq_model");
+            u.searchParams.delete("eq_target");
+            u.searchParams.delete("eq_filters");
             return;
         }
         u.searchParams.delete("eq_model");
@@ -13932,7 +14015,9 @@ function addExtra() {
         }
     };
 }
+window.__pendingEqUrlShareParsed = parseEqUrlShareParams(targetWindow.location.href);
 window.__pendingAppleMusicCatalogSongId = parseAppleMusicSongIdFromHref(targetWindow.location.href);
+window.__pendingAppleMusicSegment = parseAppleMusicSegmentFromHref(targetWindow.location.href);
 addExtra();
 
 // Add accessories to the bottom of the page, if configured
