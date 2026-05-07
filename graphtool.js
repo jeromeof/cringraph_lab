@@ -14123,9 +14123,6 @@ function addExtra() {
                 e.preventDefault();
             }
         }
-        if (e.repeat) {
-            return;
-        }
         let selectEl = document.querySelector("div.select");
         if (!selectEl || selectEl.getAttribute("data-selected") !== "extra") {
             return;
@@ -14137,25 +14134,41 @@ function addExtra() {
                 && t.matches("input[name='eq-constraint-freq-min'], input[name='eq-constraint-freq-max'], input[name='eq-constraint-freq-graphic-list']")) {
             return;
         }
-        if (t.closest && t.closest("div.extra-panel button") && !t.closest("button.play")) {
-            if (t.closest("button.extra-eq-constraints-gear") || t.closest("button.live-sound-tools-settings-gear")) {
-                /* Gear keeps focus after open/close; native Space would toggle the panel instead of play/pause. */
-            } else if (t.closest("button.extra-eq-reset-btn") || t.closest("button.live-sound-range-reset-btn")) {
-                /* Same as gear: keep global Space → play/pause; avoid trapping focus on reset. */
-            } else if (t.closest && t.closest("button.music-add-remove") && musicFileLoaded) {
-                e.preventDefault();
-            } else {
-                return;
+        if (t && t.nodeType === 1 && typeof t.closest === "function") {
+            let panelBtn = t.closest("div.extra-panel button:not(.play)");
+            if (panelBtn) {
+                let spaceControlsPlayback =
+                    panelBtn.matches(
+                        ".extra-eq-constraints-gear,"
+                        + ".live-sound-tools-settings-gear,"
+                        + ".extra-eq-reset-btn,"
+                        + ".live-sound-range-reset-btn,"
+                        + "button.autoeq,"
+                        + ".upload-fr,"
+                        + ".upload-target,"
+                        + ".import-filters,"
+                        + ".export-filters,"
+                        + ".export-graphic-filters")
+                    || (panelBtn.matches("button.music-add-remove") && musicFileLoaded);
+                if (panelBtn.matches("button.music-add-remove") && musicFileLoaded) {
+                    e.preventDefault();
+                }
+                if (!spaceControlsPlayback) {
+                    return;
+                }
             }
+        }
+        /* Must run for key repeat too, or a held Space re-triggers native button activation / scroll. */
+        e.preventDefault();
+        if (e.repeat) {
+            return;
         }
         resumeAudioContextsFromUserGesture();
         if (e.shiftKey) {
-            e.preventDefault();
             lastToneSpaceKeydownTime = 0;
             shiftSpaceAdvanceLiveSoundAndPlay();
             return;
         }
-        e.preventDefault();
         ensureActiveLiveSoundPlayerValid();
         if (activeLiveSoundPlayer === "tone") {
             let now = performance.now();
