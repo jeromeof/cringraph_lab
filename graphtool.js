@@ -4436,6 +4436,18 @@ function addExtra() {
                     }
                     showPhone(phoneObj, true);
                 }
+                if (eqTabActive) {
+                    /* Upload should update EQ share URL immediately, without waiting for a filter edit.
+                       Rebuild EQ selects first so _appendEqShareParams sees the new model/target values. */
+                    requestAnimationFrame(() => {
+                        if (typeof window.updateEQPhoneSelect === "function") {
+                            window.updateEQPhoneSelect();
+                        }
+                        if (typeof ifURL !== "undefined" && ifURL && typeof addPhonesToUrl === "function") {
+                            addPhonesToUrl();
+                        }
+                    });
+                }
             } finally {
                 /* Same path selected twice does not fire `change` unless the input is cleared. */
                 fileFR.value = "";
