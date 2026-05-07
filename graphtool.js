@@ -5254,8 +5254,10 @@ function addExtra() {
         return out;
     };
     let isEqConstraintGraphicModeActive = () => {
+        let row = document.querySelector("div.extra-eq .eq-constraint-freq-row");
+        let uiGraphic = !!(row && row.classList.contains("eq-constraint-freq-row-graphic"));
         let bands = Equalizer.config.EqGraphicBandFreqHz;
-        return Array.isArray(bands) && bands.length >= 2;
+        return uiGraphic && Array.isArray(bands) && bands.length >= 2;
     };
     let applyEqConstraintFreqRowUiMode = () => {
         let row = document.querySelector("div.extra-eq .eq-constraint-freq-row");
@@ -5597,7 +5599,7 @@ function addExtra() {
             let freq = parseInt(filterFreqInput[i].value) || 0;
             let q = parseFloat(filterQInput[i].value) || 0;
             let gain = parseFloat(filterGainInput[i].value) || 0;
-            if (!includeAll && (disabled || !type || !freq || !q || !gain)) {
+            if (!includeAll && (disabled || !type || !freq || !q)) {
                 continue;
             }
             filters.push({ disabled, type, freq, q, gain });
@@ -6470,7 +6472,7 @@ function addExtra() {
     }, true);
     let eq2chRowsToApplySpecs = (rows) => {
         let clamped = elemToFiltersClampedRowsForEqualizerApply(eq2chPadBankToEqBands(rows), true);
-        return clamped.filter((f) => !f.disabled && f.type && f.freq && f.q && f.gain)
+        return clamped.filter((f) => !f.disabled && f.type && f.freq && f.q)
             .map((f) => ({ type: f.type, freq: f.freq, q: f.q, gain: f.gain }));
     };
     let eq2chMergedSpecsForChannelIndex = (chIdx) => {
@@ -6778,7 +6780,12 @@ function addExtra() {
         opts = opts || {};
         let skipApply = !!opts.skipApply;
         let bands = Equalizer.config.EqGraphicBandFreqHz;
-        let graphic = Array.isArray(bands) && bands.length >= 2;
+        let freqRowEl = document.querySelector("div.extra-eq .eq-constraint-freq-row");
+        let uiShowsGraphicBands = !!(freqRowEl
+            && freqRowEl.classList.contains("eq-constraint-freq-row-graphic"));
+        /* Config alone is not enough: EqGraphicBandFreqHz can stay set after switching the UI back
+           to parametric min/max — then every constraint edit refills bands from the old template. */
+        let graphic = uiShowsGraphicBands && Array.isArray(bands) && bands.length >= 2;
         let maxBandsEl = document.querySelector("div.extra-eq input[name='eq-constraint-max-bands']");
         let qMinEl = document.querySelector("div.extra-eq input[name='eq-constraint-q-min']");
         if (!maxBandsEl || !qMinEl) {
@@ -6895,6 +6902,11 @@ function addExtra() {
         let prevG = Equalizer.config.OptimizeGainRange ? Equalizer.config.OptimizeGainRange.slice() : [-40, 40];
         let freqRow = document.querySelector("div.extra-eq .eq-constraint-freq-row");
         let gListInp = document.querySelector("div.extra-eq input[name='eq-constraint-freq-graphic-list']");
+        /* Parametric frequency row: drop stale graphic band list so AutoEQRange follows min/max again
+           and applyEqGraphicModeAuxUiAndBands does not treat us as graphic-EQ mode. */
+        if (freqRow && !freqRow.classList.contains("eq-constraint-freq-row-graphic")) {
+            Equalizer.config.EqGraphicBandFreqHz = null;
+        }
         if (freqRow && freqRow.classList.contains("eq-constraint-freq-row-graphic") && gListInp) {
             let rawG = (gListInp.value || "").trim();
             let listG = parseEqConstraintGraphicFreqList(rawG);
@@ -7239,7 +7251,7 @@ function addExtra() {
             let freq = parseInt(filterFreqInput[i].value, 10) || 0;
             let q = parseFloat(filterQInput[i].value) || 0;
             let gain = parseFloat(filterGainInput[i].value) || 0;
-            if (disabled || !type || !freq || !q || !gain) {
+            if (disabled || !type || !freq || !q) {
                 continue;
             }
             let typeTrim = (type || "").trim();
@@ -7327,7 +7339,7 @@ function addExtra() {
     let pinnedBankRowsToApplySpecs = (bankRows, bandCount) => {
         let padded = eq2chPadPinnedBankRowsForGhost(bankRows, bandCount);
         let clamped = elemToFiltersClampedRowsForEqualizerApply(padded, true);
-        return clamped.filter((f) => !f.disabled && f.type && f.freq && f.q && f.gain)
+        return clamped.filter((f) => !f.disabled && f.type && f.freq && f.q)
             .map((f) => ({ type: f.type, freq: f.freq, q: f.q, gain: f.gain }));
     };
     let eq2chMergedPinnedSpecs = (banks, chIdx, bandCount) => {
@@ -7361,7 +7373,7 @@ function addExtra() {
             rows = eqHistoryPadSnapRows({ rows: pin.rows || [], bandCount: pinBc }, pinBc);
         }
         return elemToFiltersClampedRowsForEqualizerApply(rows, false)
-            .filter((f) => !f.disabled && f.type && f.freq && f.q && f.gain)
+            .filter((f) => !f.disabled && f.type && f.freq && f.q)
             .map((f) => ({
                 type: f.type,
                 freq: Math.min(20000, Math.max(20, f.freq)),
@@ -7404,7 +7416,7 @@ function addExtra() {
                 freq: r.freq,
                 q: r.q,
                 gain: r.gain
-            })), true).filter((f) => !f.disabled && f.type && f.freq && f.q && f.gain)
+            })), true).filter((f) => !f.disabled && f.type && f.freq && f.q)
                 .map((f) => ({ type: f.type, freq: f.freq, q: f.q, gain: f.gain }));
             if (!specs.length) {
                 return null;
@@ -9008,28 +9020,12 @@ function addExtra() {
         }
         return null;
     };
-    let zeroEqFilterBandRowInputsIfNotUserEdited = () => {
-        if (eqFiltersUserHasEdited || !filterFreqInput || !filterFreqInput.length) {
-            return;
-        }
-        for (let i = 0; i < eqBands; i++) {
-            filterEnabledInput[i].checked = true;
-            filterTypeSelect[i].value = "PK";
-            filterFreqInput[i].value = "0";
-            filterGainInput[i].value = "0";
-            filterQInput[i].value = "0";
-        }
-        applyEqConstraintAttributesToFilterInputs();
-        refreshEqFilterConstraintViolationStyles();
-    };
     let applyEqConstraintPreset = (preset) => {
         if (!preset || typeof preset !== "object") {
             return;
         }
-        /* filtersToElem (e.g. after default preset on load) sets this true; graphic presets must still
-           run eqGraphicModeApplyAutoTemplateFromBands, which skips entirely while the flag is set. */
-        eqFiltersUserHasEdited = false;
-        zeroEqFilterBandRowInputsIfNotUserEdited();
+        /* Constraint presets only change limits / allowed types (and graphic grid when graphic).
+           EQ band frequency, Q, and gain stay as-is; illegality highlighting updates via sync. */
         let cRoot = document.querySelector("div.extra-eq .extra-eq-constraints-inner");
         if (!cRoot) {
             return;
@@ -10347,7 +10343,7 @@ function addExtra() {
             eq2chFlushDomToActiveBank();
             rows = elemToFiltersClampedRowsForEqualizerApply(
                 eq2chPadBankToEqBands(eq2chBankData.both), false).filter(
-                (f) => !f.disabled && f.type && f.freq && f.q && f.gain);
+                (f) => !f.disabled && f.type && f.freq && f.q);
         } else {
             rows = elemToFilters();
         }
