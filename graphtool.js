@@ -2512,8 +2512,16 @@ function updatePhoneTable(trigger) {
     enter.merge(trJoin).select(".manage-sample-label")
         .text(r => !isManageMainRow(r) && r.p.activeCurves[r.sub]
             ? r.p.activeCurves[r.sub].id : "");
-    enter.merge(trJoin).filter(isManageMainRow).select("td.item-line .phonename")
-        .text(r => r.eqManageDispOverride != null ? r.eqManageDispOverride : r.p.dispName);
+    /* Replacing `.phonename` text while the variant picker is open clears the picker DOM and leaves
+       `selectInProgress` true (blur may not fire) — fixes double-click + blank key/channel column. */
+    enter.merge(trJoin).filter(isManageMainRow).each(function (r) {
+        let p = r.p;
+        if (p.selectInProgress) {
+            return;
+        }
+        d3.select(this).select("td.item-line .phonename")
+            .text(r.eqManageDispOverride != null ? r.eqManageDispOverride : p.dispName);
+    });
 }
 
 function addKey(s) {
@@ -3036,12 +3044,6 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
     d3.selectAll("#phones .phone-item,.target")
         .filter((p) => p != null && p.id !== undefined)
         .call(setPhoneTr);
-    //Displays variant pop-up when phone displayed
-    if (!suppressVariant && p.fileNames && !p.copyOf && window.innerWidth > 1000) {
-        table.selectAll("tr").filter(r => r.p === p && (r.sub === null || r.sub === 0)).select(".variants").node().focus();
-    } else {
-        document.activeElement.blur();
-    }
     if (extraEnabled && extraEQEnabled && !p.isTarget && p.fullName && !p.fullName.match(/ EQ$/)) {
         let intent = (typeof window !== "undefined" && window.eqDropdownModelIntent)
             ? String(window.eqDropdownModelIntent).trim()
@@ -3086,6 +3088,30 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
         /* manageTable Eq-tab filter reads getParametricEqTraceFocusContext — must run *after*
            sticky + dropdown reconcile (otherwise an extra target click leaves the old row up). */
         updatePhoneTable(trigger);
+    }
+    /* Variant picker: focus after EQ/dropdown pass so a second updatePhoneTable does not wipe picker
+       DOM (was breaking first open + blanking the channel cell). Same for Models tab as EQ tab. */
+    if (!suppressVariant && p.fileNames && !p.copyOf) {
+        let openVariantPickerLater = () => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    let vNode = table.selectAll("tr")
+                        .filter(r => r.p === p && (r.sub === null || r.sub === 0))
+                        .select(".variants").node();
+                    if (!vNode) {
+                        return;
+                    }
+                    try {
+                        vNode.focus({ preventScroll: true });
+                    } catch (err) {
+                        try {
+                            vNode.focus();
+                        } catch (e2) { /* noop */ }
+                    }
+                });
+            });
+        };
+        openVariantPickerLater();
     }
     if (p._eqNudgeApplyFromSelect && typeof window.eqOnPhoneDataReadyForEqUi === "function") {
         window.eqOnPhoneDataReadyForEqUi(p);
