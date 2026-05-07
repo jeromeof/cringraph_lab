@@ -3100,9 +3100,30 @@ div.extra-panel .live-sound-tools .extra-music .music-play-row button.play.playb
     -webkit-mask: var(--icon-player-stop);
 }
 
-div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row,
-div.extra-panel .live-sound-tools .extra-music .music-play-row {
+div.extra-panel .live-sound-tools .extra-tone-generator .tone-generator-play-row {
     margin: 8px 0 0 0;
+}
+
+/* Music play row is the first thing inside .music-playback-panel-inner — no extra top gutter */
+div.extra-panel .live-sound-tools .extra-music .music-play-row {
+    margin: 0;
+}
+
+div.extra-panel .live-sound-tools .extra-music .music-play-or-search-slot {
+    flex: 100% 0 0;
+    width: 100%;
+    min-width: 0;
+    position: relative;
+    box-sizing: border-box;
+}
+
+/* Our `display: flex` on the play button and actions row beats the UA `[hidden]` rule; force real collapse. */
+div.extra-panel .live-sound-tools .live-sound-music-file .music-file-actions-row[hidden] {
+    display: none !important;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-search-inline[hidden] {
+    display: none !important;
 }
 
 div.extra-panel .live-sound-tools .extra-music .music-playback-panel {
@@ -3117,6 +3138,27 @@ div.extra-panel .live-sound-tools .extra-music.music-file-loaded .music-playback
     max-height: 200px;
     opacity: 1;
     pointer-events: auto;
+}
+
+/* Apple preview search replaces play control; keep panel compact until a track is loaded */
+div.extra-panel .live-sound-tools .extra-music.music-apple-search-mode:not(.music-file-loaded) .music-playback-panel {
+    max-height: 58px;
+    opacity: 1;
+    pointer-events: auto;
+    overflow: visible;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-apple-search-mode:not(.music-file-loaded) .music-playback-panel-inner {
+    overflow: visible;
+}
+
+/* Search-open only: hide play + seek (panel `button` rules override `[hidden]`; seek row is otherwise visible without a track). */
+div.extra-panel .live-sound-tools .extra-music.music-apple-search-mode:not(.music-file-loaded) .music-play-row button.play {
+    display: none !important;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-apple-search-mode:not(.music-file-loaded) .live-sound-slider-row.music-slider-row {
+    display: none !important;
 }
 
 div.extra-panel .live-sound-tools .extra-music .music-playback-panel-inner {
@@ -3503,8 +3545,13 @@ div.extra-panel .live-sound-tools .live-sound-tone-create-filter .tone-generator
 div.extra-panel .live-sound-tools .live-sound-music-file {
     position: relative;
     display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
     justify-content: center;
     margin: 6px 0 0 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 div.extra-panel .live-sound-tools .live-sound-music-file .music-file-input {
@@ -3520,7 +3567,22 @@ div.extra-panel .live-sound-tools .live-sound-music-file .music-file-input {
     opacity: 0;
 }
 
-div.extra-panel .live-sound-tools .live-sound-music-file .music-add-remove {
+div.extra-panel .live-sound-tools .live-sound-music-file .music-file-actions-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px 10px;
+    width: 100%;
+}
+
+div.extra-panel .live-sound-tools .extra-music.music-file-loaded .music-search-apple {
+    display: none !important;
+}
+
+div.extra-panel .live-sound-tools .live-sound-music-file .music-add-remove,
+div.extra-panel .live-sound-tools .live-sound-music-file .music-search-apple {
     box-sizing: border-box;
     width: auto;
     min-width: 0;
@@ -3539,9 +3601,168 @@ div.extra-panel .live-sound-tools .live-sound-music-file .music-add-remove {
     cursor: pointer;
 }
 
-div.extra-panel .live-sound-tools .live-sound-music-file .music-add-remove:hover {
+div.extra-panel .live-sound-tools .live-sound-music-file .music-add-remove:hover,
+div.extra-panel .live-sound-tools .live-sound-music-file .music-search-apple:hover {
     color: var(--accent-color-contrast) !important;
     text-decoration: underline;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-search-inline {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-form {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* Empty vs filled: softer border until there is typed text (:placeholder-shown) */
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-search {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    height: 36px;
+    min-height: 36px;
+    margin: 0;
+    padding: 10px 16px;
+    font-family: var(--font-secondary);
+    font-size: 11px;
+    line-height: 1em;
+    text-transform: uppercase;
+    background-color: var(--background-color-inputs);
+    border: 1px solid var(--background-color-contrast);
+    border-radius: 6px;
+    outline: none;
+    color: var(--font-color-primary);
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-search-inline:has(ul.apple-music-preview-results:not([hidden])) .apple-music-preview-search {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-search:not(:placeholder-shown) {
+    border-color: var(--background-color-contrast-more);
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-search::placeholder {
+    color: var(--background-color-contrast-more);
+    opacity: 1;
+    text-transform: uppercase;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-search::-webkit-input-placeholder {
+    color: var(--background-color-contrast-more);
+    text-transform: uppercase;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-search::-moz-placeholder {
+    color: var(--background-color-contrast-more);
+    opacity: 1;
+    text-transform: uppercase;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-search:focus,
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-search:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-results {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    z-index: 50;
+    list-style: none;
+    margin: 6px 0 0 0;
+    padding: 0;
+    max-height: 9.5rem;
+    overflow-y: auto;
+    border: 1px solid var(--background-color-contrast-faint, rgba(127, 127, 127, 0.25));
+    border-radius: 4px;
+    background: var(--background-color-inputs);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-results:not([hidden]) {
+    margin-top: -1px;
+    border-top: none;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border-left-color: var(--background-color-contrast);
+    border-right-color: var(--background-color-contrast);
+    border-bottom-color: var(--background-color-contrast);
+    box-shadow: none;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-search-inline:has(.apple-music-preview-search:not(:placeholder-shown)) .apple-music-preview-results:not([hidden]) {
+    border-left-color: var(--background-color-contrast-more);
+    border-right-color: var(--background-color-contrast-more);
+    border-bottom-color: var(--background-color-contrast-more);
+}
+
+/* Rows override global `div.extra-panel button`: margin-bottom:4px !important, accent color, bg !important, capitalize, nowrap */
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-results button {
+    box-sizing: border-box !important;
+    width: 100%;
+    max-width: 100%;
+    order: initial;
+    flex: none !important;
+    margin: 0 !important;
+    margin-bottom: 0 !important;
+    padding: 10px 16px !important;
+    text-align: left !important;
+    font-family: var(--font-primary);
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    line-height: 1.25;
+    text-transform: none !important;
+    white-space: normal !important;
+    border: none !important;
+    border-radius: 0 !important;
+    border-bottom: 1px solid var(--background-color-contrast-faint, rgba(127, 127, 127, 0.15));
+    background: transparent !important;
+    background-color: transparent !important;
+    color: var(--font-color-primary);
+    cursor: pointer;
+    outline: none;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-results button .apple-music-preview-title {
+    display: block;
+    color: var(--font-color-primary) !important;
+    font-weight: inherit;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-results li:last-child button {
+    border-bottom: none;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-results button:hover,
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-results button:focus-visible {
+    background: var(--background-color-contrast-faint, rgba(127, 127, 127, 0.08));
+    outline: none;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-meta {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    text-transform: none;
+    color: var(--background-color-contrast-more) !important;
+}
+
+div.extra-panel .live-sound-tools .extra-music .apple-music-preview-results > li {
+    margin: 0;
+    padding: 0;
 }
 
 /*****

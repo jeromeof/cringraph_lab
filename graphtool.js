@@ -365,7 +365,18 @@ doc.html(`
                   <div class="music-playback-panel" aria-hidden="true">
                     <div class="music-playback-panel-inner">
                       <div class="live-sound-source-actions music-play-row">
-                        <button type="button" class="play" disabled aria-label="Toggle music playback"></button>
+                        <div class="music-play-or-search-slot">
+                          <button type="button" class="play" disabled aria-label="Toggle music playback"></button>
+                          <div class="apple-music-search-inline" hidden>
+                            <form class="apple-music-preview-form">
+                              <input type="text" id="apple-music-preview-search" class="apple-music-preview-search"
+                                  inputmode="search" enterkeyhint="search" role="searchbox"
+                                  aria-label="Search Apple Music catalog" placeholder="Search Apple Music catalog"
+                                  autocomplete="off" spellcheck="false" />
+                            </form>
+                            <ul class="apple-music-preview-results" role="listbox" hidden aria-label="Search results"></ul>
+                          </div>
+                        </div>
                       </div>
                       <div class="live-sound-slider-row music-slider-row">
                         <div class="music-segment-slider music-segment-slider-disabled" role="group" aria-label="Playback and loop range">
@@ -384,7 +395,10 @@ doc.html(`
                     </div>
                   </div>
                   <div class="live-sound-music-file">
-                    <button type="button" class="music-add-remove">+ Add Music</button>
+                    <div class="music-file-actions-row">
+                      <button type="button" class="music-add-remove">+ Add Music</button>
+                      <button type="button" class="music-search-apple" aria-label="Search Apple Music catalog previews">Search Apple</button>
+                    </div>
                     <input type="file" class="music-file-input" tabindex="-1" aria-hidden="true"
                         accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/x-aac,audio/aac,audio/wav,audio/x-wav,audio/flac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.aac,.wav,.caf,.flac,.ogg,.opus,.webm,audio/*" />
                   </div>
@@ -9595,6 +9609,16 @@ function addExtra() {
     let musicAnalyser = null;
     let musicObjectUrl = null;
     let musicFileLoaded = false;
+    /** Inline Apple preview search replaces the Music play slot when opened (no track loaded yet). */
+    let musicAppleSearchModeOpen = false;
+    let appleMusicSearchDebounceTimer = null;
+    let isExtraTabSelectedForShortcuts = () => {
+        let tab = document.querySelector("div.select");
+        return !!(typeof extraEnabled !== "undefined" && extraEnabled && tab
+            && tab.getAttribute("data-selected") === "extra");
+    };
+    let suppressEqExtraGlobalShortcutsForAppleSearch = () =>
+        musicAppleSearchModeOpen && isExtraTabSelectedForShortcuts();
     let musicSeekDragging = false;
     let musicSegStartU = 0;
     let musicSegEndU = 1;
@@ -10848,8 +10872,13 @@ function addExtra() {
     }
     let musicPlayButton = document.querySelector("div.extra-music .play");
     let musicAddRemoveButton = document.querySelector("div.extra-music button.music-add-remove");
+    let musicSearchAppleButton = document.querySelector("div.extra-music button.music-search-apple");
+    let musicFileActionsRow = document.querySelector("div.extra-music .music-file-actions-row");
     let musicFileInput = document.querySelector("div.extra-music input.music-file-input");
     let musicCard = document.querySelector("div.extra-music");
+    let appleMusicInlineWrap = musicCard && musicCard.querySelector(".apple-music-search-inline");
+    let appleMusicSearchInput = musicCard && musicCard.querySelector("#apple-music-preview-search");
+    let appleMusicResultsUl = appleMusicInlineWrap && appleMusicInlineWrap.querySelector("ul.apple-music-preview-results");
     let musicPlaybackPanel = document.querySelector("div.extra-music .music-playback-panel");
     let musicSegmentSliderEl = musicCard && musicCard.querySelector(".music-segment-slider");
     let musicSegmentTrackEl = musicSegmentSliderEl && musicSegmentSliderEl.querySelector(".music-segment-track");
@@ -10861,6 +10890,70 @@ function addExtra() {
     let musicSegmentHandleStart = musicSegmentTrackEl && musicSegmentTrackEl.querySelector(".music-segment-handle-start");
     let musicSegmentHandleEnd = musicSegmentTrackEl && musicSegmentTrackEl.querySelector(".music-segment-handle-end");
     let musicSegmentHandleInsetPx = 8;
+    /** Stops preview search UX; when `musicFileLoaded` is still false and `collapseEmptyPlaybackPanel`, collapse playback strip. */
+    let resetAppleMusicSearchUi = (opts) => {
+        opts = opts || {};
+        let collapseEmptyPlaybackPanel = opts.collapseEmptyPlaybackPanel === true;
+        musicAppleSearchModeOpen = false;
+        if (appleMusicSearchDebounceTimer !== null) {
+            clearTimeout(appleMusicSearchDebounceTimer);
+            appleMusicSearchDebounceTimer = null;
+        }
+        if (musicCard) {
+            musicCard.classList.remove("music-apple-search-mode");
+        }
+        if (appleMusicInlineWrap) {
+            appleMusicInlineWrap.hidden = true;
+        }
+        if (appleMusicResultsUl) {
+            appleMusicResultsUl.hidden = true;
+            appleMusicResultsUl.innerHTML = "";
+        }
+        if (appleMusicSearchInput) {
+            appleMusicSearchInput.value = "";
+        }
+        if (musicPlayButton) {
+            musicPlayButton.hidden = false;
+        }
+        if (musicFileActionsRow) {
+            musicFileActionsRow.hidden = false;
+        }
+        if (!musicFileLoaded && collapseEmptyPlaybackPanel && musicPlaybackPanel) {
+            musicPlaybackPanel.setAttribute("aria-hidden", "true");
+        }
+    };
+    let openAppleMusicSearchMode = () => {
+        if (musicFileLoaded || musicAppleSearchModeOpen) {
+            return;
+        }
+        if (!musicCard || !musicPlaybackPanel || !musicPlayButton || !appleMusicInlineWrap || !appleMusicSearchInput
+                || !appleMusicResultsUl || !musicFileActionsRow) {
+            return;
+        }
+        musicAppleSearchModeOpen = true;
+        musicCard.classList.add("music-apple-search-mode");
+        musicPlaybackPanel.setAttribute("aria-hidden", "false");
+        musicPlayButton.hidden = true;
+        appleMusicInlineWrap.hidden = false;
+        musicFileActionsRow.hidden = true;
+        appleMusicResultsUl.hidden = true;
+        let focusSearch = () => {
+            if (!musicAppleSearchModeOpen || !appleMusicSearchInput) {
+                return;
+            }
+            appleMusicSearchInput.focus({ preventScroll: true });
+            try {
+                appleMusicSearchInput.select();
+            } catch (err) { /* noop */ }
+        };
+        if (typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(focusSearch);
+            });
+        } else {
+            focusSearch();
+        }
+    };
     let getMusicDuration = () => {
         if (!musicAudio) {
             return 0;
@@ -12230,6 +12323,9 @@ function addExtra() {
         if (!extraEnabled || !tab || tab.getAttribute("data-selected") !== "extra") {
             return;
         }
+        if (suppressEqExtraGlobalShortcutsForAppleSearch()) {
+            return;
+        }
         toneSweepLoopSpaceHeld = true;
     }, true);
     document.addEventListener("keyup", (e) => {
@@ -12378,6 +12474,8 @@ function addExtra() {
         }
         musicContext = new (window.AudioContext || window.webkitAudioContext)();
         musicAudio = new Audio();
+        /* Required for preview URLs (and harmless for blob: local files) so Web Audio can process the stream. */
+        musicAudio.crossOrigin = "anonymous";
         musicAudio.loop = false;
         musicAudio.preload = "auto";
         musicAudio.addEventListener("timeupdate", musicAudioTimeUpdateHandler);
@@ -12467,19 +12565,30 @@ function addExtra() {
             updateEqTraceOpacity();
         });
     };
-    let wireMusicLoadedFromBlob = (blob, segOpt, loadOpts) => {
+    let wireMusicLoadedFromSource = (src, segOpt, loadOpts) => {
         loadOpts = loadOpts || {};
         let autoPlayAfterLoad = loadOpts.autoPlay === true;
         if (!musicAudio || !musicPlayButton || !musicCard || !musicSegmentSliderEl || !musicAddRemoveButton) {
             return;
         }
+        resetAppleMusicSearchUi({ collapseEmptyPlaybackPanel: false });
+        let isBlob = typeof Blob !== "undefined" && src instanceof Blob;
+        if (!isBlob && (src == null || String(src).trim() === "")) {
+            return;
+        }
         if (musicObjectUrl) {
             URL.revokeObjectURL(musicObjectUrl);
+            musicObjectUrl = null;
         }
         musicAudio.pause();
         musicSpectrumViz.stop();
         musicPlayButton.classList.remove("playback-active");
-        musicObjectUrl = URL.createObjectURL(blob);
+        if (isBlob) {
+            musicObjectUrl = URL.createObjectURL(src);
+            musicAudio.src = musicObjectUrl;
+        } else {
+            musicAudio.src = String(src).trim();
+        }
         if (segOpt && typeof segOpt.segStartU === "number" && typeof segOpt.segEndU === "number") {
             musicSegStartU = segOpt.segStartU;
             musicSegEndU = segOpt.segEndU;
@@ -12487,13 +12596,13 @@ function addExtra() {
             musicSegStartU = 0;
             musicSegEndU = 1;
         }
-        musicAudio.src = musicObjectUrl;
         musicAudio.load();
         musicFileLoaded = true;
         musicCard.classList.add("music-file-loaded");
         if (musicPlaybackPanel) {
             musicPlaybackPanel.setAttribute("aria-hidden", "false");
         }
+        musicPlayButton.hidden = false;
         musicPlayButton.disabled = false;
         musicSegmentSliderEl.classList.remove("music-segment-slider-disabled");
         let onMusicMeta = () => {
@@ -12517,6 +12626,135 @@ function addExtra() {
                 musicAudio.addEventListener("canplay", autoPlayWhenReady, { once: true });
             }
         }
+    };
+    let wireMusicLoadedFromBlob = (blob, segOpt, loadOpts) =>
+        wireMusicLoadedFromSource(blob, segOpt, loadOpts);
+    let appleMusicCatalogBaseResolved = () => {
+        let b = typeof appleMusicCatalogApiBase !== "undefined" ? String(appleMusicCatalogApiBase || "").trim() : "";
+        return b ? b.replace(/\/+$/, "") : "https://api.music.apple.com";
+    };
+    let appleMusicStorefrontResolved = () => {
+        let s = typeof appleMusicStorefront !== "undefined" ? String(appleMusicStorefront || "").trim() : "";
+        return (s || "us").toLowerCase();
+    };
+    let appleMusicTokenCache = { token: "", expMs: 0 };
+    let decodeAppleMusicJwtExpMs = (jwt) => {
+        try {
+            let p = String(jwt || "").split(".");
+            if (p.length < 2) {
+                return 0;
+            }
+            let bod = p[1].replace(/-/g, "+").replace(/_/g, "/");
+            while (bod.length % 4) {
+                bod += "=";
+            }
+            let payload = JSON.parse(atob(bod));
+            return ((payload.exp | 0) || 0) * 1000;
+        } catch (e) {
+            return 0;
+        }
+    };
+    let appleMusicFetchDeveloperToken = () => {
+        let url = typeof appleMusicDeveloperTokenUrl !== "undefined" ? String(appleMusicDeveloperTokenUrl || "").trim() : "";
+        if (!url) {
+            return Promise.reject(new Error("Apple Music developer token URL is not configured"));
+        }
+        let now = Date.now();
+        if (appleMusicTokenCache.token && now < appleMusicTokenCache.expMs - 45000) {
+            return Promise.resolve(appleMusicTokenCache.token);
+        }
+        return fetch(url, { credentials: "omit" }).then((r) => {
+            if (!r.ok) {
+                throw new Error("Developer token endpoint HTTP " + r.status);
+            }
+            return r.text();
+        }).then((text) => {
+            let t = String(text || "").trim();
+            if (!t) {
+                throw new Error("Empty developer token response");
+            }
+            appleMusicTokenCache.token = t;
+            let expMs = decodeAppleMusicJwtExpMs(t);
+            appleMusicTokenCache.expMs = expMs || (now + 50 * 60 * 1000);
+            return t;
+        });
+    };
+    let parseAppleMusicSearchSongsPayload = (json) => {
+        let out = [];
+        let songs = json && json.results && json.results.songs && json.results.songs.data;
+        if (!Array.isArray(songs)) {
+            return out;
+        }
+        for (let i = 0; i < songs.length; i++) {
+            let a = songs[i] && songs[i].attributes;
+            if (!a) {
+                continue;
+            }
+            let pv = Array.isArray(a.previews) && a.previews.length ? a.previews[0].url : "";
+            if (!pv) {
+                continue;
+            }
+            out.push({ title: a.name || "", artist: a.artistName || "", previewUrl: pv });
+        }
+        return out;
+    };
+    let appleMusicSearchCatalog = (term) => {
+        let q = String(term || "").trim();
+        if (!q) {
+            return Promise.resolve([]);
+        }
+        let base = appleMusicCatalogBaseResolved();
+        let sf = appleMusicStorefrontResolved();
+        let searchUrl = base + "/v1/catalog/" + encodeURIComponent(sf) + "/search?term="
+            + encodeURIComponent(q) + "&types=songs&limit=12";
+        return appleMusicFetchDeveloperToken().then((token) => fetch(searchUrl, {
+            headers: { Authorization: "Bearer " + token }
+        })).then((r) => {
+            if (!r.ok) {
+                throw new Error("Apple catalog search HTTP " + r.status);
+            }
+            return r.json();
+        }).then(parseAppleMusicSearchSongsPayload);
+    };
+    /* Public iTunes Search API (no auth) — same preview URLs many demos use; not api.music.apple.com. */
+    let parseItunesSearchSongsPayload = (json) => {
+        let out = [];
+        let results = json && json.results;
+        if (!Array.isArray(results)) {
+            return out;
+        }
+        for (let i = 0; i < results.length; i++) {
+            let r = results[i];
+            let pv = r && r.previewUrl;
+            if (!pv) {
+                continue;
+            }
+            out.push({ title: r.trackName || "", artist: r.artistName || "", previewUrl: pv });
+        }
+        return out;
+    };
+    let itunesSearchSongs = (term) => {
+        let q = String(term || "").trim();
+        if (!q) {
+            return Promise.resolve([]);
+        }
+        let country = appleMusicStorefrontResolved();
+        let searchUrl = "https://itunes.apple.com/search?term=" + encodeURIComponent(q)
+            + "&entity=song&limit=12&country=" + encodeURIComponent(country);
+        return fetch(searchUrl, { credentials: "omit" }).then((r) => {
+            if (!r.ok) {
+                throw new Error("iTunes search HTTP " + r.status);
+            }
+            return r.json();
+        }).then(parseItunesSearchSongsPayload);
+    };
+    let applePreviewSearch = (term) => {
+        let tokenUrl = typeof appleMusicDeveloperTokenUrl !== "undefined"
+            ? String(appleMusicDeveloperTokenUrl || "").trim() : "";
+        if (tokenUrl) {
+            return appleMusicSearchCatalog(term);
+        }
+        return itunesSearchSongs(term);
     };
     if (musicPlayButton && musicSegmentSliderEl && musicSegmentTrackEl && musicSegmentSeekEl
         && musicSegmentHandleStart && musicSegmentHandleEnd && musicAddRemoveButton && musicFileInput && musicCard) {
@@ -12550,6 +12788,157 @@ function addExtra() {
                 musicFileInput.blur();
             }, 0);
         });
+        if (typeof extraMusicEnabled !== "undefined" && extraMusicEnabled
+                && appleMusicInlineWrap && musicSearchAppleButton && appleMusicSearchInput && appleMusicResultsUl
+                && musicFileActionsRow) {
+            /* Return/Enter still blurs the field in some WebKit paths; focusout was dismissing search. */
+            let appleMusicSearchIgnoreFocusOutUntil = 0;
+            let appleMusicBlockEnterKeydown = (e) => {
+                if (e.isComposing) {
+                    return;
+                }
+                if (e.code !== "Enter" && e.code !== "NumpadEnter" && e.key !== "Enter" && e.keyCode !== 13) {
+                    return;
+                }
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                appleMusicSearchIgnoreFocusOutUntil = performance.now() + 600;
+            };
+            let appleMusicRenderResults = (rows) => {
+                appleMusicResultsUl.innerHTML = "";
+                if (!rows || !rows.length) {
+                    appleMusicResultsUl.hidden = true;
+                    return;
+                }
+                rows.forEach((row) => {
+                    let li = document.createElement("li");
+                    li.setAttribute("role", "presentation");
+                    let bt = document.createElement("button");
+                    bt.type = "button";
+                    bt.setAttribute("role", "option");
+                    bt.setAttribute("aria-label", (row.title || "Track") + " — " + (row.artist || ""));
+                    let titleEl = document.createElement("span");
+                    titleEl.className = "apple-music-preview-title";
+                    titleEl.textContent = row.title || "";
+                    bt.appendChild(titleEl);
+                    let meta = document.createElement("span");
+                    meta.className = "apple-music-preview-meta";
+                    meta.textContent = row.artist || "";
+                    bt.appendChild(meta);
+                    bt.addEventListener("click", () => {
+                        appleMusicResultsUl.hidden = true;
+                        if (!window.AudioContext && !window.webkitAudioContext) {
+                            alert("Web audio API is disabled; music playback is unavailable.");
+                            return;
+                        }
+                        musicRestoreCancelToken++;
+                        if (!initMusicAudioGraph()) {
+                            return;
+                        }
+                        wireMusicLoadedFromSource(row.previewUrl, null, { autoPlay: true });
+                    });
+                    li.appendChild(bt);
+                    appleMusicResultsUl.appendChild(li);
+                });
+                appleMusicResultsUl.hidden = false;
+            };
+            let appleMusicPreviewForm = appleMusicInlineWrap.querySelector("form.apple-music-preview-form");
+            if (appleMusicPreviewForm) {
+                appleMusicPreviewForm.addEventListener("submit", (e) => {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                });
+                appleMusicPreviewForm.addEventListener("keydown", appleMusicBlockEnterKeydown, true);
+            }
+            appleMusicSearchInput.addEventListener("keydown", appleMusicBlockEnterKeydown, true);
+            let appleMusicOutsidePointerDismiss = (e) => {
+                if (!musicAppleSearchModeOpen) {
+                    return;
+                }
+                let t = e.target;
+                if (t && t.closest && t.closest(".apple-music-search-inline")) {
+                    return;
+                }
+                resetAppleMusicSearchUi({ collapseEmptyPlaybackPanel: true });
+            };
+            document.addEventListener("pointerdown", appleMusicOutsidePointerDismiss, true);
+            let appleMusicEscapeDismiss = (e) => {
+                if (!musicAppleSearchModeOpen || e.code !== "Escape") {
+                    return;
+                }
+                if (!appleMusicInlineWrap.contains(document.activeElement)) {
+                    return;
+                }
+                e.preventDefault();
+                resetAppleMusicSearchUi({ collapseEmptyPlaybackPanel: true });
+            };
+            document.addEventListener("keydown", appleMusicEscapeDismiss, true);
+            appleMusicSearchInput.addEventListener("input", () => {
+                let v = appleMusicSearchInput.value.trim();
+                if (appleMusicSearchDebounceTimer !== null) {
+                    clearTimeout(appleMusicSearchDebounceTimer);
+                    appleMusicSearchDebounceTimer = null;
+                }
+                if (v.length < 2) {
+                    appleMusicResultsUl.hidden = true;
+                    appleMusicResultsUl.innerHTML = "";
+                    return;
+                }
+                appleMusicSearchDebounceTimer = setTimeout(() => {
+                    appleMusicSearchDebounceTimer = null;
+                    applePreviewSearch(v).then((rows) => {
+                        appleMusicRenderResults(rows);
+                    }).catch((err) => {
+                        console.warn(err);
+                        appleMusicResultsUl.innerHTML = "";
+                        let li = document.createElement("li");
+                        let msg = document.createElement("div");
+                        msg.style.padding = "10px 16px";
+                        msg.style.fontSize = "12px";
+                        msg.style.lineHeight = "1.3";
+                        let tokenUrl = typeof appleMusicDeveloperTokenUrl !== "undefined"
+                            ? String(appleMusicDeveloperTokenUrl || "").trim() : "";
+                        msg.textContent = tokenUrl
+                            ? "Apple Music catalog search failed (often CORS from the browser). "
+                                + "Point appleMusicCatalogApiBase at a same-origin proxy that forwards to "
+                                + "api.music.apple.com with the Authorization header."
+                            : "iTunes search failed (network, rate limits, or browser restrictions). "
+                                + "Set appleMusicDeveloperTokenUrl to use Apple Music catalog search instead.";
+                        li.appendChild(msg);
+                        appleMusicResultsUl.appendChild(li);
+                        appleMusicResultsUl.hidden = false;
+                    });
+                }, 380);
+            });
+            appleMusicInlineWrap.addEventListener("focusout", (ev) => {
+                let rel = ev.relatedTarget;
+                if (rel && appleMusicInlineWrap.contains(rel)) {
+                    return;
+                }
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        if (performance.now() < appleMusicSearchIgnoreFocusOutUntil) {
+                            if (appleMusicSearchInput && document.activeElement !== appleMusicSearchInput) {
+                                try {
+                                    appleMusicSearchInput.focus({ preventScroll: true });
+                                } catch (err) { /* noop */ }
+                            }
+                            return;
+                        }
+                        if (!musicAppleSearchModeOpen) {
+                            return;
+                        }
+                        if (appleMusicInlineWrap.contains(document.activeElement)) {
+                            return;
+                        }
+                        resetAppleMusicSearchUi({ collapseEmptyPlaybackPanel: true });
+                    });
+                });
+            });
+            musicSearchAppleButton.addEventListener("click", () => {
+                openAppleMusicSearchMode();
+            });
+        }
         musicPlayButton.addEventListener("click", () => {
             if (!musicFileLoaded || !musicAudio || !musicContext) {
                 return;
@@ -13043,6 +13432,9 @@ function addExtra() {
         if (!e.metaKey && !e.altKey && !e.ctrlKey) {
             return;
         }
+        if (suppressEqExtraGlobalShortcutsForAppleSearch()) {
+            return;
+        }
         let tab = document.querySelector("div.select");
         if (!extraEnabled || !extraEQEnabled || !tab
                 || tab.getAttribute("data-selected") !== "extra") {
@@ -13071,6 +13463,9 @@ function addExtra() {
         }
         let selectEl = document.querySelector("div.select");
         if (!selectEl || selectEl.getAttribute("data-selected") !== "extra") {
+            return;
+        }
+        if (suppressEqExtraGlobalShortcutsForAppleSearch()) {
             return;
         }
         if (t && t.nodeType === 1 && typeof t.matches === "function"
@@ -13144,6 +13539,7 @@ function addExtra() {
 
     document.addEventListener("keydown", (e) => {
         if (e.key !== "\\") return;
+        if (suppressEqExtraGlobalShortcutsForAppleSearch()) return;
         if (!livePlaybackEqToggle) return;
         e.preventDefault();
         if (e.repeat) return;
@@ -13152,6 +13548,7 @@ function addExtra() {
     });
     document.addEventListener("keyup", (e) => {
         if (e.key !== "\\") return;
+        if (suppressEqExtraGlobalShortcutsForAppleSearch()) return;
         if (!livePlaybackEqToggle) return;
         livePlaybackEqToggle.checked = true;
         livePlaybackEqToggle.dispatchEvent(new Event("change"));
