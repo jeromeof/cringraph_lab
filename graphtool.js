@@ -2250,7 +2250,14 @@ function rebindGraphPathSelectionAndRedraw() {
                 return po;
             }
         }
-        return graphPathOpacityForCurve(c) ?? (c.p.hide ? 0 : null);
+        let base = graphPathOpacityForCurve(c) ?? (c.p.hide ? 0 : null);
+        if (c && c.p && !c.p.hide && typeof window !== "undefined"
+                && typeof window.__eqComposeListeningOpacityForCurve === "function"
+                && (c.p.eqParent || c.p.eq)) {
+            let b = (base == null || !Number.isFinite(base)) ? 1 : base;
+            return window.__eqComposeListeningOpacityForCurve(c, b);
+        }
+        return base;
     })
         .classed("sample", c=>c.p.samp)
         .attr("stroke", getColor_AC).call(redrawLine);
@@ -3130,6 +3137,10 @@ function showPhone(p, exclusive, suppressVariant, trigger) {
     if (extraEnabled && extraEQEnabled && typeof window.updateEQPhoneSelect === "function") {
         window.updateEQPhoneSelect();
         applyParametricEqGraphTraceFocus();
+        /* Parametric focus sets base opacity on paths; updatePaths() already ran updateEqTraceOpacity
+           earlier in showPhone — this pass must run again after applyParametric or parent/EQ A-B dims
+           stay cleared until something else (e.g. live A-B toggle) calls updateEqTraceOpacity. */
+        updateEqTraceOpacity();
         /* manageTable Eq-tab filter reads getParametricEqTraceFocusContext — must run *after*
            sticky + dropdown reconcile (otherwise an extra target click leaves the old row up). */
         updatePhoneTable(trigger);
@@ -4671,7 +4682,13 @@ function addExtra() {
             return undefined;
         }
         if (ctx.showSet.has(curve.p)) {
-            return graphPathOpacityForCurve(curve) ?? (curve.p.hide ? 0 : null);
+            let baseG = graphPathOpacityForCurve(curve) ?? (curve.p.hide ? 0 : null);
+            if (curve.p.hide) {
+                return 0;
+            }
+            let b = (baseG == null || !Number.isFinite(baseG)) ? 1 : baseG;
+            /* Compose listening A/B dimming in the join callback so rebind never flashes full opacity. */
+            return eqComposeListeningOpacityForCurve(curve, b);
         }
         return 0;
     };
@@ -4710,7 +4727,11 @@ function addExtra() {
                 }
                 return;
             }
-            el.attr("opacity", graphPathOpacityForCurve(c) ?? (c.p.hide ? 0 : null));
+            {
+                let baseRaw = graphPathOpacityForCurve(c) ?? (c.p.hide ? 0 : null);
+                let b = (baseRaw == null || !Number.isFinite(baseRaw)) ? 1 : baseRaw;
+                el.attr("opacity", eqComposeListeningOpacityForCurve(c, b));
+            }
             /* Never paint the parametric EQ trace as the "target" line (gray); fallback targetP can equal eqP when the target dropdown is empty. */
             if (targetP && c.p === targetP && !c.p.isTarget && c.p !== eqP) {
                 el.classed("eq-graph-focus-target", true);
@@ -4739,6 +4760,10 @@ function addExtra() {
                 }
             }
         });
+        /* This pass assigns full (or focus) opacity on every visible curve. Must run
+           updateEqTraceOpacity afterwards so parent vs EQ trace dimming is not reset until the next
+           time something remembered to call it (e.g. EQ filter edits only hit applyParametric here). */
+        updateEqTraceOpacity();
     };
     let filtersContainer = document.querySelector("div.extra-eq > div.filters");
     let fileFiltersImport = document.querySelector("#file-filters-import");
@@ -7229,32 +7254,39 @@ function addExtra() {
                     syncEqHoverPreview(mResync);
                 }
             }
-            return;
-        }
-        let mk = gEqFilterMarkers.selectAll("circle.eq-filter-marker")
-            .data(layout.rows, d => d.rowIndex);
-        mk.exit().remove();
-        mk = mk.enter().append("circle")
-            .attr("class", "eq-filter-marker")
-            .attr("r", EQ_GRAPH_MARKER_R_BASE)
-            .merge(mk)
-            .attr("cx", d => d.cx)
-            .attr("cy", d => d.cy)
-            .attr("stroke", layout.strokeCol)
-            .attr("stroke-width", EQ_GRAPH_MARKER_STROKE_W);
-        let dragIx = eqGraphPointerState != null && eqGraphPointerState.filterIndex !== null
-            ? eqGraphPointerState.filterIndex
-            : null;
-        applyEqFilterMarkerFillAndSize(dragIx);
-        gEqSoundRangeBrush.raise();
-        gEqFilterMarkers.raise();
-        gEqHoverPreview.raise();
-        if (!eqGraphPointerState && lastGraphPlotPointerClient) {
-            let lp = lastGraphPlotPointerClient;
-            let mResync = clientToGraphPlotXY(lp.x, lp.y);
-            if (mResync) {
-                syncEqHoverPreview(mResync);
+        } else {
+            let mk = gEqFilterMarkers.selectAll("circle.eq-filter-marker")
+                .data(layout.rows, d => d.rowIndex);
+            mk.exit().remove();
+            mk = mk.enter().append("circle")
+                .attr("class", "eq-filter-marker")
+                .attr("r", EQ_GRAPH_MARKER_R_BASE)
+                .merge(mk)
+                .attr("cx", d => d.cx)
+                .attr("cy", d => d.cy)
+                .attr("stroke", layout.strokeCol)
+                .attr("stroke-width", EQ_GRAPH_MARKER_STROKE_W);
+            let dragIx = eqGraphPointerState != null && eqGraphPointerState.filterIndex !== null
+                ? eqGraphPointerState.filterIndex
+                : null;
+            applyEqFilterMarkerFillAndSize(dragIx);
+            gEqSoundRangeBrush.raise();
+            gEqFilterMarkers.raise();
+            gEqHoverPreview.raise();
+            if (!eqGraphPointerState && lastGraphPlotPointerClient) {
+                let lp = lastGraphPlotPointerClient;
+                let mResync = clientToGraphPlotXY(lp.x, lp.y);
+                if (mResync) {
+                    syncEqHoverPreview(mResync);
+                }
             }
+        }
+        /* Last step in applyEQExec (after showPhone/updatePaths); syncEqPinnedParentTrace may rebind
+           or redrawLine paths — without this, parent/EQ opacity sometimes stayed at join defaults until
+           the next event (e.g. A/B toggle). */
+        if (extraEnabled && extraEQEnabled) {
+            applyParametricEqGraphTraceFocus();
+            updateEqTraceOpacity();
         }
     };
     syncEqHoverPreview = (m) => {
@@ -9994,6 +10026,46 @@ function addExtra() {
     let livePlaybackEqToggle = document.querySelector("input.live-sound-eq-toggle");
     let isLivePlaybackEqEnabled = () =>
         !livePlaybackEqToggle || livePlaybackEqToggle.checked;
+    /** Single source for parent vs EQ trace dimming (L/R bank, live A/B, no-audio case). `baseNum`
+     *  is the opacity factor from graphPathOpacityForCurve / parametric focus (1 when null). */
+    let eqComposeListeningOpacityForCurve = (curve, baseNum) => {
+        if (!curve || !curve.p || curve.p.hide) {
+            return 0;
+        }
+        let p = curve.p;
+        let b = (typeof baseNum === "number" && Number.isFinite(baseNum)) ? baseNum : 1;
+        let audioPlaying = pinkNoisePlaying || !!toneGeneratorOsc
+            || (musicAudio && !musicAudio.paused);
+        let eqOn = isLivePlaybackEqEnabled();
+        if (p.eqParent) {
+            let bankDim = 1;
+            if (isEqTwoChannelSupportEnabled()
+                    && eq2chActiveBank !== "both"
+                    && LR && LR.length > 1
+                    && p.activeCurves && p.activeCurves.length > 1) {
+                let ix = p.activeCurves.indexOf(curve);
+                if (ix >= 0 && ix < LR.length) {
+                    let side = LR[ix];
+                    if ((eq2chActiveBank === "L" && side !== "L")
+                            || (eq2chActiveBank === "R" && side !== "R")) {
+                        bankDim = 0.5;
+                    }
+                }
+            }
+            let aud = (audioPlaying && !eqOn) ? 0.5 : 1;
+            let op = b * bankDim * aud;
+            return Math.abs(op - 1) < 1e-9 ? null : op;
+        }
+        if (p.eq) {
+            let dimParent = !audioPlaying || eqOn;
+            let op = b * (dimParent ? 0.5 : 1);
+            return Math.abs(op - 1) < 1e-9 ? null : op;
+        }
+        return Math.abs(b - 1) < 1e-9 ? null : b;
+    };
+    if (typeof window !== "undefined") {
+        window.__eqComposeListeningOpacityForCurve = eqComposeListeningOpacityForCurve;
+    }
     let mapFilterTypeToBiquad = (t) =>
         (t === "LSQ" ? "lowshelf" : t === "HSQ" ? "highshelf" : "peaking");
     /* Same bands as live biquads; independent of the Compare toggle (used for
@@ -10923,26 +10995,14 @@ function addExtra() {
             let isEqTrace = !!c.p.eqParent;
             let isParentTrace = !!c.p.eq;
             if (isEqTrace) {
-                let bankDim = 1;
-                if (isEqTwoChannelSupportEnabled()
-                        && eq2chActiveBank !== "both"
-                        && LR && LR.length > 1
-                        && c.p.activeCurves && c.p.activeCurves.length > 1) {
-                    let ix = c.p.activeCurves.indexOf(c);
-                    if (ix >= 0 && ix < LR.length) {
-                        let side = LR[ix];
-                        if ((eq2chActiveBank === "L" && side !== "L")
-                                || (eq2chActiveBank === "R" && side !== "R")) {
-                            bankDim = 0.5;
-                        }
-                    }
-                }
-                let aud = (audioPlaying && !eqOn) ? 0.5 : 1;
-                let op = bankDim * aud;
-                el.attr("opacity", op === 1 ? null : op);
+                let base = graphPathOpacityForCurve(c);
+                let b = (base == null || !Number.isFinite(base)) ? 1 : base;
+                el.attr("opacity", eqComposeListeningOpacityForCurve(c, b));
                 if (stateChanged && audioPlaying && eqOn) emphTargets.push(this);
             } else if (isParentTrace) {
-                el.attr("opacity", audioPlaying && eqOn ? 0.5 : null);
+                let base = graphPathOpacityForCurve(c);
+                let b = (base == null || !Number.isFinite(base)) ? 1 : base;
+                el.attr("opacity", eqComposeListeningOpacityForCurve(c, b));
                 if (stateChanged && audioPlaying && !eqOn) emphTargets.push(this);
             }
         });
@@ -11749,6 +11809,14 @@ function addExtra() {
             if (endEvent.pointerType === "touch") {
                 lastGraphPlotPointerClient = null;
             }
+        }
+        /* applyEqGraphTraceStrokeEmphasis + input focus scheduling can paint after applyEQExec; run
+           trace dimming on the next frame so parent vs EQ opacity does not flash full on release. */
+        if (extraEnabled && extraEQEnabled && st.mode === "eq") {
+            requestAnimationFrame(() => {
+                applyParametricEqGraphTraceFocus();
+                updateEqTraceOpacity();
+            });
         }
     };
     function eqGraphOnPointerLockChange() {
@@ -12882,122 +12950,15 @@ function addExtra() {
     };
     let wireMusicLoadedFromBlob = (blob, segOpt, loadOpts) =>
         wireMusicLoadedFromSource(blob, segOpt, loadOpts);
-    let appleMusicCatalogBaseResolved = () => {
-        let b = typeof appleMusicCatalogApiBase !== "undefined" ? String(appleMusicCatalogApiBase || "").trim() : "";
-        return b ? b.replace(/\/+$/, "") : "https://api.music.apple.com";
-    };
-    let appleMusicStorefrontResolved = () => {
+    let itunesStorefrontForSearch = () => {
         let s = typeof appleMusicStorefront !== "undefined" ? String(appleMusicStorefront || "").trim() : "";
         return (s || "us").toLowerCase();
     };
-    let appleMusicTokenCache = { token: "", expMs: 0 };
-    let decodeAppleMusicJwtExpMs = (jwt) => {
-        try {
-            let p = String(jwt || "").split(".");
-            if (p.length < 2) {
-                return 0;
-            }
-            let bod = p[1].replace(/-/g, "+").replace(/_/g, "/");
-            while (bod.length % 4) {
-                bod += "=";
-            }
-            let payload = JSON.parse(atob(bod));
-            return ((payload.exp | 0) || 0) * 1000;
-        } catch (e) {
-            return 0;
-        }
-    };
-    let appleMusicFetchDeveloperToken = () => {
-        let url = typeof appleMusicDeveloperTokenUrl !== "undefined" ? String(appleMusicDeveloperTokenUrl || "").trim() : "";
-        if (!url) {
-            return Promise.reject(new Error("Apple Music developer token URL is not configured"));
-        }
-        let now = Date.now();
-        if (appleMusicTokenCache.token && now < appleMusicTokenCache.expMs - 45000) {
-            return Promise.resolve(appleMusicTokenCache.token);
-        }
-        return fetch(url, { credentials: "omit" }).then((r) => {
-            if (!r.ok) {
-                throw new Error("Developer token endpoint HTTP " + r.status);
-            }
-            return r.text();
-        }).then((text) => {
-            let t = String(text || "").trim();
-            if (!t) {
-                throw new Error("Empty developer token response");
-            }
-            appleMusicTokenCache.token = t;
-            let expMs = decodeAppleMusicJwtExpMs(t);
-            appleMusicTokenCache.expMs = expMs || (now + 50 * 60 * 1000);
-            return t;
-        });
-    };
-    let parseAppleMusicSearchSongsPayload = (json) => {
-        let out = [];
-        let songs = json && json.results && json.results.songs && json.results.songs.data;
-        if (!Array.isArray(songs)) {
-            return out;
-        }
-        for (let i = 0; i < songs.length; i++) {
-            let res = songs[i];
-            let a = res && res.attributes;
-            if (!a) {
-                continue;
-            }
-            let pv = Array.isArray(a.previews) && a.previews.length ? a.previews[0].url : "";
-            if (!pv) {
-                continue;
-            }
-            let songId = res.id != null ? String(res.id) : "";
-            out.push({ id: songId, title: a.name || "", artist: a.artistName || "", previewUrl: pv });
-        }
-        return out;
-    };
-    let appleMusicSearchCatalog = (term) => {
-        let q = String(term || "").trim();
-        if (!q) {
-            return Promise.resolve([]);
-        }
-        let base = appleMusicCatalogBaseResolved();
-        let sf = appleMusicStorefrontResolved();
-        let searchUrl = base + "/v1/catalog/" + encodeURIComponent(sf) + "/search?term="
-            + encodeURIComponent(q) + "&types=songs&limit=12";
-        return appleMusicFetchDeveloperToken().then((token) => fetch(searchUrl, {
-            headers: { Authorization: "Bearer " + token }
-        })).then((r) => {
-            if (!r.ok) {
-                throw new Error("Apple catalog search HTTP " + r.status);
-            }
-            return r.json();
-        }).then(parseAppleMusicSearchSongsPayload);
-    };
-    let appleMusicFetchPreviewBySongId = (songId) => {
+    /** Resolve preview + title for a shared link (`amSong`); iTunes lookup only (no MusicKit). */
+    let itunesLookupPreviewByTrackId = (songId) => {
         let id = String(songId || "").trim();
         if (!id) {
             return Promise.reject(new Error("empty song id"));
-        }
-        let tokenUrl = typeof appleMusicDeveloperTokenUrl !== "undefined"
-            ? String(appleMusicDeveloperTokenUrl || "").trim() : "";
-        if (tokenUrl) {
-            return appleMusicFetchDeveloperToken().then((token) => {
-                let base = appleMusicCatalogBaseResolved();
-                let sf = appleMusicStorefrontResolved();
-                let url = base + "/v1/catalog/" + encodeURIComponent(sf) + "/songs/" + encodeURIComponent(id);
-                return fetch(url, { headers: { Authorization: "Bearer " + token } });
-            }).then((r) => {
-                if (!r.ok) {
-                    throw new Error("Apple catalog song HTTP " + r.status);
-                }
-                return r.json();
-            }).then((json) => {
-                let data = json && json.data && json.data[0];
-                let a = data && data.attributes;
-                let pv = a && Array.isArray(a.previews) && a.previews.length ? a.previews[0].url : "";
-                if (!pv) {
-                    throw new Error("no preview on catalog song");
-                }
-                return { previewUrl: pv, title: (a && a.name) || "", artist: (a && a.artistName) || "" };
-            });
         }
         return fetch("https://itunes.apple.com/lookup?id=" + encodeURIComponent(id) + "&entity=song", {
             credentials: "omit"
@@ -13015,7 +12976,7 @@ function addExtra() {
             return { previewUrl: pv, title: r0.trackName || "", artist: r0.artistName || "" };
         });
     };
-    /* Public iTunes Search API (no auth) — same preview URLs many demos use; not api.music.apple.com. */
+    /* Public iTunes Search API (no auth). */
     let parseItunesSearchSongsPayload = (json) => {
         let out = [];
         let results = json && json.results;
@@ -13038,7 +12999,7 @@ function addExtra() {
         if (!q) {
             return Promise.resolve([]);
         }
-        let country = appleMusicStorefrontResolved();
+        let country = itunesStorefrontForSearch();
         let searchUrl = "https://itunes.apple.com/search?term=" + encodeURIComponent(q)
             + "&entity=song&limit=12&country=" + encodeURIComponent(country);
         return fetch(searchUrl, { credentials: "omit" }).then((r) => {
@@ -13047,14 +13008,6 @@ function addExtra() {
             }
             return r.json();
         }).then(parseItunesSearchSongsPayload);
-    };
-    let applePreviewSearch = (term) => {
-        let tokenUrl = typeof appleMusicDeveloperTokenUrl !== "undefined"
-            ? String(appleMusicDeveloperTokenUrl || "").trim() : "";
-        if (tokenUrl) {
-            return appleMusicSearchCatalog(term);
-        }
-        return itunesSearchSongs(term);
     };
     if (musicPlayButton && musicSegmentSliderEl && musicSegmentTrackEl && musicSegmentSeekEl
         && musicSegmentHandleStart && musicSegmentHandleEnd && musicAddRemoveButton && musicFileInput && musicCard) {
@@ -13262,7 +13215,7 @@ function addExtra() {
                 }
                 appleMusicSearchDebounceTimer = setTimeout(() => {
                     appleMusicSearchDebounceTimer = null;
-                    applePreviewSearch(v).then((rows) => {
+                    itunesSearchSongs(v).then((rows) => {
                         appleMusicRenderResults(rows);
                     }).catch((err) => {
                         console.warn(err);
@@ -13274,14 +13227,7 @@ function addExtra() {
                         msg.style.padding = "10px 16px";
                         msg.style.fontSize = "12px";
                         msg.style.lineHeight = "1.3";
-                        let tokenUrl = typeof appleMusicDeveloperTokenUrl !== "undefined"
-                            ? String(appleMusicDeveloperTokenUrl || "").trim() : "";
-                        msg.textContent = tokenUrl
-                            ? "Apple Music catalog search failed (often CORS from the browser). "
-                                + "Point appleMusicCatalogApiBase at a same-origin proxy that forwards to "
-                                + "api.music.apple.com with the Authorization header."
-                            : "iTunes search failed (network, rate limits, or browser restrictions). "
-                                + "Set appleMusicDeveloperTokenUrl to use Apple Music catalog search instead.";
+                        msg.textContent = "iTunes search failed (network, rate limits, or browser restrictions).";
                         li.appendChild(msg);
                         appleMusicResultsUl.appendChild(li);
                         appleMusicResultsUl.hidden = false;
@@ -13494,7 +13440,7 @@ function addExtra() {
             if (!window.AudioContext && !window.webkitAudioContext) {
                 tryRestorePersistedMusic();
             } else {
-                appleMusicFetchPreviewBySongId(pendingAppleSongFromUrl).then((meta) => {
+                itunesLookupPreviewByTrackId(pendingAppleSongFromUrl).then((meta) => {
                     if (musicFileLoaded) {
                         return;
                     }
