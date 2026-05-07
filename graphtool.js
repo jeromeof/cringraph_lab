@@ -4334,6 +4334,26 @@ function addExtra() {
     if (typeof extraMusicEnabled !== "undefined" && !extraMusicEnabled) {
         document.querySelector("div.extra-panel div.extra-music").style["display"] = "none";
     }
+    /** Space toggles this source; Shift+Space cycles Music → Pink → Tone (skips Music if no track). */
+    let activeLiveSoundPlayer = "pink";
+    let liveSoundPlayersCycleOrder = () => {
+        let hasMusic = !!(typeof musicFileLoaded !== "undefined" && musicFileLoaded
+            && typeof musicPlayButton !== "undefined" && musicPlayButton
+            && typeof musicAudio !== "undefined" && musicAudio);
+        return hasMusic ? ["music", "pink", "tone"] : ["pink", "tone"];
+    };
+    let ensureActiveLiveSoundPlayerValid = () => {
+        let order = liveSoundPlayersCycleOrder();
+        if (order.indexOf(activeLiveSoundPlayer) < 0) {
+            activeLiveSoundPlayer = order[0];
+        }
+    };
+    let cycleActiveLiveSoundPlayerShiftSpace = () => {
+        ensureActiveLiveSoundPlayerValid();
+        let order = liveSoundPlayersCycleOrder();
+        let i = Math.max(0, order.indexOf(activeLiveSoundPlayer));
+        activeLiveSoundPlayer = order[(i + 1) % order.length];
+    };
     // Show and hide extra panel
     window.showExtraPanel = () => {
         document.querySelector("div.select > div.selector-panel").style["display"] = "none";
@@ -4353,6 +4373,13 @@ function addExtra() {
         }
         if (typeof ifURL !== "undefined" && ifURL && typeof addPhonesToUrl === "function") {
             addPhonesToUrl();
+        }
+        if (typeof musicFileLoaded !== "undefined" && musicFileLoaded
+                && typeof musicPlayButton !== "undefined" && musicPlayButton
+                && typeof musicAudio !== "undefined" && musicAudio) {
+            activeLiveSoundPlayer = "music";
+        } else {
+            ensureActiveLiveSoundPlayerValid();
         }
     };
     extraButton.addEventListener("click", showExtraPanel);
@@ -12643,6 +12670,7 @@ function addExtra() {
         pinkNoiseAnalyser.connect(pinkNoiseContext.destination);
         pinkNoisePlayButton.classList.add("playback-active");
         lastEqPlaybackSource = "pink";
+        activeLiveSoundPlayer = "pink";
         if (pinkNoiseContext.state !== "running") {
             void pinkNoiseContext.resume();
         }
@@ -12713,6 +12741,7 @@ function addExtra() {
         toneGeneratorMasterGain.gain.linearRampToValueAtTime(liveToneGeneratorPlaybackGain, tA + TONE_GEN_FADE_IN_SEC);
         toneGeneratorPlayButton.classList.add("playback-active");
         lastEqPlaybackSource = "tone";
+        activeLiveSoundPlayer = "tone";
         if (toneGeneratorContext.state !== "running") {
             void toneGeneratorContext.resume();
         }
@@ -13013,6 +13042,7 @@ function addExtra() {
         if (lastEqPlaybackSource === "music") {
             lastEqPlaybackSource = "pink";
         }
+        ensureActiveLiveSoundPlayerValid();
         musicSpectrumViz.syncSpectrumViz();
         if (typeof ifURL !== "undefined" && ifURL && typeof addPhonesToUrl === "function") {
             addPhonesToUrl();
@@ -13114,9 +13144,24 @@ function addExtra() {
         return musicAudio.play().then(() => {
             musicPlayButton.classList.add("playback-active");
             lastEqPlaybackSource = "music";
+            activeLiveSoundPlayer = "music";
             musicSpectrumViz.syncSpectrumViz();
             updateEqTraceOpacity();
         });
+    };
+    /** Shift+Space: advance active slot in the cycle, stop every live source, then play the newly active one. */
+    let shiftSpaceAdvanceLiveSoundAndPlay = () => {
+        cycleActiveLiveSoundPlayerShiftSpace();
+        pauseMusicForLiveSoundSwitch();
+        stopPinkNoisePlayback();
+        fadeStopToneGeneratorPlayback();
+        if (activeLiveSoundPlayer === "music" && musicFileLoaded && musicAudio && musicContext && musicPlayButton) {
+            startMusicPlayback().catch(() => {});
+        } else if (activeLiveSoundPlayer === "tone" && toneGeneratorPlayButton) {
+            void startToneGeneratorOscillatorIfStopped();
+        } else if (pinkNoisePlayButton) {
+            pinkNoisePlayButton.click();
+        }
     };
     /** After sync `alert`/`confirm`, iOS often leaves `HTMLMediaElement` paused and AudioContexts suspended. */
     let resumeLiveSoundAfterSyncNativeDialog = (wantMusic, wantPink, wantTone) => {
@@ -13175,6 +13220,7 @@ function addExtra() {
         }
         musicAudio.load();
         musicFileLoaded = true;
+        activeLiveSoundPlayer = "music";
         musicCard.classList.add("music-file-loaded");
         if (musicPlaybackPanel) {
             musicPlaybackPanel.setAttribute("aria-hidden", "false");
@@ -13532,6 +13578,7 @@ function addExtra() {
             if (!musicFileLoaded || !musicAudio || !musicContext) {
                 return;
             }
+            activeLiveSoundPlayer = "music";
             if (musicAudio.paused) {
                 startMusicPlayback().catch(() => {
                     alert("Playback could not be started.");
@@ -14105,55 +14152,27 @@ function addExtra() {
         if (e.shiftKey) {
             e.preventDefault();
             lastToneSpaceKeydownTime = 0;
-            let hasMusicSlot = musicFileLoaded && musicPlayButton && musicAudio;
-            let playingPink = pinkNoisePlaying;
-            let playingTone = !!toneGeneratorOsc;
-            let playingMusic = hasMusicSlot && !musicAudio.paused;
-            if (playingPink) {
-                toneGeneratorPlayButton.click();
-            } else if (playingTone) {
-                if (hasMusicSlot) {
-                    musicPlayButton.click();
-                } else {
-                    pinkNoisePlayButton.click();
-                }
-            } else if (playingMusic) {
-                pinkNoisePlayButton.click();
-            } else {
-                let order = hasMusicSlot
-                    ? ["music", "pink", "tone"]
-                    : ["pink", "tone"];
-                let idx = order.indexOf(lastEqPlaybackSource);
-                if (idx < 0) {
-                    idx = 0;
-                }
-                let next = order[(idx + 1) % order.length];
-                if (next === "pink") {
-                    pinkNoisePlayButton.click();
-                } else if (next === "tone") {
-                    toneGeneratorPlayButton.click();
-                } else {
-                    musicPlayButton.click();
-                }
-            }
+            shiftSpaceAdvanceLiveSoundAndPlay();
             return;
         }
         e.preventDefault();
-        let now = performance.now();
-        if (lastToneSpaceKeydownTime > 0 && now - lastToneSpaceKeydownTime < toneSpaceDoubleMs) {
-            lastToneSpaceKeydownTime = 0;
-            startToneGeneratorSweep();
-            return;
-        }
-        lastToneSpaceKeydownTime = now;
-        if (lastEqPlaybackSource === "tone") {
-            toneGeneratorPlayButton.click();
-        } else if (lastEqPlaybackSource === "music" && musicFileLoaded && musicPlayButton) {
-            musicPlayButton.click();
-        } else if (musicFileLoaded && musicPlayButton && !pinkNoisePlaying && !toneGeneratorOsc) {
-            /* Pink/tone idle: prefer starting music when a track is loaded (otherwise pink). */
-            musicPlayButton.click();
+        ensureActiveLiveSoundPlayerValid();
+        if (activeLiveSoundPlayer === "tone") {
+            let now = performance.now();
+            if (lastToneSpaceKeydownTime > 0 && now - lastToneSpaceKeydownTime < toneSpaceDoubleMs) {
+                lastToneSpaceKeydownTime = 0;
+                startToneGeneratorSweep();
+                return;
+            }
+            lastToneSpaceKeydownTime = now;
         } else {
+            lastToneSpaceKeydownTime = 0;
+        }
+        if (activeLiveSoundPlayer === "music" && musicFileLoaded && musicPlayButton && musicAudio) {
+            musicPlayButton.click();
+        } else if (activeLiveSoundPlayer === "tone" && toneGeneratorPlayButton) {
+            toneGeneratorPlayButton.click();
+        } else if (pinkNoisePlayButton) {
             pinkNoisePlayButton.click();
         }
     });
