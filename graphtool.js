@@ -3329,8 +3329,15 @@ function removeCopies(p) {
     removePhone(p);
 }
 
-function removePhone(p) {
+function removePhone(p, opts) {
+    opts = opts || {};
     let hadEqChild = Boolean(!p.isTarget && p.eq);
+    /* Removing the EQ curve row (X on manage table) clears p.eqParent here before hadEqChild-style
+       cleanup; that path did not run eqResetParametricAfterBaseModelRemoved — filters stayed stale.
+       Skip when addOrUpdatePhone() replaces the same synthetic "… EQ" row during applyEQExec (old
+       object still has eqParent → would wrongly full-reset parametric UI). */
+    let removingDedicatedEqTrace = !opts.internalEqPhoneReplace
+        && Boolean(!p.isTarget && p.eqParent);
     /* Bump load generation so any in-flight loadFiles() for this pool object bails before
        calling showPhone() — avoids the previous EQ model flashing back when its fetch
        completes after the user switched away. */
@@ -3379,7 +3386,8 @@ function removePhone(p) {
         .call(setPhoneTr);
     if (extraEnabled && extraEQEnabled && typeof window.updateEQPhoneSelect === "function") {
         window.updateEQPhoneSelect();
-        if (hadEqChild && typeof window.eqResetParametricAfterBaseModelRemoved === "function") {
+        if ((hadEqChild || removingDedicatedEqTrace)
+                && typeof window.eqResetParametricAfterBaseModelRemoved === "function") {
             /* EQ model dropdown: removing the previous base model already ran filter reset + apply
                in the select handler. eqReset would run applyEQ again, clear eqDropdownModelIntent,
                and produce an extra OG frame — targets never hit this path (hadEqChild is false). */
@@ -4401,7 +4409,7 @@ function addExtra() {
         let phoneObjs = brand.phoneObjs;
         let oldPhoneObj = phoneObjs.filter(p => p.phone == phone.name)[0]
         if (oldPhoneObj) {
-            oldPhoneObj.active && removePhone(oldPhoneObj);
+            oldPhoneObj.active && removePhone(oldPhoneObj, { internalEqPhoneReplace: true });
             phoneObj.id = oldPhoneObj.id;
             phoneObjs[phoneObjs.indexOf(oldPhoneObj)] = phoneObj;
             allPhones[allPhones.indexOf(oldPhoneObj)] = phoneObj;
