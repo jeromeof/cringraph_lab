@@ -2045,6 +2045,129 @@ function eqShareFullyDecodeQueryValue(val) {
 let EQ_URL_PARAM_MODEL = "eqModel";
 let EQ_URL_PARAM_TARGET = "eqTarget";
 let EQ_URL_PARAM_FILTERS = "eqFilters";
+let EQ_URL_PARAM_MODEL_DATA = "eqModelData";
+let EQ_URL_PARAM_TARGET_DATA = "eqTargetData";
+/** Decimated FR samples (48 points along the internal `f_values` axis) for URL-safe uploads. */
+let EQ_SHARE_FR_DECIM_STEPS = 48;
+let EQ_SHARE_FR_DATA_MAX_CHARS = 16384;
+/* dB·10 integers; must be wide enough for absolute SPL (e.g. 60–90 dB) from REW uploads — ±40 dB was
+ * clamping everything to "40.0 dB" and URLs looked flat. */
+let EQ_SHARE_FR_TENTHS_MIN = -6000;
+let EQ_SHARE_FR_TENTHS_MAX = 6000;
+function eqShareClampFrTenths(n) {
+    return Math.max(EQ_SHARE_FR_TENTHS_MIN, Math.min(EQ_SHARE_FR_TENTHS_MAX, n));
+}
+function eqShareFrCurveChannelForPack(p) {
+    if (!p || !phoneCurveDataReadyForEq(p)) {
+        return null;
+    }
+    let rc = p.rawChannels;
+    if (!rc || !rc.length) {
+        return null;
+    }
+    let ch = rc.filter(Boolean)[0];
+    if (!ch || ch.length < 2) {
+        return null;
+    }
+    /* Prefer full `f_values` grid; sparse uploads are re-interpolated like the upload path. */
+    if (ch.length !== f_values.length) {
+        try {
+            ch = Equalizer.interp(f_values, ch);
+        } catch (e) {
+            return null;
+        }
+    }
+    return ch;
+}
+function eqShareDecimateFValuesSamples(fvCurve) {
+    let L = fvCurve.length;
+    let N = EQ_SHARE_FR_DECIM_STEPS;
+    let tenths = [];
+    for (let k = 0; k < N; k++) {
+        let ix = Math.round(k * (L - 1) / Math.max(1, N - 1));
+        let db = fvCurve[ix][1];
+        if (!Number.isFinite(db)) {
+            db = 0;
+        }
+        tenths.push(eqShareClampFrTenths(Math.round(db * 10)));
+    }
+    return tenths;
+}
+function eqShareFrDataSerializeFromPhone(p) {
+    let ch = eqShareFrCurveChannelForPack(p);
+    if (!ch) {
+        return "";
+    }
+    let tenths = eqShareDecimateFValuesSamples(ch);
+    let body = "v4;" + tenths.join(",");
+    try {
+        return btoa(body).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    } catch (e) {
+        return "";
+    }
+}
+function eqShareFrDataDeserializeToTenths(b64url) {
+    let pad = String(b64url || "").replace(/-/g, "+").replace(/_/g, "/");
+    while (pad.length % 4) {
+        pad += "=";
+    }
+    let bin;
+    try {
+        bin = atob(pad);
+    } catch (e) {
+        return null;
+    }
+    if (bin.indexOf("v4;") !== 0) {
+        return null;
+    }
+    let parts = bin.slice(3).split(",").map((x) => x.trim()).filter(Boolean);
+    if (parts.length < 8) {
+        return null;
+    }
+    let raw = parts.map((x) => {
+        let n = parseInt(x, 10);
+        if (!Number.isFinite(n)) {
+            return 0;
+        }
+        return eqShareClampFrTenths(n);
+    });
+    if (raw.length === EQ_SHARE_FR_DECIM_STEPS) {
+        return raw;
+    }
+    /* Proxies / long URLs may truncate the param — resample any reasonable count back to 48. */
+    if (raw.length > 96) {
+        return null;
+    }
+    let out = [];
+    for (let k = 0; k < EQ_SHARE_FR_DECIM_STEPS; k++) {
+        let u = k * (raw.length - 1) / (EQ_SHARE_FR_DECIM_STEPS - 1);
+        let i = Math.min(Math.floor(u), raw.length - 2);
+        let t = u - i;
+        let a = raw[i];
+        let b = raw[Math.min(i + 1, raw.length - 1)];
+        out.push(eqShareClampFrTenths(Math.round(a + (b - a) * t)));
+    }
+    return out;
+}
+function eqShareExpandTenthsToFValuesChannel(tenths) {
+    if (!tenths || tenths.length !== EQ_SHARE_FR_DECIM_STEPS) {
+        return null;
+    }
+    let L = f_values.length;
+    let N = tenths.length;
+    let out = [];
+    for (let j = 0; j < L; j++) {
+        let u = (j / Math.max(1, L - 1)) * (N - 1);
+        let k = Math.min(Math.floor(u), N - 1);
+        let t = u - k;
+        let k1 = Math.min(k + 1, N - 1);
+        let d0 = tenths[k] / 10;
+        let d1 = tenths[k1] / 10;
+        let db = d0 + (d1 - d0) * t;
+        out.push([f_values[j], db]);
+    }
+    return out;
+}
 /** Read Equalizer share params from a full page URL (`eqModel` / `eqTarget` / `eqFilters`; no `eq` flag). */
 function parseEqUrlShareParams(href) {
     try {
@@ -2052,6 +2175,8 @@ function parseEqUrlShareParams(href) {
         let eqm = u.searchParams.get(EQ_URL_PARAM_MODEL) || u.searchParams.get("eq_model");
         let eqt = u.searchParams.get(EQ_URL_PARAM_TARGET) || u.searchParams.get("eq_target");
         let eqf = u.searchParams.get(EQ_URL_PARAM_FILTERS) || u.searchParams.get("eq_filters");
+        let eqmd = u.searchParams.get(EQ_URL_PARAM_MODEL_DATA) || u.searchParams.get("eq_model_data");
+        let eqtd = u.searchParams.get(EQ_URL_PARAM_TARGET_DATA) || u.searchParams.get("eq_target_data");
         if (eqm) {
             eqm = eqShareFullyDecodeQueryValue(eqm);
         }
@@ -2061,7 +2186,19 @@ function parseEqUrlShareParams(href) {
         if (eqf) {
             eqf = eqShareFullyDecodeQueryValue(eqf);
         }
-        if (!eqm && !eqt && !eqf) {
+        if (eqmd) {
+            eqmd = eqShareFullyDecodeQueryValue(eqmd);
+            if (eqmd.length > EQ_SHARE_FR_DATA_MAX_CHARS) {
+                eqmd = "";
+            }
+        }
+        if (eqtd) {
+            eqtd = eqShareFullyDecodeQueryValue(eqtd);
+            if (eqtd.length > EQ_SHARE_FR_DATA_MAX_CHARS) {
+                eqtd = "";
+            }
+        }
+        if (!eqm && !eqt && !eqf && !eqmd && !eqtd) {
             return null;
         }
         let filters = null;
@@ -2076,6 +2213,8 @@ function parseEqUrlShareParams(href) {
             openEqTab: true,
             model: eqm ? eqShareUrlParamToFullName(eqm) : "",
             target: eqt ? eqShareUrlParamToFullName(eqt) : "",
+            modelData: eqmd || "",
+            targetData: eqtd || "",
             filters: (filters && filters.length) ? filters : null
         };
     } catch (e) {
@@ -2198,8 +2337,9 @@ function addPhonesToUrl() {
     if (ifURL && typeof window._appendEqShareParamsToUrlSearch === "function") {
         window._appendEqShareParamsToUrlSearch(u);
     } else {
-        ["eq", "eqModel", "eqTarget", "eqFilters",
-            "eq_model", "eq_target", "eq_filters"].forEach((k) => u.searchParams.delete(k));
+        ["eq", "eqModel", "eqTarget", "eqFilters", "eqModelData", "eqTargetData",
+            "eq_model", "eq_target", "eq_filters", "eq_model_data", "eq_target_data"].forEach(
+            (k) => u.searchParams.delete(k));
     }
     if (ifURL && typeof window._appendMusicShareParamsToUrlSearch === "function") {
         window._appendMusicShareParamsToUrlSearch(u);
@@ -4498,6 +4638,73 @@ function addExtra() {
         }
         return activePhones.filter((p) => p.fullName === fullName && !p.isTarget
             && p.fullName && !p.fullName.match(/ EQ$/))[0] || null;
+    };
+    let eqPhoneWantsInlineFrInShareUrl = (p) =>
+        !!(p && p.isDynamic && phoneCurveDataReadyForEq(p)
+            && (p.isTarget || (p.brand && p.brand.name === "Uploaded")));
+    let eqInjectFrFromUrlDataIntoModel = (modelFullNameStr, dataB64) => {
+        let tenths = eqShareFrDataDeserializeToTenths(dataB64);
+        if (!tenths) {
+            return false;
+        }
+        let ch = eqShareExpandTenthsToFValuesChannel(tenths);
+        if (!ch) {
+            return false;
+        }
+        /* eqShareFullNameToUrlParam replaces %20 with "_" so the query value may read
+         * "Uploaded_Moondrop_…" — same underscore→space trick as eqResolveShareFullNameFromParam. */
+        let fn = String(modelFullNameStr || "").trim().replace(/_/g, " ");
+        if (!fn || !/^Uploaded\s+/i.test(fn)) {
+            return false;
+        }
+        let stem = fn.replace(/^Uploaded\s+/i, "").trim() || "Upload";
+        let phoneObj = addOrUpdatePhone(brandMap.Uploaded, { name: stem }, [ch]);
+        showPhone(phoneObj, false);
+        return true;
+    };
+    let eqInjectFrFromUrlDataIntoTarget = (targetFullNameStr, dataB64) => {
+        let tenths = eqShareFrDataDeserializeToTenths(dataB64);
+        if (!tenths) {
+            return false;
+        }
+        let ch = eqShareExpandTenthsToFValuesChannel(tenths);
+        if (!ch) {
+            return false;
+        }
+        let fullName = String(targetFullNameStr || "").trim().replace(/_/g, " ");
+        if (!fullName) {
+            return false;
+        }
+        let bt = typeof window !== "undefined" ? window.brandTarget : null;
+        if (!bt || !Array.isArray(bt.phoneObjs)) {
+            return false;
+        }
+        let base = fullName.replace(/\s+Target$/i, "").trim() || "Target";
+        let existing = bt.phoneObjs.filter((q) => q && q.fullName === fullName)[0];
+        if (existing) {
+            if (!existing.isDynamic && !existing.userTargetFromMeasurement) {
+                console.warn("eqTargetData skipped: \"" + fullName + "\" is a built-in catalog target.");
+                return false;
+            }
+            existing.rawChannels = [ch];
+            existing.isDynamic = true;
+            showPhone(existing, true);
+        } else {
+            let row = {
+                isTarget: true,
+                brand: bt,
+                dispName: base,
+                phone: base,
+                fullName: fullName,
+                fileName: fullName,
+                rawChannels: [ch],
+                isDynamic: true,
+                id: -bt.phoneObjs.length
+            };
+            bt.phoneObjs.push(row);
+            showPhone(row, true);
+        }
+        return true;
     };
     /** EQ model row: explicit model dropdown match, else first graphed IEM (not target, not "* EQ" child name). */
     let resolveEqModelPhone = () => {
@@ -14023,9 +14230,13 @@ function addExtra() {
             u.searchParams.delete(EQ_URL_PARAM_MODEL);
             u.searchParams.delete(EQ_URL_PARAM_TARGET);
             u.searchParams.delete(EQ_URL_PARAM_FILTERS);
+            u.searchParams.delete(EQ_URL_PARAM_MODEL_DATA);
+            u.searchParams.delete(EQ_URL_PARAM_TARGET_DATA);
             u.searchParams.delete("eq_model");
             u.searchParams.delete("eq_target");
             u.searchParams.delete("eq_filters");
+            u.searchParams.delete("eq_model_data");
+            u.searchParams.delete("eq_target_data");
             return;
         }
         u.searchParams.delete("eq_model");
@@ -14040,6 +14251,32 @@ function addExtra() {
             u.searchParams.set(EQ_URL_PARAM_TARGET, eqShareFullNameToUrlParam(eqPhoneTargetSelect.value));
         } else {
             u.searchParams.delete(EQ_URL_PARAM_TARGET);
+        }
+        let modelPForShare = eqPhoneSelect && eqPhoneSelect.value
+            ? eqMeasurementObjForSelect(String(eqPhoneSelect.value).trim())
+            : null;
+        if (modelPForShare && eqPhoneWantsInlineFrInShareUrl(modelPForShare) && !modelPForShare.isTarget) {
+            let s = eqShareFrDataSerializeFromPhone(modelPForShare);
+            if (s) {
+                u.searchParams.set(EQ_URL_PARAM_MODEL_DATA, s);
+            } else {
+                u.searchParams.delete(EQ_URL_PARAM_MODEL_DATA);
+            }
+        } else {
+            u.searchParams.delete(EQ_URL_PARAM_MODEL_DATA);
+        }
+        let targetPForShare = eqPhoneTargetSelect && eqPhoneTargetSelect.value
+            ? eqFindByFullNameAny(String(eqPhoneTargetSelect.value).trim())
+            : null;
+        if (targetPForShare && eqPhoneWantsInlineFrInShareUrl(targetPForShare) && targetPForShare.isTarget) {
+            let s = eqShareFrDataSerializeFromPhone(targetPForShare);
+            if (s) {
+                u.searchParams.set(EQ_URL_PARAM_TARGET_DATA, s);
+            } else {
+                u.searchParams.delete(EQ_URL_PARAM_TARGET_DATA);
+            }
+        } else {
+            u.searchParams.delete(EQ_URL_PARAM_TARGET_DATA);
         }
         if (isEqTwoChannelSupportEnabled()) {
             u.searchParams.delete(EQ_URL_PARAM_FILTERS);
@@ -14069,9 +14306,19 @@ function addExtra() {
                 openEqTab: pending.openEqTab,
                 model: pending.model,
                 target: pending.target,
+                modelData: pending.modelData,
+                targetData: pending.targetData,
                 filters: null
             };
             window.__pendingEqUrlShareParsed = pending;
+        }
+        let pModelData = pending.modelData || "";
+        let pTargetData = pending.targetData || "";
+        if (pModelData && pending.model) {
+            eqInjectFrFromUrlDataIntoModel(pending.model, pModelData);
+        }
+        if (pTargetData && pending.target) {
+            eqInjectFrFromUrlDataIntoTarget(pending.target, pTargetData);
         }
         attempt = attempt | 0;
         let maxAttempts = 50;
