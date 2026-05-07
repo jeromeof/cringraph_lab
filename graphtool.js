@@ -3538,9 +3538,17 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
             setModeEmbed();
         }
     }
+    let eqShareInitOnly = !!(ifURL && window.__pendingEqUrlShareParsed);
+    if (eqShareInitOnly) {
+        /* EQ share links should bootstrap from URL params only; skip config `init_phones`
+           so old defaults do not pre-populate and fight pending EQ model/target apply. */
+        initReq = [];
+    }
     
     // Apply user config to inits
-    userConfigAppendInits(initReq);
+    if (!eqShareInitOnly) {
+        userConfigAppendInits(initReq);
+    }
     setInitPhoneOrderFromReq(Array.isArray(initReq) ? initReq : null);
     
     let isInit = initReq ? f => initReq.indexOf(f) !== -1
