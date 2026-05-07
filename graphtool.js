@@ -8562,10 +8562,19 @@ function addExtra() {
         eqHistoryCommitTransaction(undefined, { historyEntry: { kind: "reset" } });
     };
     document.querySelector("div.extra-eq button.extra-eq-reset-btn").addEventListener("click", () => {
-        if (!window.confirm("Reset all EQ band values (frequency, Q, and gain) to flat? Constraint presets and limits stay as they are.")) {
-            return;
-        }
-        resetParametricEqFilterValuesOnly();
+        /* iOS suspends media during sync `confirm()`; capture intent first, defer dialog one frame, then
+           resume WebAudio / HTMLMediaElement after dismiss so UI and playback stay aligned. */
+        let wasMusicPlaying = !!(musicFileLoaded && musicAudio && !musicAudio.paused);
+        let wasPinkActive = !!pinkNoisePlaying;
+        let wasToneActive = !!toneGeneratorOsc;
+        requestAnimationFrame(() => {
+            if (!window.confirm("Reset all EQ band values (frequency, Q, and gain) to flat? Constraint presets and limits stay as they are.")) {
+                resumeLiveSoundAfterSyncNativeDialog(wasMusicPlaying, wasPinkActive, wasToneActive);
+                return;
+            }
+            resetParametricEqFilterValuesOnly();
+            resumeLiveSoundAfterSyncNativeDialog(wasMusicPlaying, wasPinkActive, wasToneActive);
+        });
     });
     // Add new filter
     document.querySelector("div.extra-eq button.add-filter").addEventListener("click", () => {
@@ -10490,8 +10499,13 @@ function addExtra() {
     };
     let liveSoundBandDatasetRoot = () =>
         document.querySelector("div.live-sound-tools div.live-sound-band");
+    /* Sound Tools playback band (HP/LP) must stay full-range unless the user trims it in the Range
+     * fields — not the parametric EQ constraint min/max (those only govern filter rows / AutoEQ). */
+    const LIVE_SOUND_BAND_HZ_MIN = 20;
+    const LIVE_SOUND_BAND_HZ_MAX = 20000;
     function normalizeLiveSoundIntervalPair(lo, hi) {
-        let [fLo, fHi] = getEqConstraintFreqLoHi();
+        let fLo = LIVE_SOUND_BAND_HZ_MIN;
+        let fHi = LIVE_SOUND_BAND_HZ_MAX;
         lo = Math.round(Math.min(fHi, Math.max(fLo, lo)));
         hi = Math.round(Math.min(fHi, Math.max(fLo, hi)));
         if (hi <= lo) {
@@ -13104,6 +13118,23 @@ function addExtra() {
             updateEqTraceOpacity();
         });
     };
+    /** After sync `alert`/`confirm`, iOS often leaves `HTMLMediaElement` paused and AudioContexts suspended. */
+    let resumeLiveSoundAfterSyncNativeDialog = (wantMusic, wantPink, wantTone) => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (wantMusic && musicFileLoaded && musicAudio && musicContext) {
+                    startMusicPlayback().catch(() => {});
+                }
+                if (wantPink && pinkNoisePlaying && pinkNoiseContext && pinkNoiseContext.state === "suspended") {
+                    void pinkNoiseContext.resume();
+                }
+                if (wantTone && toneGeneratorOsc && toneGeneratorContext
+                        && toneGeneratorContext.state === "suspended") {
+                    void toneGeneratorContext.resume();
+                }
+            });
+        });
+    };
     let wireMusicLoadedFromSource = (src, segOpt, loadOpts) => {
         loadOpts = loadOpts || {};
         let autoPlayAfterLoad = loadOpts.autoPlay === true;
@@ -13181,15 +13212,22 @@ function addExtra() {
         let s = typeof appleMusicStorefront !== "undefined" ? String(appleMusicStorefront || "").trim() : "";
         return (s || "us").toLowerCase();
     };
+    /** iTunes API sometimes returns a cached ACAO for a different origin; add nonce + no-store
+       to avoid cross-origin cache poisoning between localhost/staging/prod hosts. */
+    let itunesUrlNoCache = (url) => {
+        let u = new URL(url);
+        u.searchParams.set("_", Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
+        return u.href;
+    };
     /** Resolve preview + title for a shared link (`amSong`); iTunes lookup only (no MusicKit). */
     let itunesLookupPreviewByTrackId = (songId) => {
         let id = String(songId || "").trim();
         if (!id) {
             return Promise.reject(new Error("empty song id"));
         }
-        return fetch("https://itunes.apple.com/lookup?id=" + encodeURIComponent(id) + "&entity=song", {
-            credentials: "omit"
-        }).then((r) => {
+        let lookupUrl = itunesUrlNoCache(
+            "https://itunes.apple.com/lookup?id=" + encodeURIComponent(id) + "&entity=song");
+        return fetch(lookupUrl, { credentials: "omit", cache: "no-store" }).then((r) => {
             if (!r.ok) {
                 throw new Error("iTunes lookup HTTP " + r.status);
             }
@@ -13229,7 +13267,7 @@ function addExtra() {
         let country = itunesStorefrontForSearch();
         let searchUrl = "https://itunes.apple.com/search?term=" + encodeURIComponent(q)
             + "&entity=song&limit=12&country=" + encodeURIComponent(country);
-        return fetch(searchUrl, { credentials: "omit" }).then((r) => {
+        return fetch(itunesUrlNoCache(searchUrl), { credentials: "omit", cache: "no-store" }).then((r) => {
             if (!r.ok) {
                 throw new Error("iTunes search HTTP " + r.status);
             }
