@@ -4374,6 +4374,9 @@ function addExtra() {
     if (typeof extraMusicEnabled !== "undefined" && !extraMusicEnabled) {
         document.querySelector("div.extra-panel div.extra-music").style["display"] = "none";
     }
+    /* Omitted `extraMusicEnabled` = same as true (show music block). Apple search / deep links / URL
+       sync must follow that; only an explicit `false` turns music off. */
+    let extraMusicAllowsAppleFeatures = typeof extraMusicEnabled === "undefined" || !!extraMusicEnabled;
     /** Space toggles this source; Shift+Space cycles Music → Pink → Tone (skips Music if no track). */
     let activeLiveSoundPlayer = "pink";
     let liveSoundPlayersCycleOrder = () => {
@@ -13388,7 +13391,7 @@ function addExtra() {
                 musicFileInput.blur();
             }, 0);
         });
-        if (typeof extraMusicEnabled !== "undefined" && extraMusicEnabled
+        if (extraMusicAllowsAppleFeatures
                 && appleMusicInlineWrap && musicSearchAppleButton && appleMusicSearchInput && appleMusicResultsUl
                 && musicFileActionsRow) {
             /* Return/Enter still blurs the field in some WebKit paths; focusout was dismissing search. */
@@ -13781,7 +13784,7 @@ function addExtra() {
         };
         let pendingAppleSongFromUrl = window.__pendingAppleMusicCatalogSongId;
         let pendingAppleSegFromUrl = window.__pendingAppleMusicSegment;
-        if (pendingAppleSongFromUrl && typeof extraMusicEnabled !== "undefined" && extraMusicEnabled
+        if (pendingAppleSongFromUrl && extraMusicAllowsAppleFeatures
                 && musicPlayButton && musicCard) {
             window.__pendingAppleMusicCatalogSongId = null;
             window.__pendingAppleMusicSegment = null;
@@ -14298,7 +14301,7 @@ function addExtra() {
         });
     }
     window._appendMusicShareParamsToUrlSearch = (u) => {
-        if (typeof extraMusicEnabled === "undefined" || !extraMusicEnabled) {
+        if (typeof extraMusicEnabled !== "undefined" && !extraMusicEnabled) {
             u.searchParams.delete(MUSIC_URL_PARAM_APPLE_SONG);
             u.searchParams.delete("appleMusicSong");
             u.searchParams.delete(MUSIC_URL_PARAM_IN);
