@@ -13394,6 +13394,70 @@ function addExtra() {
         if (extraMusicAllowsAppleFeatures
                 && appleMusicInlineWrap && musicSearchAppleButton && appleMusicSearchInput && appleMusicResultsUl
                 && musicFileActionsRow) {
+            const APPLE_MUSIC_RECENT_LS = "cringraph_apple_music_recent_v1";
+            const APPLE_MUSIC_RECENT_MAX = 10;
+            let readAppleMusicRecentStored = () => {
+                try {
+                    let raw = localStorage.getItem(APPLE_MUSIC_RECENT_LS);
+                    if (!raw) {
+                        return [];
+                    }
+                    let arr = JSON.parse(raw);
+                    return Array.isArray(arr) ? arr : [];
+                } catch (e) {
+                    return [];
+                }
+            };
+            let persistAppleMusicRecentPlayed = (row) => {
+                if (!row || typeof row !== "object") {
+                    return;
+                }
+                let id = String(row.id || "").trim();
+                let previewUrl = String(row.previewUrl || "").trim();
+                if (!id && !previewUrl) {
+                    return;
+                }
+                try {
+                    let entry = {
+                        id,
+                        title: String(row.title || "").trim(),
+                        artist: String(row.artist || "").trim(),
+                        previewUrl
+                    };
+                    let arr = readAppleMusicRecentStored().filter((x) => {
+                        if (!x || typeof x !== "object") {
+                            return false;
+                        }
+                        if (entry.id && String(x.id || "") === entry.id) {
+                            return false;
+                        }
+                        if (!entry.id && String(x.previewUrl || "") === previewUrl) {
+                            return false;
+                        }
+                        return true;
+                    });
+                    arr.unshift(entry);
+                    localStorage.setItem(APPLE_MUSIC_RECENT_LS, JSON.stringify(arr.slice(0, APPLE_MUSIC_RECENT_MAX)));
+                } catch (err) {
+                    /* quota / private mode */
+                }
+            };
+            let appleMusicNormalizeStoredRow = (x) => {
+                if (!x || typeof x !== "object") {
+                    return null;
+                }
+                let id = String(x.id || "").trim();
+                let previewUrl = String(x.previewUrl || "").trim();
+                if (!id && !previewUrl) {
+                    return null;
+                }
+                return {
+                    id,
+                    title: String(x.title || "").trim(),
+                    artist: String(x.artist || "").trim(),
+                    previewUrl
+                };
+            };
             /* Return/Enter still blurs the field in some WebKit paths; focusout was dismissing search. */
             let appleMusicSearchIgnoreFocusOutUntil = 0;
             let appleMusicSearchHighlightIx = -1;
@@ -13414,20 +13478,58 @@ function addExtra() {
                     } catch (err) { /* noop */ }
                 }
             };
-            let appleMusicActivatePreviewRow = (row) => {
+            let appleMusicActivatePreviewRow = (row, refreshPreviewFromCatalog) => {
                 appleMusicResultsUl.hidden = true;
                 if (!window.AudioContext && !window.webkitAudioContext) {
                     alert("Web audio API is disabled; music playback is unavailable.");
                     return;
                 }
-                musicRestoreCancelToken++;
-                if (!initMusicAudioGraph()) {
+                let norm = {
+                    id: String(row.id || "").trim(),
+                    title: row.title || "",
+                    artist: row.artist || "",
+                    previewUrl: String(row.previewUrl || "").trim()
+                };
+                let startPlay = (url) => {
+                    musicRestoreCancelToken++;
+                    if (!initMusicAudioGraph()) {
+                        return;
+                    }
+                    persistAppleMusicRecentPlayed({ ...norm, previewUrl: url });
+                    wireMusicLoadedFromSource(url, null, {
+                        autoPlay: true,
+                        appleCatalogSongId: norm.id || ""
+                    });
+                };
+                if (refreshPreviewFromCatalog === true && norm.id) {
+                    itunesLookupPreviewByTrackId(norm.id).then((meta) => {
+                        norm = {
+                            ...norm,
+                            previewUrl: meta.previewUrl,
+                            title: meta.title || norm.title,
+                            artist: meta.artist || norm.artist
+                        };
+                        startPlay(meta.previewUrl);
+                    }).catch(() => {
+                        if (norm.previewUrl) {
+                            startPlay(norm.previewUrl);
+                        } else {
+                            alert("Could not load Apple Music preview.");
+                        }
+                    });
                     return;
                 }
-                wireMusicLoadedFromSource(row.previewUrl, null, {
-                    autoPlay: true,
-                    appleCatalogSongId: row.id || ""
-                });
+                if (norm.previewUrl) {
+                    startPlay(norm.previewUrl);
+                    return;
+                }
+                if (norm.id) {
+                    itunesLookupPreviewByTrackId(norm.id).then((meta) => startPlay(meta.previewUrl)).catch(() => {
+                        alert("Could not load Apple Music preview.");
+                    });
+                    return;
+                }
+                alert("Could not load Apple Music preview.");
             };
             let appleMusicSearchFieldKeydown = (e) => {
                 if (!musicAppleSearchModeOpen || document.activeElement !== appleMusicSearchInput) {
@@ -13520,6 +13622,66 @@ function addExtra() {
                 appleMusicSearchHighlightIx = 0;
                 appleMusicApplySearchHighlight();
             };
+            let appleMusicShowRecentIfInputEmpty = () => {
+                if (!musicAppleSearchModeOpen || !appleMusicSearchInput || !appleMusicResultsUl) {
+                    return;
+                }
+                if ((appleMusicSearchInput.value || "").trim() !== "") {
+                    return;
+                }
+                let rawList = readAppleMusicRecentStored()
+                    .map(appleMusicNormalizeStoredRow)
+                    .filter(Boolean);
+                if (!rawList.length) {
+                    appleMusicSearchLastRows = [];
+                    appleMusicSearchHighlightIx = -1;
+                    appleMusicResultsUl.innerHTML = "";
+                    appleMusicResultsUl.hidden = true;
+                    return;
+                }
+                appleMusicResultsUl.innerHTML = "";
+                let headLi = document.createElement("li");
+                headLi.setAttribute("role", "presentation");
+                let headDiv = document.createElement("div");
+                headDiv.className = "apple-music-recent-heading";
+                headDiv.textContent = "Recent";
+                headLi.appendChild(headDiv);
+                appleMusicResultsUl.appendChild(headLi);
+                appleMusicSearchLastRows = rawList.map((r) => ({
+                    id: r.id,
+                    title: r.title,
+                    artist: r.artist,
+                    previewUrl: r.previewUrl
+                }));
+                rawList.forEach((r) => {
+                    let li = document.createElement("li");
+                    li.setAttribute("role", "presentation");
+                    let bt = document.createElement("button");
+                    bt.type = "button";
+                    bt.setAttribute("role", "option");
+                    bt.setAttribute("aria-selected", "false");
+                    bt.setAttribute("aria-label", (r.title || "Track") + " — " + (r.artist || ""));
+                    let titleEl = document.createElement("span");
+                    titleEl.className = "apple-music-preview-title";
+                    titleEl.textContent = r.title || "";
+                    bt.appendChild(titleEl);
+                    let meta = document.createElement("span");
+                    meta.className = "apple-music-preview-meta";
+                    meta.textContent = r.artist || "";
+                    bt.appendChild(meta);
+                    bt.addEventListener("click", () => {
+                        /* Match search-results path when we already have previewUrl — avoids an extra
+                           lookup round-trip before wireMusicLoadedFromSource (felt jumpier: dropdown
+                           hides, then waits on network). Refresh-from-catalog only if URL missing. */
+                        appleMusicActivatePreviewRow(r, !r.previewUrl);
+                    });
+                    li.appendChild(bt);
+                    appleMusicResultsUl.appendChild(li);
+                });
+                appleMusicResultsUl.hidden = false;
+                appleMusicSearchHighlightIx = 0;
+                appleMusicApplySearchHighlight();
+            };
             let appleMusicPreviewForm = appleMusicInlineWrap.querySelector("form.apple-music-preview-form");
             if (appleMusicPreviewForm) {
                 appleMusicPreviewForm.addEventListener("submit", (e) => {
@@ -13528,6 +13690,11 @@ function addExtra() {
                 });
             }
             appleMusicSearchInput.addEventListener("keydown", appleMusicSearchFieldKeydown, true);
+            appleMusicSearchInput.addEventListener("focus", () => {
+                if ((appleMusicSearchInput.value || "").trim() === "") {
+                    appleMusicShowRecentIfInputEmpty();
+                }
+            });
             let appleMusicOutsidePointerDismiss = (e) => {
                 if (!musicAppleSearchModeOpen) {
                     return;
@@ -13555,6 +13722,10 @@ function addExtra() {
                 if (appleMusicSearchDebounceTimer !== null) {
                     clearTimeout(appleMusicSearchDebounceTimer);
                     appleMusicSearchDebounceTimer = null;
+                }
+                if (v.length === 0) {
+                    appleMusicShowRecentIfInputEmpty();
+                    return;
                 }
                 if (v.length < 2) {
                     appleMusicSearchLastRows = [];
@@ -13611,6 +13782,12 @@ function addExtra() {
             });
             musicSearchAppleButton.addEventListener("click", () => {
                 openAppleMusicSearchMode();
+                setTimeout(() => {
+                    if (musicAppleSearchModeOpen && appleMusicSearchInput
+                            && (appleMusicSearchInput.value || "").trim() === "") {
+                        appleMusicShowRecentIfInputEmpty();
+                    }
+                }, 0);
             });
         }
         musicPlayButton.addEventListener("click", () => {
