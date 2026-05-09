@@ -3152,6 +3152,12 @@ div.extra-panel .live-sound-tools .extra-music.music-file-loaded .music-playback
 }
 
 /* Apple preview search replaces play control; keep panel compact until a track is loaded */
+div.extra-panel .live-sound-tools .live-sound-source.extra-music.music-apple-search-mode:not(.music-file-loaded) {
+    /* +Add Music / Search Apple hide immediately while playback expands; hold at least a typical idle
+       footprint (head + action links + padding) so the card doesn't dip before max-height catches up. */
+    min-height: 6.5rem;
+}
+
 div.extra-panel .live-sound-tools .extra-music.music-apple-search-mode:not(.music-file-loaded) .music-playback-panel {
     max-height: 58px;
     opacity: 1;

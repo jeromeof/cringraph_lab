@@ -13478,6 +13478,17 @@ function addExtra() {
                     } catch (err) { /* noop */ }
                 }
             };
+            let appleMusicPointerHighlightRow = (ix) => {
+                if (!musicAppleSearchModeOpen || !appleMusicResultsUl || appleMusicResultsUl.hidden) {
+                    return;
+                }
+                let n = appleMusicSearchLastRows.length;
+                if (ix < 0 || ix >= n) {
+                    return;
+                }
+                appleMusicSearchHighlightIx = ix;
+                appleMusicApplySearchHighlight();
+            };
             let appleMusicActivatePreviewRow = (row, refreshPreviewFromCatalog) => {
                 appleMusicResultsUl.hidden = true;
                 if (!window.AudioContext && !window.webkitAudioContext) {
@@ -13596,7 +13607,7 @@ function addExtra() {
                     artist: r.artist,
                     previewUrl: r.previewUrl
                 }));
-                rows.forEach((row) => {
+                rows.forEach((row, ix) => {
                     let li = document.createElement("li");
                     li.setAttribute("role", "presentation");
                     let bt = document.createElement("button");
@@ -13612,6 +13623,9 @@ function addExtra() {
                     meta.className = "apple-music-preview-meta";
                     meta.textContent = row.artist || "";
                     bt.appendChild(meta);
+                    bt.addEventListener("pointerenter", () => {
+                        appleMusicPointerHighlightRow(ix);
+                    });
                     bt.addEventListener("click", () => {
                         appleMusicActivatePreviewRow(row);
                     });
@@ -13653,7 +13667,7 @@ function addExtra() {
                     artist: r.artist,
                     previewUrl: r.previewUrl
                 }));
-                rawList.forEach((r) => {
+                rawList.forEach((r, ix) => {
                     let li = document.createElement("li");
                     li.setAttribute("role", "presentation");
                     let bt = document.createElement("button");
@@ -13669,6 +13683,9 @@ function addExtra() {
                     meta.className = "apple-music-preview-meta";
                     meta.textContent = r.artist || "";
                     bt.appendChild(meta);
+                    bt.addEventListener("pointerenter", () => {
+                        appleMusicPointerHighlightRow(ix);
+                    });
                     bt.addEventListener("click", () => {
                         /* Match search-results path when we already have previewUrl — avoids an extra
                            lookup round-trip before wireMusicLoadedFromSource (felt jumpier: dropdown
