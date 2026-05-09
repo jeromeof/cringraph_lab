@@ -1922,6 +1922,11 @@ try {
     eqUrlShareBootstrapSearch = "";
 }
 window.__eqUrlShareBootstrapSearch = eqUrlShareBootstrapSearch;
+/* When false, addPhonesToUrl omits graph `share=` (EQ/music/canonical still sync). Prevents
+   multi-sample updateCurves → updatePaths() from injecting share= during config-only init;
+   enabled after share/embed navigation or first user gesture (see phone_book callback). */
+window.__graphShareUrlSyncAllowed = !!(typeof window.__eqUrlShareBootstrapSearch === "string"
+    && /[?&]share=/.test(window.__eqUrlShareBootstrapSearch));
 let baseTitle = typeof page_title !== "undefined" ? page_title : "CrinGraph";
 let baseDescription = typeof page_description !== "undefined" ? page_description : "View and compare frequency response graphs";
 let baseURL;  // Set by setInitPhones
@@ -2329,7 +2334,7 @@ function addPhonesToUrl() {
             title = (eqModelTit || eqTargetTit) + " - " + baseTitle;
         }
     } else if (names.length) {
-        if (ifURL) {
+        if (ifURL && window.__graphShareUrlSyncAllowed) {
             shareQueryPair = "share=" + shareQueryValueForUrl(names);
         }
         title = namesCombined + " - " + baseTitle;
@@ -3560,6 +3565,17 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
             loadFromShare = 1;
         } else if (url.includes(emb)) {
             setModeEmbed();
+        }
+        if (loadFromShare) {
+            window.__graphShareUrlSyncAllowed = true;
+        } else if (!window.__graphShareUrlSyncAllowed) {
+            let armGraphShareUrlSync = () => {
+                window.__graphShareUrlSyncAllowed = true;
+                document.removeEventListener("pointerdown", armGraphShareUrlSync, true);
+                document.removeEventListener("keydown", armGraphShareUrlSync, true);
+            };
+            document.addEventListener("pointerdown", armGraphShareUrlSync, true);
+            document.addEventListener("keydown", armGraphShareUrlSync, true);
         }
     }
     let eqShareInitOnly = !!(ifURL && window.__pendingEqUrlShareParsed);
