@@ -3117,6 +3117,45 @@ div.extra-panel .live-sound-tools .extra-music .music-play-or-search-slot {
     box-sizing: border-box;
 }
 
+div.extra-panel .live-sound-tools .live-sound-source.extra-music {
+    min-height: 0;
+    transition: min-height 200ms ease-in-out;
+}
+
+/*
+ * Loaded music card height (~157px in DevTools) as a calc of literals already defined elsewhere in this sheet.
+ */
+div.extra-panel .live-sound-tools .extra-music {
+    --music-playback-panel-expand-max: 200px;
+    --music-loaded-source-vertical-padding: calc(12px + 10px); /* .live-sound-source padding */
+    --music-loaded-head-below-headline: calc(8px + 13px); /* .live-sound-source-head margin-bottom + title line (.live-sound-source-title 13px / 1em) */
+    /* .music-play-or-search-slot is a div:has(> button.play) → div.extra-panel div:has(> button.play) { margin-top: 8px } */
+    --music-loaded-play-slot-margin-top: 8px;
+    --music-loaded-play-min-height: 44px; /* music .music-play-row button.play min-height (border-box) */
+    /* div.extra-panel button { margin-bottom: 4px !important } — play chip does not override (file link buttons use margin: 0 !important) */
+    --music-loaded-play-chip-margin-bottom: 4px;
+    --music-loaded-slider-row-margin-top: 8px; /* .extra-music .live-sound-slider-row.music-slider-row */
+    --music-loaded-segment-track-height: 18px; /* .music-segment-track */
+    --music-loaded-file-margin-top: 6px; /* .live-sound-music-file margin-top */
+    /* .music-add-remove / .music-search-apple vertical padding + line box (font-size 12 × line-height 1.2) */
+    --music-loaded-file-actions-block: calc(6px + 6px + (12px * 1.2));
+    --music-loaded-playback-body-height: calc(
+        var(--music-loaded-play-slot-margin-top) + var(--music-loaded-play-min-height)
+            + var(--music-loaded-play-chip-margin-bottom) + var(--music-loaded-slider-row-margin-top)
+            + var(--music-loaded-segment-track-height)
+    );
+    --music-loaded-card-min-height: calc(
+        var(--music-loaded-source-vertical-padding) + var(--music-loaded-head-below-headline)
+            + var(--music-loaded-playback-body-height) + var(--music-loaded-file-margin-top)
+            + var(--music-loaded-file-actions-block)
+    );
+    /* Apple-search open state: animate max-height near real content height (dropdown is absolute); avoids 200px “dead band” where expand finishes visually long before collapse starts moving. */
+    --music-playback-panel-apple-search-max: min(
+        var(--music-playback-panel-expand-max),
+        calc(var(--music-loaded-playback-body-height) + 1.5rem)
+    );
+}
+
 /* No track: play stays in layout flow (smooth panel collapse) but is invisible */
 div.extra-panel .live-sound-tools .extra-music:not(.music-file-loaded) .music-play-row button.play {
     opacity: 0 !important;
@@ -3141,25 +3180,25 @@ div.extra-panel .live-sound-tools .extra-music .music-playback-panel {
     max-height: 0;
     opacity: 0;
     overflow: hidden;
-    transition: max-height 200ms ease, opacity 200ms ease;
+    /* ease-in-out: symmetric in/out vs ease (slow–fast can make expand feel snappier than collapse with a tall max-height cap) */
+    transition: max-height 200ms ease-in-out, opacity 200ms ease-in-out;
     pointer-events: none;
 }
 
 div.extra-panel .live-sound-tools .extra-music.music-file-loaded .music-playback-panel {
-    max-height: 200px;
+    max-height: var(--music-playback-panel-expand-max);
     opacity: 1;
     pointer-events: auto;
 }
 
-/* Apple preview search replaces play control; keep panel compact until a track is loaded */
+/* Same loaded layout footprint as `--music-loaded-card-*` (actions row collapses while search is open). */
 div.extra-panel .live-sound-tools .live-sound-source.extra-music.music-apple-search-mode:not(.music-file-loaded) {
-    /* +Add Music / Search Apple hide immediately while playback expands; hold at least a typical idle
-       footprint (head + action links + padding) so the card doesn't dip before max-height catches up. */
-    min-height: 6.5rem;
+    min-height: var(--music-loaded-card-min-height);
 }
 
+/* Apple preview search replaces play control; tight max-height keeps open/close max-height tween visually balanced */
 div.extra-panel .live-sound-tools .extra-music.music-apple-search-mode:not(.music-file-loaded) .music-playback-panel {
-    max-height: 58px;
+    max-height: var(--music-playback-panel-apple-search-max);
     opacity: 1;
     pointer-events: auto;
     overflow: visible;
