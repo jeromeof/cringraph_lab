@@ -1912,7 +1912,7 @@ try {
 }
 
 let ifURL = typeof share_url !== "undefined" && share_url;
-/** First `location.search` seen at startup — survives `history.replaceState` stripping EQ params before phone_book loads. */
+/** First `location.search` at startup — survives `history.replaceState` before `phone_book` loads (EQ params, graph `share=`, …). */
 let eqUrlShareBootstrapSearch = "";
 try {
     eqUrlShareBootstrapSearch = targetWindow && targetWindow.location
@@ -2439,7 +2439,12 @@ function updatePaths(trigger) {
     refreshTargetStyleSlots();
     clearLabels();
     rebindGraphPathSelectionAndRedraw();
-    if (ifURL && !trigger) addPhonesToUrl();
+    /* Bulk init uses a truthy trigger so updatePaths batches redraws; `!trigger` skipped addPhonesToUrl.
+       Restored music can replaceState away `share=` before phones load — only share/embed deep links need
+       a post-init URL sync (not `config`: that would append `share=` on every default/config load). */
+    if (ifURL && (!trigger || trigger === "share" || trigger === "embed")) {
+        addPhonesToUrl();
+    }
     if (stickyLabels) drawLabels();
     updateEqFilterMarkers();
     applyParametricEqGraphTraceFocus();
@@ -3527,7 +3532,18 @@ d3.json(typeof PHONE_BOOK !== "undefined" ? PHONE_BOOK
             par = "share=";
             emb = "embed";
         baseURL = url.split("?").shift();
-        
+        /* Local music restores from IndexedDB and calls addPhonesToUrl before this callback; replaceState can drop `share=` while activePhones is still empty — rehydrate graph share from the same bootstrap snapshot EQ uses. */
+        if (!url.includes(par)) {
+            let bootSearch = typeof window.__eqUrlShareBootstrapSearch === "string"
+                ? window.__eqUrlShareBootstrapSearch
+                : "";
+            if (bootSearch && /[?&]share=/.test(bootSearch)) {
+                try {
+                    url = targetWindow.location.origin + targetWindow.location.pathname + bootSearch;
+                } catch (e0) { /* noop */ }
+            }
+        }
+
         if (url.includes(par) && url.includes(emb)) {
             initReq = parseSharePhonesFromHref(url);
             if (!initReq || !initReq.length) {
