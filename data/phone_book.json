@@ -19,6 +19,13 @@
     ]
   },
   {
+    "name":   "Audeze",
+    "phones": [
+      {"name":"Maxwell","file":"Audeze Maxwell"},
+      {"name":"Maxwell Neutral PEQ","file":"Audeze Maxwell Neutral PEQ"}
+    ]
+  },
+  {
     "name":   "QBK",
     "phones": [ "FQQ"
               , "Q53"

@@ -307,8 +307,29 @@ let extraEQplugins = [
 window.DEVICEPEQ_CONFIG_BASE_URL = './devicePEQ/';
 
 let devicePEQConfig = {
-    advanced: false,
+    advanced: true,               // Shows connection-type dropdown instead of the old modal
     showLogs: false,
     pullValuesOnConnect: true,
-    minimalExperience: true
+    connectButtonLabel: "Link Device",  // Override default "Connect to device" label
+    showTitle: false,             // Hide the "Device PEQ" heading in this context
+    showInfoButton: false,        // Hide the ℹ️ info button for a cleaner look
+    showSuccessToasts: false,     // Hide "pulled/pushed successfully" toasts (spinner communicates state)
+
+    // connectionTypes: custom dropdown list for advanced mode.
+    // Omit this option entirely to show all available types:
+    //   { label: "USB",                type: "usb"     }  — USB HID (e.g. FiiO KA17, Protocol Max)
+    //   { label: "Serial / Bluetooth", type: "serial"  }  — Bluetooth serial / USB-serial (e.g. Nothing Ear, Tanchjim Rita)
+    //   { label: "Bluetooth (BLE)",    type: "ble"     }  — Bluetooth Low Energy (e.g. Audeze Maxwell, FiiO EH13)
+    //   { label: "Network",            type: "network" }  — Network device (requires showNetwork: true)
+    connectionTypes: [
+        { label: "USB",        type: "usb" },
+        { label: "Bluetooth",  type: "ble" },
+    ],
+
+    // Neutral PEQ measurement in the phone database.  The lookup filename becomes:
+    //   "<measurementName> <neutralPeqSuffix>"
+    // e.g. "Audeze Maxwell" + " Neutral PEQ" → looks for file "Audeze Maxwell Neutral PEQ L/R.txt"
+    // Default: "Neutral PEQ".  Set to "" to load the raw measurement instead.
+    //
+    // neutralPeqSuffix: "Neutral PEQ",
 };

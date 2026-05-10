@@ -140,17 +140,12 @@ doc.html(`
                       <span class="extra-eq-reset-icon" aria-hidden="true"></span>
                     </button>
                   </div>
-                  <span id="extra-eq-device-name-badge" class="extra-eq-device-name-badge" hidden></span>
                   <button type="button" class="extra-eq-constraints-gear" aria-expanded="false" aria-controls="extra-eq-constraints-body" aria-label="Parametric EQ settings" title="Parametric EQ settings"><span class="extra-eq-constraints-gear-char" aria-hidden="true"></span><span class="extra-eq-constraints-gear-preset-badge" aria-hidden="true" hidden>!</span></button>
                 </div>
               </div>
               <div class="extra-eq-constraints">
                 <div id="extra-eq-constraints-body" class="extra-eq-constraints-body" aria-hidden="true">
                 <div class="extra-eq-constraints-inner">
-                  <!-- DevicePEQ: connect/disconnect button -->
-                  <div class="eq-device-connect-row">
-                    <button type="button" id="eq-device-connect-btn" class="eq-device-connect-btn" data-state="disconnected">Connect to Device</button>
-                  </div>
                   <div id="eq-constraint-preset-row" class="eq-constraint-preset-row" hidden>
                     <div class="select-eq-phone eq-constraint-preset-stack">
                       <select id="eq-constraint-preset-display" class="eq-constraint-preset-display" tabindex="-1" aria-hidden="true"></select>
@@ -301,8 +296,6 @@ doc.html(`
               <div class="filters-button extra-eq-filter-actions">
                 <button class="import-filters">Import</button>
                 <button class="export-filters">Export</button>
-                <!-- DevicePEQ: save-to-device button, shown only when connected -->
-                <button type="button" id="eq-device-save-btn" class="eq-device-save-btn" hidden>Save to Device</button>
               </div>
               <div class="filters-button extra-eq-filter-actions">
                 <button class="export-graphic-filters extra-eq-secondary-btn">Export Graphic EQ (Wavelet)</button>
@@ -7844,6 +7837,7 @@ function addExtra() {
             activeElem.focus();
         }
         updateEqFilterMarkers();
+        document.dispatchEvent(new CustomEvent('applyEQ'));
         } finally {
             if (typeEnableSigNow != null) {
                 eqHistoryLastApplyTypeEnableSig = typeEnableSigNow;
@@ -14324,13 +14318,14 @@ function addExtra() {
         }
     }
     // ── DevicePEQ: plugin integration ────────────────────────────────────────
-    let devicePEQOptions = {
-        showNetwork:         false,
-        advanced:            typeof devicePEQConfig !== "undefined" ? !!devicePEQConfig.advanced            : false,
-        showLogs:            typeof devicePEQConfig !== "undefined" ? !!devicePEQConfig.showLogs            : false,
-        pullValuesOnConnect: typeof devicePEQConfig !== "undefined" ? !!devicePEQConfig.pullValuesOnConnect : false,
-        minimalExperience:   typeof devicePEQConfig !== "undefined" ? !!devicePEQConfig.minimalExperience   : false,
-    };
+    let devicePEQOptions = Object.assign(
+        {
+            showNetwork:        false,
+            devicePEQAnchorDiv: '.extra-eq',
+            devicePEQPlacement: 'beforebegin',
+        },
+        typeof devicePEQConfig !== "undefined" ? devicePEQConfig : {}
+    );
 
     function onDeviceConnected(device, peqConstraints, currentPEQValues, extras) {
         deviceConnectedFilters = currentPEQValues ?? null;
@@ -14367,28 +14362,7 @@ function addExtra() {
             config: devicePEQOptions
         }).then(() => {
             console.warn("[devicePEQ] loadPlugins.then() running — plugin loaded OK");
-            let connectBtn = document.getElementById("eq-device-connect-btn");
-            let saveBtn    = document.getElementById("eq-device-save-btn");
-            console.warn("[devicePEQ] connectBtn found:", !!connectBtn, "| saveBtn found:", !!saveBtn);
 
-            if (connectBtn) {
-                connectBtn.addEventListener("click", () => {
-                    if (connectBtn.dataset.state === "connected") {
-                        let pluginDisconnectBtn = document.querySelector("#deviceEqArea .disconnect-device");
-                        if (pluginDisconnectBtn) pluginDisconnectBtn.click();
-                    } else {
-                        let pluginConnectBtn = document.querySelector("#deviceEqArea .connect-device");
-                        if (pluginConnectBtn) pluginConnectBtn.click();
-                    }
-                });
-            }
-
-            if (saveBtn) {
-                saveBtn.addEventListener("click", () => {
-                    let pluginPushBtn = document.querySelector("#deviceEqArea .push-filters-todevice");
-                    if (pluginPushBtn) pluginPushBtn.click();
-                });
-            }
 
             let listenViaControl = document.getElementById("listen-via-control");
             let listenViaOptions = listenViaControl
@@ -14396,26 +14370,11 @@ function addExtra() {
                 : [];
             let pendingHidNameForMatch = null;
 
-            function listenViaSinkKey(hidName) {
-                return 'devicePEQ_listenViaSinkId_' + (hidName || 'default').toLowerCase().replace(/\s+/g, '_');
-            }
-
-            async function tryMatchAudioDevice(hidName) {
+            async function tryMatchAudioDevice(hidName, audioOutputName) {
                 pendingHidNameForMatch = hidName || null;
                 matchedAudioDeviceId = null;
-                console.warn("[listenVia] device connected:", hidName);
+                console.warn("[listenVia] device connected:", hidName, audioOutputName ? `(output: "${audioOutputName}")` : "");
 
-                // 1. Restore from localStorage — no permissions needed
-                const stored = hidName ? localStorage.getItem(listenViaSinkKey(hidName)) : null;
-                if (stored) {
-                    console.warn("[listenVia] restoring stored sinkId for", hidName);
-                    matchedAudioDeviceId = stored;
-                    pendingHidNameForMatch = null;
-                    setListenVia("device");
-                    return;
-                }
-
-                // 2. Auto-detect: Chrome returns deviceIds even without mic permission
                 if (!navigator.mediaDevices?.enumerateDevices) return;
                 try {
                     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -14424,15 +14383,43 @@ function addExtra() {
                         d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications'
                     );
                     console.warn("[listenVia] non-default audio outputs found:", nonDefaultOutputs.length);
+
+                    let matched = null;
+
                     if (nonDefaultOutputs.length === 1) {
-                        // Only one non-default output — almost certainly the connected USB device
-                        matchedAudioDeviceId = nonDefaultOutputs[0].deviceId;
-                        localStorage.setItem(listenViaSinkKey(hidName), matchedAudioDeviceId);
+                        matched = nonDefaultOutputs[0];
+                        console.warn("[listenVia] auto-detected single audio output:", matched.label || matched.deviceId);
+                    } else if (nonDefaultOutputs.length > 1) {
+                        const withLabels = nonDefaultOutputs.filter(d => d.label && d.label.trim().length > 0);
+                        if (withLabels.length > 0) {
+                            if (audioOutputName) {
+                                // Explicit config name — prefer exact match, then substring
+                                const target = audioOutputName.toLowerCase();
+                                matched = withLabels.find(d => d.label.toLowerCase() === target)
+                                       || withLabels.find(d => d.label.toLowerCase().includes(target))
+                                       || withLabels.find(d => target.includes(d.label.toLowerCase()));
+                                if (matched) console.warn("[listenVia] matched audio output by configured name:", matched.label);
+                            }
+                            if (!matched && hidName) {
+                                // Fall back to word-overlap on the BLE/HID device name
+                                const deviceWords = hidName.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+                                let bestScore = 0;
+                                for (const d of withLabels) {
+                                    const score = deviceWords.filter(w => d.label.toLowerCase().includes(w)).length;
+                                    if (score > bestScore) { bestScore = score; matched = d; }
+                                }
+                                if (bestScore === 0) matched = null;
+                                else console.warn("[listenVia] matched audio output by name overlap:", matched.label, "(score:", bestScore, ")");
+                            }
+                        }
+                    }
+
+                    if (matched) {
+                        matchedAudioDeviceId = matched.deviceId;
                         pendingHidNameForMatch = null;
-                        console.warn("[listenVia] auto-detected single audio output, switching to device");
                         setListenVia("device");
                     } else {
-                        console.warn("[listenVia] multiple outputs found — user must click Listen via Device to pick");
+                        console.warn("[listenVia] multiple outputs — user must click Listen via Device to pick");
                     }
                 } catch (e) {
                     console.warn("[listenVia] auto-detect error:", e);
@@ -14467,21 +14454,19 @@ function addExtra() {
                 btn.addEventListener("click", async () => {
                     const via = btn.dataset.via;
                     if (via === "device" && !matchedAudioDeviceId) {
-                        const nameKey = pendingHidNameForMatch;
                         if (navigator.mediaDevices?.selectAudioOutput) {
                             // Preferred: browser native picker — no mic permission needed
                             try {
                                 const deviceInfo = await navigator.mediaDevices.selectAudioOutput();
                                 matchedAudioDeviceId = deviceInfo.deviceId;
                                 pendingHidNameForMatch = null;
-                                if (nameKey) localStorage.setItem(listenViaSinkKey(nameKey), matchedAudioDeviceId);
                                 console.warn("[listenVia] user selected output:", deviceInfo.label, matchedAudioDeviceId);
                             } catch (e) {
                                 console.warn("[listenVia] selectAudioOutput cancelled or failed:", e.message);
                                 return;
                             }
                         } else {
-                            // Fallback: enumerate without permission, pick first non-default output
+                            // Fallback: enumerate and pick first non-default output
                             try {
                                 const devices = await navigator.mediaDevices.enumerateDevices();
                                 const nonDefault = devices.filter(d =>
@@ -14492,7 +14477,6 @@ function addExtra() {
                                 if (nonDefault.length > 0) {
                                     matchedAudioDeviceId = nonDefault[0].deviceId;
                                     pendingHidNameForMatch = null;
-                                    if (nameKey) localStorage.setItem(listenViaSinkKey(nameKey), matchedAudioDeviceId);
                                     console.warn("[listenVia] using first non-default output:", matchedAudioDeviceId);
                                 } else {
                                     console.warn("[listenVia] no non-default audio outputs found");
@@ -14509,70 +14493,36 @@ function addExtra() {
 
             document.addEventListener("PeqDeviceSaved", (e) => {
                 let { filters } = e.detail || {};
-                if (filters && filters.length > 0) {
-                    deviceConnectedFilters = filters;
-                }
+                if (filters && filters.length > 0) deviceConnectedFilters = filters;
             });
 
-            document.addEventListener("PeqDeviceConnected", (e) => {
+            function autoLoadNeutralPeqMeasurement(measurementName) {
+                // Resolve from config override first, then device-supplied name
+                let baseName = devicePEQOptions?.measurementMap?.[measurementName] ?? measurementName;
+                if (!baseName || !window.allPhones) { return; }
+                // Append the neutral PEQ suffix (default "Neutral PEQ"; set to "" to load raw measurement)
+                let suffix = (devicePEQOptions?.neutralPeqSuffix ?? 'Neutral PEQ').trim();
+                let lookupName = suffix ? `${baseName} ${suffix}` : baseName;
+                let phone = window.allPhones.find(p =>
+                    p.fileName === lookupName ||
+                    p.phone    === lookupName ||
+                    p.dispName === lookupName
+                );
+                if (!phone) {
+                    console.warn("[devicePEQ] Neutral PEQ measurement not found in phone list:", lookupName);
+                    return;
+                }
+                showPhone(phone, true);
+            }
+
+            document.addEventListener("PeqDeviceConnected", async (e) => {
                 console.warn("[devicePEQ] PeqDeviceConnected event received:", e.detail);
                 let { device, peqConstraints } = e.detail || {};
-                if (connectBtn) {
-                    connectBtn.textContent = "Disconnect";
-                    connectBtn.dataset.state = "connected";
-                }
-                if (saveBtn) {
-                    saveBtn.hidden = false;
-                    saveBtn.textContent = "Save to " + (device?.model || "Device");
-                }
-                tryMatchAudioDevice(device?.model);
-                let badge = document.getElementById("extra-eq-device-name-badge");
-                if (badge) {
-                    badge.textContent = device?.model || "";
-                    badge.hidden = !device?.model;
-                }
-                if (devicePEQOptions.minimalExperience && peqConstraints) {
-                    let devicePreset = {
-                        id:       '__device__',
-                        label:    device?.model || 'Connected Device',
-                        maxBands: peqConstraints.maxFilters ?? 0,
-                        gainMin:  peqConstraints.minGain    ?? 0,
-                        gainMax:  peqConstraints.maxGain    ?? 0,
-                        qMin:     peqConstraints.minQ       ?? 0,
-                        qMax:     peqConstraints.maxQ       ?? 0,
-                        freqMin:  20,
-                        freqMax:  20000,
-                        allowPk:  true,
-                        allowLsq: peqConstraints.supportsLSFilter !== false,
-                        allowHsq: peqConstraints.supportsHSFilter !== false,
-                    };
-                    eqConstraintPresetsList = eqConstraintPresetsList.filter(p => p.id !== '__device__');
-                    eqConstraintPresetsList.push(devicePreset);
-                    let hit = document.getElementById("eq-constraint-preset-input");
-                    let display = document.getElementById("eq-constraint-preset-display");
-                    if (hit && display) {
-                        let devHit  = hit.querySelector("optgroup[data-eq-preset-devices='1']");
-                        let devDisp = display.querySelector("optgroup[data-eq-preset-devices='1']");
-                        if (devHit && devDisp) {
-                            let prev = devHit.querySelector("option[value='__device__']");
-                            if (prev) prev.remove();
-                            let prevD = devDisp.querySelector("option[value='__device__']");
-                            if (prevD) prevD.remove();
-                            eqConstraintPresetDomAddPair(devHit, devDisp, '__device__', devicePreset.label, true);
-                            runEqConstraintPresetProgrammatic(() => {
-                                hit.value = '__device__';
-                                display.selectedIndex = hit.selectedIndex;
-                                hit.dataset.eqPresetLastStable = '__device__';
-                            });
-                        }
-                    }
-                    let savedFilters = elemToFilters(true);
-                    applyEqConstraintPreset(devicePreset);
-                    if (savedFilters && savedFilters.length > 0) {
-                        filtersToElem(savedFilters);
-                        applyEQ();
-                    }
-                }
+                await tryMatchAudioDevice(device?.model, device?.audioOutputName);
+                // Auto-load the paired Neutral PEQ measurement if one exists in the phone list
+                let mName = device?.measurementName
+                    || devicePEQOptions?.measurementMap?.[device?.model];
+                if (mName) autoLoadNeutralPeqMeasurement(mName);
                 if (listenViaControl) {
                     let deviceBtn = listenViaControl.querySelector(".listen-via-option[data-via='device']");
                     if (deviceBtn) deviceBtn.textContent = device?.model || "Device";
@@ -14584,38 +14534,12 @@ function addExtra() {
 
             document.addEventListener("PeqDeviceModelConfigChanged", (e) => {
                 if (e.detail === null) {
-                    if (connectBtn) {
-                        connectBtn.textContent = "Connect to Device";
-                        connectBtn.dataset.state = "disconnected";
-                    }
-                    let badge = document.getElementById("extra-eq-device-name-badge");
-                    if (badge) badge.hidden = true;
-                    if (saveBtn) {
-                        saveBtn.hidden = true;
-                        saveBtn.textContent = "Save to Device";
-                    }
                     if (listenViaControl) {
                         listenViaControl.hidden = true;
                         setListenVia("computer");
                     }
                     deviceConnectedFilters = null;
                     matchedAudioDeviceId = null;
-                    if (devicePEQOptions.minimalExperience) {
-                        let hit = document.getElementById("eq-constraint-preset-input");
-                        let display = document.getElementById("eq-constraint-preset-display");
-                        if (hit && display) {
-                            let devHit  = hit.querySelector("optgroup[data-eq-preset-devices='1']");
-                            let devDisp = display.querySelector("optgroup[data-eq-preset-devices='1']");
-                            let prev = devHit && devHit.querySelector("option[value='__device__']");
-                            if (prev) prev.remove();
-                            let prevD = devDisp && devDisp.querySelector("option[value='__device__']");
-                            if (prevD) prevD.remove();
-                        }
-                        eqConstraintPresetsList = eqConstraintPresetsList.filter(p => p.id !== '__device__');
-                        if (eqConstraintDefaultPresetForUi) {
-                            applyEqConstraintPreset(eqConstraintDefaultPresetForUi);
-                        }
-                    }
                 }
             });
         });

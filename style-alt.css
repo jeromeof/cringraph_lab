@@ -1835,75 +1835,202 @@ div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear:focus-visible
     box-shadow: none;
 }
 
-/* ── DevicePEQ: EQ constraints panel — connect button, save button, device badge ── */
-div.extra-panel .eq-device-connect-row {
-    display: flex;
-    margin: 0 0 8px 0;
+/* ── DevicePEQ: device link area — "Link Device" button + connected pill ── */
+div.extra-panel .device-link-area {
+    padding: 8px 10px 0;
 }
 
-div.extra-panel .eq-device-connect-btn {
-    flex: 1 1 auto;
-    padding: 4px 10px;
-    background: transparent;
+/* Disconnected state: large rounded "Link Device" button */
+div.extra-panel .device-link-btn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100% !important;
+    flex: none !important;
+    padding: 12px 18px !important;
+    background-color: var(--background-color) !important;
+    border: 1px solid var(--background-color-contrast-more) !important;
+    border-radius: 14px !important;
+    color: var(--font-color-primary) !important;
+    font-family: var(--font-primary);
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    cursor: pointer;
+    text-transform: none !important;
+    transition: border-color 150ms ease, color 150ms ease;
+}
+div.extra-panel .device-link-btn:hover {
+    border-color: var(--accent-color) !important;
+    color: var(--accent-color) !important;
+}
+div.extra-panel .device-link-btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+div.extra-panel .device-link-btn[hidden] { display: none !important; }
+div.extra-panel .device-link-icon { flex-shrink: 0; opacity: 0.7; }
+
+/* Connection-type popup (inline below button, pushes content down) */
+div.extra-panel .device-link-popup {
+    margin-top: 4px;
+    background-color: var(--background-color);
     border: 1px solid var(--background-color-contrast-more);
-    border-radius: 4px;
-    color: var(--background-color-contrast-more);
+    border-radius: 12px;
+    overflow: hidden;
+}
+div.extra-panel .device-link-popup[hidden] { display: none !important; }
+div.extra-panel .device-link-popup-item {
+    display: block !important;
+    width: 100% !important;
+    flex: none !important;
+    padding: 11px 16px !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    color: var(--font-color-primary) !important;
     font-family: var(--font-primary);
-    font-size: 11px;
-    font-weight: 500;
-    white-space: nowrap;
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    text-align: left !important;
+    text-transform: none !important;
     cursor: pointer;
-    outline: none;
-    text-align: center;
-    transition: color 200ms ease, border-color 200ms ease;
+    transition: background-color 100ms ease;
+}
+div.extra-panel .device-link-popup-item:hover {
+    background-color: rgba(0,0,0,0.06) !important;
+}
+div.extra-panel .device-link-popup-divider {
+    height: 1px;
+    background: var(--background-color-contrast-more);
+    margin: 0;
+    opacity: 0.4;
 }
 
-div.extra-panel .eq-device-connect-btn:hover {
-    color: var(--accent-color);
-    border-color: var(--accent-color);
+/* Connected state: pill matching button shape */
+div.extra-panel .device-pill {
+    background-color: var(--background-color);
+    border: 1px solid var(--background-color-contrast-more);
+    border-radius: 14px;
+    overflow: visible;
+    margin-bottom: 4px;
+}
+div.extra-panel .device-pill[hidden] { display: none !important; }
+div.extra-panel .device-pill--busy { border-color: var(--background-color-contrast-more); }
+
+div.extra-panel .device-pill-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px 10px 14px;
 }
 
-div.extra-panel .eq-device-connect-btn[data-state="connected"] {
-    color: var(--accent-color);
-    border-color: var(--accent-color);
+div.extra-panel .device-pill-icon {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--font-color-primary);
+    opacity: 0.6;
 }
 
-div.extra-panel .eq-device-connect-btn:focus,
-div.extra-panel .eq-device-connect-btn:focus-visible {
-    outline: none;
-    box-shadow: none;
+/* Pill icons: chain-link shown when idle, sync shown (spinning) when busy */
+div.extra-panel .device-pill-icon-link { display: block; }
+div.extra-panel .device-pill-icon-sync { display: none; }
+div.extra-panel .device-pill--busy .device-pill-icon-link { display: none; }
+div.extra-panel .device-pill--busy .device-pill-icon-sync { display: block; }
+
+@keyframes devicePillSpin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(-360deg); }
+}
+div.extra-panel .device-pill--busy .device-pill-icon-sync {
+    animation: devicePillSpin 1s linear infinite;
+    opacity: 0.9;
 }
 
-div.extra-panel .eq-device-save-btn {
+div.extra-panel .device-pill-name {
+    flex: 1 1 auto;
     font-family: var(--font-primary);
-    font-size: 10px;
-    font-weight: 500;
-    cursor: pointer;
-    white-space: normal;
-    line-height: 1.25;
-    padding: 2px 4px;
-    text-align: center;
-}
-
-div.extra-panel .eq-device-save-btn[hidden] {
-    display: none !important;
-}
-
-div.extra-panel .extra-eq-device-name-badge {
-    flex: 0 0 auto;
-    max-width: 80px;
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    color: var(--font-color-primary) !important;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: var(--font-primary);
-    font-size: 10px;
-    color: var(--background-color-contrast-more);
-    margin: 0 2px 0 0;
-    line-height: 20px;
 }
 
-div.extra-panel .extra-eq-device-name-badge[hidden] {
-    display: none !important;
+div.extra-panel .device-pill-close {
+    flex: none !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 24px !important;
+    height: 24px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    border-radius: 50% !important;
+    color: var(--font-color-primary) !important;
+    font-size: 18px !important;
+    line-height: 1 !important;
+    cursor: pointer;
+    text-transform: none !important;
+    opacity: 0.5;
+    transition: opacity 150ms ease;
+}
+div.extra-panel .device-pill-close:hover { opacity: 1; }
+
+
+/* ── DevicePEQ: plugin-rendered linked panel — override global div.extra-panel button styles ── */
+/* Compact extras Apply buttons inside the settings panel */
+div.extra-panel .peq-extras-section .extras-apply {
+    flex: none !important;
+    padding: 2px 8px !important;
+    font-size: 11px !important;
+    border-radius: 4px !important;
+    text-transform: none !important;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+/* Load/Save: inherit global div.extra-panel button appearance; only override spacing/caps */
+div.extra-panel .peq-load-btn,
+div.extra-panel .peq-save-btn {
+    flex: 1 1 auto !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    text-transform: none !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+div.extra-panel .peq-load-btn:disabled,
+div.extra-panel .peq-save-btn:disabled { opacity: 0.35 !important; cursor: default !important; }
+
+/* Settings icon: borderless icon button — matches other icon buttons on the page */
+div.extra-panel .peq-settings-btn {
+    position: relative;
+    flex: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 28px !important;
+    height: 28px !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    text-transform: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+}
+div.extra-panel .peq-settings-btn[hidden] { display: none !important; }
+div.extra-panel .peq-settings-btn:hover,
+div.extra-panel .peq-settings-btn.peq-settings-btn--open {
+    color: var(--accent-color) !important;
 }
 
 div.extra-panel > div.extra-eq .extra-eq-constraints-inner {
