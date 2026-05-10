@@ -299,5 +299,16 @@ let tutorialDefinitions = [
 ]
 // Configure paths to extraEQ plugins here
 let extraEQplugins = [
-    //'./devicePEQ/plugin.js' // Path to one or more "extraEQ" plugins
+    './devicePEQ/plugin.js'
 ];
+
+// Tell the DevicePEQ plugin to load its constraint config from the local copy
+// (otherwise it tries https://pragmagicaudio.com/devicepeq/config/… which may not be reachable)
+window.DEVICEPEQ_CONFIG_BASE_URL = './devicePEQ/';
+
+let devicePEQConfig = {
+    advanced: false,
+    showLogs: false,
+    pullValuesOnConnect: true,
+    minimalExperience: true
+};

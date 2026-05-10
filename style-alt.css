@@ -1835,6 +1835,77 @@ div.extra-panel .extra-eq-head-trailing .extra-eq-constraints-gear:focus-visible
     box-shadow: none;
 }
 
+/* ── DevicePEQ: EQ constraints panel — connect button, save button, device badge ── */
+div.extra-panel .eq-device-connect-row {
+    display: flex;
+    margin: 0 0 8px 0;
+}
+
+div.extra-panel .eq-device-connect-btn {
+    flex: 1 1 auto;
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid var(--background-color-contrast-more);
+    border-radius: 4px;
+    color: var(--background-color-contrast-more);
+    font-family: var(--font-primary);
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    outline: none;
+    text-align: center;
+    transition: color 200ms ease, border-color 200ms ease;
+}
+
+div.extra-panel .eq-device-connect-btn:hover {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+div.extra-panel .eq-device-connect-btn[data-state="connected"] {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+div.extra-panel .eq-device-connect-btn:focus,
+div.extra-panel .eq-device-connect-btn:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+div.extra-panel .eq-device-save-btn {
+    font-family: var(--font-primary);
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: normal;
+    line-height: 1.25;
+    padding: 2px 4px;
+    text-align: center;
+}
+
+div.extra-panel .eq-device-save-btn[hidden] {
+    display: none !important;
+}
+
+div.extra-panel .extra-eq-device-name-badge {
+    flex: 0 0 auto;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-primary);
+    font-size: 10px;
+    color: var(--background-color-contrast-more);
+    margin: 0 2px 0 0;
+    line-height: 20px;
+}
+
+div.extra-panel .extra-eq-device-name-badge[hidden] {
+    display: none !important;
+}
+
 div.extra-panel > div.extra-eq .extra-eq-constraints-inner {
     box-sizing: border-box;
     display: flex;
@@ -2675,6 +2746,83 @@ div.extra-panel .live-sound-tools-head > h5.live-sound-tools-title {
     line-height: 20px;
     font-weight: 600;
     color: var(--background-color-contrast-more);
+}
+
+/* ── DevicePEQ: Sound Tools panel — listen-via toggle, volume disabled state ── */
+div.extra-panel .listen-via-control {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    margin: 0 0 10px 0;
+    background: var(--background-color);
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+}
+
+div.extra-panel .listen-via-control[hidden] {
+    display: none !important;
+}
+
+div.extra-panel .listen-via-label {
+    font-family: var(--font-primary);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--background-color-contrast-more);
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.7;
+}
+
+div.extra-panel .listen-via-options {
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+}
+
+div.extra-panel .listen-via-option {
+    flex: 1 1 0;
+    padding: 6px 10px;
+    background: var(--background-color-inputs);
+    border: 1.5px solid transparent;
+    border-radius: 6px;
+    color: var(--background-color-contrast-more);
+    font-family: var(--font-primary);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    text-align: center;
+    cursor: pointer;
+    outline: none;
+    opacity: 0.6;
+    transition: color 150ms ease, opacity 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+div.extra-panel .listen-via-option--active {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    opacity: 1;
+    background: var(--background-color-inputs);
+}
+
+div.extra-panel .listen-via-option:not(.listen-via-option--active):hover {
+    opacity: 0.85;
+}
+
+div.extra-panel .listen-via-option:focus,
+div.extra-panel .listen-via-option:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+div.extra-panel .live-sound-volume-row--disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+div.extra-panel .live-sound-volume-row--disabled input[type="range"] {
+    pointer-events: none;
 }
 
 div.extra-panel .live-sound-eq-toggle-label {
