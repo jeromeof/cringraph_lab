@@ -8650,11 +8650,11 @@ function addExtra() {
     });
     // Add new filter
     document.querySelector("div.extra-eq button.add-filter").addEventListener("click", () => {
-        if (eqBands >= extraEQBandsMax) {
+        if (eqBands >= getEffectiveEqMaxBands()) {
             return;
         }
         eqFiltersUserHasEdited = true;
-        eqBands = Math.min(eqBands + 1, extraEQBandsMax);
+        eqBands = Math.min(eqBands + 1, getEffectiveEqMaxBands());
         updateFilterElements();
         scheduleLiveEqSync();
         eqHistoryCommitTransaction();
@@ -14375,42 +14375,69 @@ function addExtra() {
                 matchedAudioDeviceId = null;
                 console.warn("[listenVia] device connected:", hidName, audioOutputName ? `(output: "${audioOutputName}")` : "");
 
-                if (!navigator.mediaDevices?.enumerateDevices) return;
+                if (!navigator.mediaDevices?.enumerateDevices) {
+                    console.warn("[listenVia] enumerateDevices not available on navigator.mediaDevices");
+                    return;
+                }
                 try {
                     const devices = await navigator.mediaDevices.enumerateDevices();
+                    console.warn("[listenVia] enumerateDevices total:", devices.length,
+                        "| kinds:", [...new Set(devices.map(d => d.kind))].join(", "));
+                    devices.forEach((d, i) => {
+                        console.warn(`[listenVia]   [${i}] kind=${d.kind} label="${d.label}" deviceId="${d.deviceId.substring(0,16)}..."`);
+                    });
+
                     const nonDefaultOutputs = devices.filter(d =>
                         d.kind === 'audiooutput' &&
                         d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications'
                     );
                     console.warn("[listenVia] non-default audio outputs found:", nonDefaultOutputs.length);
+                    nonDefaultOutputs.forEach((d, i) => {
+                        console.warn(`[listenVia]   output[${i}] label="${d.label}" deviceId="${d.deviceId.substring(0,16)}..."`);
+                    });
 
                     let matched = null;
 
-                    if (nonDefaultOutputs.length === 1) {
+                    if (nonDefaultOutputs.length === 0) {
+                        console.warn("[listenVia] no non-default outputs — browser may need audio permission or device not enumerated yet");
+                    } else if (nonDefaultOutputs.length === 1) {
                         matched = nonDefaultOutputs[0];
                         console.warn("[listenVia] auto-detected single audio output:", matched.label || matched.deviceId);
-                    } else if (nonDefaultOutputs.length > 1) {
+                    } else {
                         const withLabels = nonDefaultOutputs.filter(d => d.label && d.label.trim().length > 0);
+                        console.warn("[listenVia] multiple outputs:", nonDefaultOutputs.length, "| with labels:", withLabels.length);
                         if (withLabels.length > 0) {
                             if (audioOutputName) {
-                                // Explicit config name — prefer exact match, then substring
                                 const target = audioOutputName.toLowerCase();
+                                console.warn("[listenVia] trying audioOutputName match, target:", target);
+                                withLabels.forEach(d => console.warn(`[listenVia]   candidate: "${d.label}" | exact=${d.label.toLowerCase()===target} | includes=${d.label.toLowerCase().includes(target)}`));
                                 matched = withLabels.find(d => d.label.toLowerCase() === target)
                                        || withLabels.find(d => d.label.toLowerCase().includes(target))
                                        || withLabels.find(d => target.includes(d.label.toLowerCase()));
                                 if (matched) console.warn("[listenVia] matched audio output by configured name:", matched.label);
+                                else console.warn("[listenVia] no match by audioOutputName:", audioOutputName);
                             }
                             if (!matched && hidName) {
-                                // Fall back to word-overlap on the BLE/HID device name
                                 const deviceWords = hidName.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+                                console.warn("[listenVia] trying hidName word-overlap, words:", deviceWords);
                                 let bestScore = 0;
                                 for (const d of withLabels) {
                                     const score = deviceWords.filter(w => d.label.toLowerCase().includes(w)).length;
+                                    console.warn(`[listenVia]   "${d.label}" → score ${score}`);
                                     if (score > bestScore) { bestScore = score; matched = d; }
                                 }
-                                if (bestScore === 0) matched = null;
-                                else console.warn("[listenVia] matched audio output by name overlap:", matched.label, "(score:", bestScore, ")");
+                                if (bestScore === 0) {
+                                    matched = null;
+                                    console.warn("[listenVia] no match by hidName word-overlap");
+                                } else {
+                                    console.warn("[listenVia] matched audio output by name overlap:", matched.label, "(score:", bestScore, ")");
+                                }
                             }
+                            if (!matched) {
+                                console.warn("[listenVia] no match found — user must click Listen via Device to pick");
+                            }
+                        } else {
+                            console.warn("[listenVia] outputs found but all have empty labels (browser permission not granted?)");
                         }
                     }
 
@@ -14418,8 +14445,6 @@ function addExtra() {
                         matchedAudioDeviceId = matched.deviceId;
                         pendingHidNameForMatch = null;
                         setListenVia("device");
-                    } else {
-                        console.warn("[listenVia] multiple outputs — user must click Listen via Device to pick");
                     }
                 } catch (e) {
                     console.warn("[listenVia] auto-detect error:", e);
@@ -14515,9 +14540,44 @@ function addExtra() {
                 showPhone(phone, true);
             }
 
+            let savedMaxBandsBeforeDevice = null; // restores user's constraint on disconnect
+
+            function applyDevicePeqMaxBands(maxFilters) {
+                let maxBandsEl = document.querySelector("div.extra-eq input[name='eq-constraint-max-bands']");
+                if (!maxBandsEl || !Number.isFinite(maxFilters) || maxFilters <= 0) return;
+                savedMaxBandsBeforeDevice = maxBandsEl.value;
+                let cap = Math.min(maxFilters, extraEQBandsMax);
+                Equalizer.config.EqMaxBands = cap;
+                maxBandsEl.value = String(cap);
+                maxBandsEl.setAttribute("data-peq-device-max-lock", "1");
+                maxBandsEl.disabled = true;
+                refreshEqFilterInactiveStateForMaxBands();
+                cancelDeferredApplyEQ();
+                applyEQExec();
+                scheduleLiveEqSync();
+            }
+
+            function restoreDevicePeqMaxBands() {
+                let maxBandsEl = document.querySelector("div.extra-eq input[name='eq-constraint-max-bands']");
+                if (!maxBandsEl || !maxBandsEl.hasAttribute("data-peq-device-max-lock")) return;
+                maxBandsEl.removeAttribute("data-peq-device-max-lock");
+                maxBandsEl.disabled = false;
+                maxBandsEl.value = savedMaxBandsBeforeDevice ?? "0";
+                savedMaxBandsBeforeDevice = null;
+                let parsed = parseInt(maxBandsEl.value, 10);
+                Equalizer.config.EqMaxBands = (Number.isFinite(parsed) && parsed > 0) ? parsed : 0;
+                // Only refresh inactive-row styling — do NOT call applyEQExec here because
+                // maybeAutoGrowEqBandsForTrailingBlank would see the raised cap and add a band.
+                refreshEqFilterInactiveStateForMaxBands();
+                scheduleLiveEqSync();
+            }
+
             document.addEventListener("PeqDeviceConnected", async (e) => {
                 console.warn("[devicePEQ] PeqDeviceConnected event received:", e.detail);
                 let { device, peqConstraints } = e.detail || {};
+                if (peqConstraints?.maxFilters > 0) {
+                    applyDevicePeqMaxBands(peqConstraints.maxFilters);
+                }
                 await tryMatchAudioDevice(device?.model, device?.audioOutputName);
                 // Auto-load the paired Neutral PEQ measurement if one exists in the phone list
                 let mName = device?.measurementName
@@ -14538,6 +14598,7 @@ function addExtra() {
                         listenViaControl.hidden = true;
                         setListenVia("computer");
                     }
+                    restoreDevicePeqMaxBands();
                     deviceConnectedFilters = null;
                     matchedAudioDeviceId = null;
                 }

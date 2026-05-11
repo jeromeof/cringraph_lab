@@ -157,6 +157,13 @@ async function initializeDeviceEqPlugin(context) {
 
       this.settingsBtn.addEventListener('click', () => {
         this._extrasExpanded = !this._extrasExpanded;
+        if (this._extrasExpanded) {
+          // Pin the panel width before the first paint so selects can't inflate the container
+          const w = this.deviceEqArea.offsetWidth;
+          if (w > 0) this.extrasPanel.style.maxWidth = w + 'px';
+        } else {
+          this.extrasPanel.style.maxWidth = '';
+        }
         this.extrasPanel.hidden = !this._extrasExpanded;
         this.settingsBtn.classList.toggle('peq-settings-btn--open', this._extrasExpanded);
         this.settingsBtn.setAttribute('aria-expanded', String(this._extrasExpanded));
@@ -824,6 +831,13 @@ async function initializeDeviceEqPlugin(context) {
         <div class="device-eq disabled" id="deviceEqArea">
         <style>
     .peq-info-btn[hidden] { display: none !important; }
+
+    /* Anchor the container width so the extras panel can't push it wider */
+    .device-eq {
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+    }
 
     /* ── Device link area: pill + connect button ─────────────────────────── */
     .device-link-area { padding: 2px 0 4px; }
