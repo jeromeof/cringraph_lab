@@ -840,13 +840,15 @@ async function initializeDeviceEqPlugin(context) {
     }
 
     /* ── Device link area: pill + connect button ─────────────────────────── */
-    .device-link-area { padding: 2px 0 4px; }
+    .device-link-area { padding: 2px 0 4px; display: flex; flex-direction: column; gap: 0; }
+    .device-link-row { display: flex; align-items: center; gap: 6px; }
     .device-link-btn {
       display: flex !important;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      width: 100% !important;
+      flex: 1 1 auto;
+      min-width: 0;
       padding: 12px 18px !important;
       background: var(--background-color, #f5f5f5);
       border: 1px solid var(--background-color-contrast-more, #aaa) !important;
@@ -1277,24 +1279,26 @@ async function initializeDeviceEqPlugin(context) {
             <button class="disconnect-device" hidden style="display:none!important"><span id="deviceName" hidden></span></button>
             <!-- Visible connection UI: pill when connected, link button when disconnected -->
             <div id="device-link-area" class="device-link-area"${context?.config?.showConnectButton === false ? ' hidden' : ''}>
-                <button type="button" id="eq-device-connect-btn" class="device-link-btn"
-                        aria-expanded="false" aria-haspopup="menu">
-                    <svg class="device-link-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                    ${context?.config?.connectButtonLabel ?? 'Link Device'}
-                </button>
-                <div id="device-link-popup" class="device-link-popup" hidden role="menu" aria-label="Connection type"></div>
-                <div id="device-pill" class="device-pill" hidden>
-                    <div class="device-pill-row">
-                        <span class="device-pill-icon">
-                            <svg class="device-pill-icon-link" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                            <svg class="device-pill-icon-sync" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8.1 8.1 0 0 0 4.5 9M4 5v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg>
-                        </span>
-                        <span id="device-pill-name" class="device-pill-name"></span>
-                        <button type="button" id="device-pill-close" class="device-pill-close" aria-label="Disconnect">×</button>
+                <div class="device-link-row">
+                    <button type="button" id="eq-device-connect-btn" class="device-link-btn"
+                            aria-expanded="false" aria-haspopup="menu">
+                        <svg class="device-link-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        ${context?.config?.connectButtonLabel ?? 'Link Device'}
+                    </button>
+                    <div id="device-pill" class="device-pill" hidden>
+                        <div class="device-pill-row">
+                            <span class="device-pill-icon">
+                                <svg class="device-pill-icon-link" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                                <svg class="device-pill-icon-sync" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8.1 8.1 0 0 0 4.5 9M4 5v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg>
+                            </span>
+                            <span id="device-pill-name" class="device-pill-name"></span>
+                            <button type="button" id="device-pill-close" class="device-pill-close" aria-label="Disconnect">×</button>
+                        </div>
                     </div>
+                    <button id="deviceInfoBtn" class="peq-info-btn" aria-label="Device Help" title="Device Help" ${context?.config?.showInfoButton === false ? 'hidden' : ''}>ℹ️</button>
                 </div>
+                <div id="device-link-popup" class="device-link-popup" hidden role="menu" aria-label="Connection type"></div>
             </div>
-            <button id="deviceInfoBtn" class="peq-info-btn" aria-label="Device Help" title="Device Help" ${context?.config?.showInfoButton === false ? 'hidden' : ''}>ℹ️</button>
             <div class="filters-button">
                 <button class="pull-filters-fromdevice peq-load-btn">Load from Device</button>
                 <button class="push-filters-todevice peq-save-btn">Save to Device</button>
