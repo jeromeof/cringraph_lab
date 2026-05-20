@@ -46,11 +46,35 @@ const init_phones = ["BKF"],            // Optional. Which graphs to display on 
 
 // Specify which targets to display
 const targets = [
-    { type:"Neutral",    files:["Diffuse Field","Etymotic","Free Field","Innerfidelity ID"] },
+    { type:"Neutral",    files:["KEMAR DF","Diffuse Field","Etymotic","Free Field","Innerfidelity ID"] },
     { type:"Reviewer",   files:["Antdroid","Bad Guy","Banbeucmas","Crinacle","Precogvision","Super Review"] },
     { type:"Preference", files:["Harman","Rtings","Sonarworks"] }
 ];
 
+// Tilt / Preference Adjustments
+const
+        default_y_scale = "40db",                       // Default Y scale; values: ["20db", "30db", "40db", "50db", "crin"]
+        default_DF_name = "KEMAR DF",                   // Default RAW DF name
+        dfBaseline = true,                              // If true, DF is used as baseline when custom df tilt is on
+        default_bass_shelf = 8,                         // Default Custom DF bass shelf value
+        default_tilt = -0.8,                            // Default Custom DF tilt value
+        default_ear = 0,                                // Default Custom DF ear gain value
+        default_treble = 0,
+        tiltableTargets = [],                           // Targets that are allowed to be tilted
+        compTargets = ["KEMAR DF"],                     // Targets that are allowed to be used for compensation
+        preference_bounds_name   = "Bounds",           // Preference bounds file prefix (null to disable)
+        preference_bounds_dir    = "data/pref_bounds/",// Directory containing bounds files
+        preference_bounds_startup = false;             // Show bounds curve on startup
+
+const harmanFilters = [
+    { name: "Harman C1 2024 IE", tilt: -0.9, bass_shelf: 1,   ear: 0,    treble: 0.5  },
+    { name: "Harman C2 2024 IE", tilt: -0.3, bass_shelf: 0.5, ear: -0.2, treble: 1    },
+    { name: "Harman C3 2024 IE", tilt: -2.1, bass_shelf: 0,   ear: 0,    treble: 10   },
+    { name: "Harman C4 2024 IE", tilt: -2.1, bass_shelf: 0,   ear: 0.5,  treble: 3.7  },
+    { name: "Harman 2013 OE",    tilt: 0,    bass_shelf: 4.8, ear: 0,    treble: -4.4 },
+    { name: "Harman 2015 OE",    tilt: 0,    bass_shelf: 6.6, ear: 0,    treble: -1.4 },
+    { name: "Harman 2018 OE",    tilt: 0,    bass_shelf: 6,   ear: -1,   treble: -4   },
+];
 
 
 // *************************************************************
