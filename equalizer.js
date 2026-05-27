@@ -14,11 +14,17 @@ Equalizer = (function() {
         // Avoid filters close to nyquist frequency by default, because the behavior is implementation dependent
         // https://github.com/jaakkopasanen/AutoEq/issues/240
         // https://github.com/jaakkopasanen/AutoEq/issues/411
-        AutoEQRange: [20, 15000],
+        AutoEQRange: [20, 20000],
+        // null = use AutoEQRange min/max; else sorted Hz list for fixed-band (graphic) headphone EQ UI
+        EqGraphicBandFreqHz: null,
+        // 0 = no cap (graphtool); >0 caps active bands / AutoEQ
+        EqMaxBands: 0,
+        // Which filter types are allowed in UI / strip (AutoEQ currently emits PK only)
+        EqAllowedTypes: { PK: true, LSQ: true, HSQ: true },
         // Minimum and maximum Q for AutoEQ feature
-        OptimizeQRange: [0.5, 2],
-        // Minimum and maximum Gain for AutoEQ feature
-        OptimizeGainRange: [-12, 12],
+        OptimizeQRange: [0.1, 10],
+        // Minimum and maximum Gain for AutoEQ feature (graphtool may widen via constraints)
+        OptimizeGainRange: [-40, 40],
         // Delta and step of Freq, Q and Gain used for AutoEQ optimizing
         OptimizeDeltas: [
             [10, 10, 10, 5, 0.1, 0.5],
@@ -263,12 +269,37 @@ Equalizer = (function() {
         // Make freq, q and gain look better and more compatible to some DSP device
         let [minQ, maxQ] = config.OptimizeQRange;
         let [minGain, maxGain] = config.OptimizeGainRange;
-        return filters.map(f => ({
-            type: f.type,
-            freq: Math.floor(f.freq - f.freq % freq_unit(f.freq)),
-            q: Math.min(Math.max(Math.floor(f.q * 10) / 10, minQ), maxQ),
-            gain: Math.min(Math.max(Math.floor(f.gain * 10) / 10, minGain), maxGain)
-        }));
+        let [minFreq, maxFreq] = config.AutoEQRange;
+        if (minFreq > maxFreq) {
+            let t = minFreq;
+            minFreq = maxFreq;
+            maxFreq = t;
+        }
+        let allowed = config.EqAllowedTypes || { PK: true, LSQ: true, HSQ: true };
+        let fallbackType = () => (allowed.PK ? "PK" : (allowed.LSQ ? "LSQ" : "HSQ"));
+        return filters.map(f => {
+            let t = f.type;
+            if (t !== "PK" && t !== "LSQ" && t !== "HSQ") {
+                t = "PK";
+            }
+            if (!allowed[t]) {
+                t = fallbackType();
+            }
+            let fq = f.freq;
+            let snapped;
+            if (!Number.isFinite(fq) || fq <= 0) {
+                snapped = minFreq;
+            } else {
+                snapped = Math.floor(fq - fq % freq_unit(fq));
+            }
+            let freq = Math.min(Math.max(snapped, minFreq), maxFreq);
+            return {
+                type: t,
+                freq,
+                q: Math.min(Math.max(Math.floor(f.q * 10) / 10, minQ), maxQ),
+                gain: Math.min(Math.max(Math.floor(f.gain * 10) / 10, minGain), maxGain)
+            };
+        });
     };
 
     let optimize = function (fr, frTarget, filters, iteration, dir) {
@@ -363,6 +394,10 @@ Equalizer = (function() {
     let autoeq = function (fr, frTarget, maxFilters) {
         // 2 steps manual optimized algorithm
         // fr, frTarget should has same resolution and normalized
+        maxFilters = Math.floor(Number(maxFilters)) || 1;
+        if (config.EqMaxBands > 0) {
+            maxFilters = Math.max(1, Math.min(maxFilters, config.EqMaxBands));
+        }
         let firstBatchSize = Math.max(Math.floor(maxFilters / 2) - 1, 1);
         let firstCandidates = search_candidates(fr, frTarget, 1);
         let firstFilters = (firstCandidates
