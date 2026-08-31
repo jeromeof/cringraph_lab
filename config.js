@@ -1,12 +1,13 @@
 // Configuration options
 const init_phones = ["BKF"],            // Optional. Which graphs to display on initial load. Note: Share URLs will override this set
-      DIR = "data/",                                // Directory where graph files are stored
+      DIR = "/data/",                                // Directory where graph files are stored
+//      DIR = "https://squig.link/headphones/data/",                                // Directory where graph files are stored
+//      num_samples = 3,
       default_channels = ["L","R"],                 // Which channels to display. Avoid javascript errors if loading just one channel per phone
       default_normalization = "dB",                 // Sets default graph normalization mode. Accepts "dB" or "Hz"
       default_norm_db = 60,                         // Sets default dB normalization point
       default_norm_hz = 500,                        // Sets default Hz normalization point (500Hz is recommended by IEC)
       max_channel_imbalance = 5,                    // Channel imbalance threshold to show ! in the channel selector
-      alt_layout = true,                            // Toggle between classic and alt layouts
       alt_sticky_graph = true,                      // If active graphs overflows the viewport, does the graph scroll with the page or stick to the viewport?
       alt_animated = false,                         // Determines if new graphs are drawn with a 1-second animation, or appear instantly
       alt_header = true,                            // Display a configurable header at the top of the alt layout
@@ -30,7 +31,7 @@ const init_phones = ["BKF"],            // Optional. Which graphs to display on 
       targetDashed = false,                         // If true, makes target curves dashed lines
       targetColorCustom = false,                    // If false, targets appear as a random gray value. Can replace with a fixed color value to make all targets the specified color, e.g. "black"
       targetRestoreLastUsed = false,				// Restore user's last-used target settings on load
-      labelsPosition = "default",                   // Up to four labels will be grouped in a specified corner. Accepts "top-left," bottom-left," "bottom-right," and "default"
+      labelsPosition = "bottom-left",                   // Up to four labels will be grouped in a specified corner. Accepts "top-left," bottom-left," "bottom-right," and "default"
       stickyLabels = true,                          // "Sticky" labels 
       analyticsEnabled = true,                     // Enables Google Analytics 4 measurement of site usage
       exportableGraphs = true,                      // Enables export graph button
@@ -39,7 +40,9 @@ const init_phones = ["BKF"],            // Optional. Which graphs to display on 
       extraEQEnabled = true,                        // Enable parametic eq function
       extraEQBands = 10,                            // Default EQ bands available
       extraEQBandsMax = 20,                         // Max EQ bands available
-      extraToneGeneratorEnabled = true;             // Enable tone generator function
+      extraToneGeneratorEnabled = true,             // Enable tone generator function
+      extraPinkNoiseEnabled = true,                 // Pink noise through parametric EQ (Equalizer tab)
+      extraMusicEnabled = true;                     // Local file music player through parametric EQ (Equalizer tab)
 
 // Specify which targets to display
 const targets = [
@@ -88,7 +91,8 @@ function tsvParse(fr) {
         .filter(t => !isNaN(t[0]) && !isNaN(t[1]));
 }
 
-// Apply stylesheet based layout options above
+// Main app uses style-alt (+ theme) only. Legacy classic layout lives in style.css for old
+// standalone pages (e.g. graph_hp.html) that link it directly — not loaded here.
 function setLayout() {
     function applyStylesheet(styleSheet) {
         var docHead = document.querySelector("head"),
@@ -101,12 +105,8 @@ function setLayout() {
         docHead.append(linkTag);
     }
 
-    if ( !alt_layout ) {
-        applyStylesheet("style.css");
-    } else {
-        applyStylesheet("style-alt.css");
-        applyStylesheet("style-alt-theme.css");
-    }
+    applyStylesheet("style-alt.css");
+    applyStylesheet("style-alt-theme.css");
 }
 setLayout();
 
@@ -299,5 +299,37 @@ let tutorialDefinitions = [
 ]
 // Configure paths to extraEQ plugins here
 let extraEQplugins = [
-    //'./devicePEQ/plugin.js' // Path to one or more "extraEQ" plugins
+    './devicePEQ/plugin.js'
 ];
+
+// Tell the DevicePEQ plugin to load its constraint config from the local copy
+// (otherwise it tries https://pragmagicaudio.com/devicepeq/config/… which may not be reachable)
+window.DEVICEPEQ_CONFIG_BASE_URL = './devicePEQ/';
+
+let devicePEQConfig = {
+    advanced: true,               // Shows connection-type dropdown instead of the old modal
+    showLogs: false,
+    pullValuesOnConnect: true,
+    connectButtonLabel: "Link Device",  // Override default "Connect to device" label
+    showTitle: false,             // Hide the "Device PEQ" heading in this context
+    showInfoButton: false,        // Hide the ℹ️ info button for a cleaner look
+    showSuccessToasts: false,     // Hide "pulled/pushed successfully" toasts (spinner communicates state)
+
+    // connectionTypes: custom dropdown list for advanced mode.
+    // Omit this option entirely to show all available types:
+    //   { label: "USB",                type: "usb"     }  — USB HID (e.g. FiiO KA17, Protocol Max)
+    //   { label: "Serial / Bluetooth", type: "serial"  }  — Bluetooth serial / USB-serial (e.g. Nothing Ear, Tanchjim Rita)
+    //   { label: "Bluetooth (BLE)",    type: "ble"     }  — Bluetooth Low Energy (e.g. Audeze Maxwell, FiiO EH13)
+    //   { label: "Network",            type: "network" }  — Network device (requires showNetwork: true)
+    connectionTypes: [
+        { label: "USB",        type: "usb" },
+        { label: "Bluetooth",  type: "ble" },
+    ],
+
+    // Neutral PEQ measurement in the phone database.  The lookup filename becomes:
+    //   "<measurementName> <neutralPeqSuffix>"
+    // e.g. "Audeze Maxwell" + " Neutral PEQ" → looks for file "Audeze Maxwell Neutral PEQ L/R.txt"
+    // Default: "Neutral PEQ".  Set to "" to load the raw measurement instead.
+    //
+    // neutralPeqSuffix: "Neutral PEQ",
+};
